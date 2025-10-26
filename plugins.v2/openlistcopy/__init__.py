@@ -12,18 +12,18 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
-class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
+class OpenListCopyPlugin(_PluginBase):
     """
     AList复制插件 - 通过AList API实现多目录间文件复制
     """
-    # 插件基本信息 - 确保这些信息唯一且符合规范
+    # 插件基本信息
     plugin_name = "OpenList自动复制"
-    plugin_desc = "实现OpenList多目录间文件复制自动化" 
+    plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
-    plugin_config_prefix = "openlistcopy_"  # 确保前缀唯一
+    plugin_config_prefix = "openlistcopy_"
     plugin_order = 25
     auth_level = 1
 
@@ -47,10 +47,10 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
     # 任务状态
     _task_status: Dict[str, Any] = {}
     
-    # 复制记录 - 记录已成功复制的文件
+    # 复制记录
     _copied_files: Dict[str, Any] = {}
     
-    # 执行历史记录 - 独立存储，避免冲突
+    # 执行历史记录
     _execution_history: List[Dict[str, Any]] = []
     
     # 目标目录文件数统计
@@ -60,9 +60,7 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
     _scheduler: Optional[BackgroundScheduler] = None
 
     def init_plugin(self, config: dict = None):
-        """
-        初始化插件
-        """
+        """初始化插件"""
         # 停止现有服务
         self.stop_service()
 
@@ -81,7 +79,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         if self._clear_cache:
             logger.info("检测到清除缓存选项，正在清空插件数据...")
             self._clear_all_data()
-            # 重置清除缓存标志
             self._clear_cache = False
             self.__update_config()
 
@@ -112,7 +109,7 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         else:
             self._copied_files = {}
 
-        # 恢复执行历史记录 - 使用独立键名避免冲突
+        # 恢复执行历史记录
         saved_history = self.get_data("openlistcopy_execution_history")
         if saved_history:
             self._execution_history = saved_history
@@ -470,7 +467,7 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         }
         config = status_config.get(status.get("status", "idle"), status_config["idle"])
         
-        # 获取最近5次执行记录（过滤掉没有复制文件的记录）
+        # 获取最近5次执行记录
         recent_executions = self._get_recent_executions()
         
         return [
@@ -646,7 +643,7 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                                 ]
                             },
                             
-                            # 第三行：最近执行记录的详细内容（只有有记录时才显示）
+                            # 第三行：最近执行记录的详细内容
                             {
                                 "component": "VRow",
                                 "props": {"class": "mt-4"},
@@ -748,30 +745,26 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         ]
     
     def _get_recent_executions(self) -> List[Dict]:
-        """获取最近5次执行记录（过滤掉没有复制文件的记录）"""
-        # 过滤掉复制文件数为0的记录，然后取前5条
+        """获取最近5次执行记录"""
         filtered_executions = [execution for execution in self._execution_history if execution.get("copied_count", 0) > 0]
         return filtered_executions[:5]
     
     def _add_execution_record(self, copied_count: int, files: List[str]):
-        """添加执行记录（只有复制文件数大于0时才记录）"""
+        """添加执行记录"""
         if copied_count <= 0:
-            return  # 不记录没有复制文件的执行
+            return
             
         record = {
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "copied_count": copied_count,
-            "files": files[:10]  # 只保留前10个文件，避免存储过大
+            "files": files[:10]
         }
         
-        # 添加到历史记录开头
         self._execution_history.insert(0, record)
         
-        # 限制历史记录数量，最多保留20条
         if len(self._execution_history) > 20:
             self._execution_history = self._execution_history[:20]
         
-        # 保存历史记录
         self.save_data("openlistcopy_execution_history", self._execution_history)
     
     def _render_recent_executions(self, executions: List[Dict]) -> List[Dict]:
@@ -787,7 +780,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         
         content = []
         for i, execution in enumerate(executions):
-            # 执行记录项
             content.append({
                 "component": "div",
                 "props": {"class": "mb-4" if i < len(executions) - 1 else ""},
@@ -833,7 +825,7 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         return content
     
     def _render_file_list(self, files: List[str]) -> List[Dict]:
-        """渲染文件列表（每行最多显示3个文件）"""
+        """渲染文件列表"""
         if not files:
             return [
                 {
@@ -845,18 +837,15 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         
         content = []
         
-        # 将文件列表分成每3个一组
         for i in range(0, len(files), 3):
             file_group = files[i:i+3]
             
-            # 创建一行
             row_content = {
                 "component": "VRow",
                 "props": {"class": "mb-2"},
                 "content": []
             }
             
-            # 为每个文件创建列
             for file in file_group:
                 row_content["content"].append({
                     "component": "VCol",
@@ -883,7 +872,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             
             content.append(row_content)
         
-        # 如果文件数量超过10个，显示更多提示
         if len(files) > 10:
             content.append({
                 "component": "div",
@@ -948,7 +936,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             self._complete_task("failed", "未配置有效的目录配对")
             return
         
-        # 用于记录本次执行复制的文件
         current_execution_files = []
             
         self._task_status.update({
@@ -970,13 +957,11 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             if not self._verify_alist_connection():
                 raise Exception("OpenList连接失败，请检查地址和令牌")
             
-            # 任务运行前先检查所有目录配对的目标目录
             logger.info("开始检查复制中文件的目标目录状态...")
             initial_copied_count = len(self._copied_files)
             self._check_copied_files_in_target_dirs(directory_pairs)
             final_copied_count = len(self._copied_files)
             
-            # 计算并记录删除的复制中文件数量
             removed_count = initial_copied_count - final_copied_count
             if removed_count > 0:
                 logger.info(f"已删除 {removed_count} 个在目标目录中已存在的复制中文件记录")
@@ -1002,10 +987,8 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                 self._task_status["completed_pairs"] = i + 1
                 self._save_task_status()
             
-            # 添加执行记录（只有复制文件数大于0时才记录）
             self._add_execution_record(total_copied, current_execution_files)
             
-            # 任务完成后更新目标目录文件数
             self._update_target_files_count(directory_pairs)
             
             self._complete_task("success", 
@@ -1017,7 +1000,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                                
         except Exception as e:
             logger.error(f"复制任务执行失败: {str(e)}")
-            # 即使失败也记录执行记录（只有复制文件数大于0时才记录）
             self._add_execution_record(len(current_execution_files), current_execution_files)
             self._complete_task("failed", f"任务执行失败: {str(e)}")
         finally:
@@ -1031,12 +1013,10 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
         logger.info("开始统计目标目录文件数...")
         total_target_files = 0
         
-        # 获取所有唯一的目标目录
         target_dirs = set()
         for pair in directory_pairs:
             target_dirs.add(pair["target"])
         
-        # 统计每个目标目录的文件数
         for target_dir in target_dirs:
             try:
                 target_files = self._get_alist_files(target_dir)
@@ -1060,7 +1040,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             
         logger.info(f"开始检查 {len(self._copied_files)} 个复制中文件的目标目录状态")
         
-        # 为每个目标目录构建文件索引
         target_dirs_index = {}
         for pair in directory_pairs:
             target_dir = pair["target"]
@@ -1068,7 +1047,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                 logger.info(f"扫描目标目录: {target_dir}")
                 target_files = self._get_alist_files(target_dir)
                 if target_files:
-                    # 构建文件名索引（不包含路径）
                     file_index = {}
                     for file in target_files:
                         filename = file.get("name")
@@ -1080,7 +1058,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                     target_dirs_index[target_dir] = {}
                     logger.info(f"目标目录 {target_dir} 为空")
         
-        # 检查每个复制中的文件
         files_to_remove = []
         for file_key, record in self._copied_files.items():
             target_path = record.get("target_path", "")
@@ -1089,7 +1066,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             if not target_path or not filename:
                 continue
                 
-            # 找到对应的目标目录
             target_dir = None
             for pair in directory_pairs:
                 if target_path.startswith(pair["target"]):
@@ -1097,19 +1073,14 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                     break
             
             if not target_dir:
-                # 如果找不到对应的目标目录，跳过这个文件
                 continue
                 
-            # 检查文件是否在目标目录中存在
             if target_dir in target_dirs_index and filename in target_dirs_index[target_dir]:
-                # 文件在目标目录中存在，删除记录
                 files_to_remove.append(file_key)
                 logger.info(f"复制中文件已在目标目录存在，删除记录: {filename}")
             else:
-                # 文件在目标目录中不存在，保留记录
                 logger.debug(f"复制中文件在目标目录中不存在，保留记录: {filename}")
         
-        # 删除需要移除的文件记录
         if files_to_remove:
             for file_key in files_to_remove:
                 if file_key in self._copied_files:
@@ -1129,11 +1100,9 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                 logger.info(f"源目录 {source_dir} 为空，跳过处理")
                 return {"copied": 0, "skipped": 0, "total": 0}
                 
-            # 扫描目标目录
             self._update_status(f"正在扫描目标目录: {target_dir}", base_progress + 15)
             target_files = self._get_alist_files(target_dir)
             
-            # 构建目标索引
             target_index = self._build_target_index(target_files)
             
             self._update_status(f"开始复制文件: {source_dir} → {target_dir}", base_progress + 25)
@@ -1208,7 +1177,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             result = response.json()
             
             if result.get("code") != 200:
-                # 对于目标目录为空的情况，不记录错误日志
                 if "path not found" in result.get("message", "").lower() or "not exist" in result.get("message", "").lower():
                     return []
                 logger.error(f"获取目录 {path} 文件失败: {result.get('message')}")
@@ -1218,7 +1186,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             content = data_content.get("content") if data_content else None
             
             if content is None:
-                # 不记录空目录的日志
                 return []
                 
             if not isinstance(content, list):
@@ -1246,7 +1213,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
             return files
             
         except Exception as e:
-            # 对于连接错误等情况，仍然记录错误
             logger.error(f"获取文件列表失败: {str(e)}")
             return []
 
@@ -1288,39 +1254,30 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                 
                 progress = base_progress + int((i + 1) / total * progress_range)
                 
-                # 计算相对路径
                 relative_path = self._get_relative_path(source_path, source_dir)
                 
-                # 构建完整的目标路径（保留目录结构）
                 target_path = os.path.join(target_dir, relative_path).replace('\\', '/')
                 
-                # 生成文件唯一标识
                 file_key = self._generate_file_key(source_path, target_path)
                 
-                # 检查文件是否已经复制过
                 if file_key in self._copied_files:
                     skipped += 1
-                    # 添加详细日志显示
                     record_info = self._copied_files[file_key]
                     copied_time = record_info.get("copied_time", "未知时间")
                     logger.info(f"跳过已复制文件: {filename} (记录于: {copied_time})")
                     self._update_status(f"跳过已复制文件: {filename}", progress)
                     continue
                 
-                # 检查目标目录是否已存在相同文件（基于文件名比对）
                 base_name = self._remove_suffix(filename, current_suffixes)
                 if base_name in target_index:
                     skipped += 1
-                    # 删除目标目录已存在文件的日志，只更新状态
                     self._update_status(f"跳过目标目录已存在文件: {filename}", progress)
                     continue
                     
-                # 使用标准AList API复制方式
                 if self._execute_alist_copy_standard(source_path, target_path, filename):
                     copied += 1
                     self._task_status["copied_files"] += 1
                     
-                    # 记录成功复制的文件
                     self._copied_files[file_key] = {
                         "source_path": source_path,
                         "target_path": target_path,
@@ -1329,7 +1286,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                     }
                     self._save_copied_files()
                     
-                    # 添加到本次执行的文件列表
                     current_execution_files.append(filename)
                     
                     logger.info(f"复制成功: {filename} -> {target_path}")
@@ -1349,36 +1305,27 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
 
     def _get_relative_path(self, file_path: str, base_dir: str) -> str:
         """获取文件相对于基础目录的相对路径"""
-        # 确保基础目录以/结尾
         if not base_dir.endswith('/'):
             base_dir += '/'
         
-        # 如果文件路径以基础目录开头，则提取相对路径
         if file_path.startswith(base_dir):
             return file_path[len(base_dir):]
         
-        # 否则，尝试使用os.path.relpath
         try:
             return os.path.relpath(file_path, base_dir)
         except:
-            # 如果失败，返回文件名
             return os.path.basename(file_path)
 
     def _generate_file_key(self, source_path: str, target_path: str) -> str:
         """生成文件唯一标识"""
-        # 使用源文件路径和目标文件路径的组合作为唯一标识
         key_string = f"{source_path}->{target_path}"
         return hashlib.md5(key_string.encode()).hexdigest()
 
     def _execute_alist_copy_standard(self, source_path: str, target_path: str, filename: str) -> bool:
-        """
-        使用标准AList API复制方式，保留目录结构
-        """
+        """使用标准AList API复制方式"""
         try:
-            # 提取目标目录（不包含文件名）
             target_dir = os.path.dirname(target_path)
             
-            # 确保目标目录存在
             if not self._ensure_directory_exists(target_dir):
                 logger.error(f"无法确保目标目录存在: {target_dir}")
                 return False
@@ -1389,7 +1336,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                 "Content-Type": "application/json"
             }
             
-            # 根据AList官方API文档，复制API需要以下参数
             data = {
                 "src_dir": os.path.dirname(source_path),
                 "dst_dir": target_dir,
@@ -1433,7 +1379,6 @@ class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
                 if result.get("code") == 200:
                     return True
             
-            # 目录不存在，创建它
             url = f"{self._alist_url}/api/fs/mkdir"
             data = {"path": path}
             
