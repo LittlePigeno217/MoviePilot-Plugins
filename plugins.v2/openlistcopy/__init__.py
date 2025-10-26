@@ -12,18 +12,18 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
-class OpenListCopy(_PluginBase):
+class OpenListCopyPlugin(_PluginBase):  # 修改类名，添加Plugin后缀
     """
     AList复制插件 - 通过AList API实现多目录间文件复制
     """
-    # 插件基本信息
+    # 插件基本信息 - 确保这些信息唯一且符合规范
     plugin_name = "OpenList自动复制"
-    plugin_desc = "实现OpenList多目录间文件复制自动化"
+    plugin_desc = "实现OpenList多目录间文件复制自动化" 
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0.3"
+    plugin_version = "1.0.4"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
-    plugin_config_prefix = "openlistcopy_"
+    plugin_config_prefix = "openlistcopy_"  # 确保前缀唯一
     plugin_order = 25
     auth_level = 1
 
