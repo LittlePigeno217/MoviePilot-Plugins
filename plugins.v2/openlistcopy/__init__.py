@@ -20,21 +20,14 @@ class OpenListCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0.5"
+    plugin_version = "1.0.6"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlistcopy_"
     plugin_order = 25
     auth_level = 1
 
-    # 默认视频文件尾缀
-    DEFAULT_VIDEO_SUFFIXES = [
-        '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', 
-        '.m4v', '.3gp', '.ts', '.mts', '.m2ts', '.vob', '.ogv',
-        '.mpg', '.mpeg', '.rm', '.rmvb', '.asf', '.divx'
-    ]
-
-    # 可配置项
+    # 私有属性
     _enabled: bool = False
     _cron: str = ""
     _onlyonce: bool = False
@@ -44,19 +37,18 @@ class OpenListCopyPlugin(_PluginBase):
     _directory_pairs: str = ""
     _file_suffix: str = ""
 
+    # 默认视频文件尾缀
+    DEFAULT_VIDEO_SUFFIXES = [
+        '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', 
+        '.m4v', '.3gp', '.ts', '.mts', '.m2ts', '.vob', '.ogv',
+        '.mpg', '.mpeg', '.rm', '.rmvb', '.asf', '.divx'
+    ]
+
     # 任务状态
     _task_status: Dict[str, Any] = {}
-    
-    # 复制记录
     _copied_files: Dict[str, Any] = {}
-    
-    # 执行历史记录
     _execution_history: List[Dict[str, Any]] = []
-    
-    # 目标目录文件数统计
     _target_files_count: int = 0
-    
-    # 调度器
     _scheduler: Optional[BackgroundScheduler] = None
 
     def init_plugin(self, config: dict = None):
@@ -80,51 +72,46 @@ class OpenListCopyPlugin(_PluginBase):
             logger.info("检测到清除缓存选项，正在清空插件数据...")
             self._clear_all_data()
             self._clear_cache = False
-            self.__update_config()
+            self.update_config({
+                "enabled": self._enabled,
+                "cron": self._cron,
+                "onlyonce": self._onlyonce,
+                "clear_cache": self._clear_cache,
+                "alist_url": self._alist_url,
+                "alist_token": self._alist_token,
+                "directory_pairs": self._directory_pairs,
+                "file_suffix": self._file_suffix
+            })
 
         # 恢复任务状态
-        saved_status = self.get_data("openlistcopy_task_status")
-        if saved_status:
-            self._task_status = saved_status
-        else:
-            self._task_status = {
-                "status": "idle",
-                "progress": 0,
-                "message": "",
-                "last_run": None,
-                "start_time": None,
-                "end_time": None,
-                "total_files": 0,
-                "copied_files": 0,
-                "skipped_files": 0,
-                "current_pair": "",
-                "total_pairs": 0,
-                "completed_pairs": 0
-            }
+        self._task_status = self.get_data("openlistcopy_task_status") or {
+            "status": "idle",
+            "progress": 0,
+            "message": "",
+            "last_run": None,
+            "start_time": None,
+            "end_time": None,
+            "total_files": 0,
+            "copied_files": 0,
+            "skipped_files": 0,
+            "current_pair": "",
+            "total_pairs": 0,
+            "completed_pairs": 0
+        }
 
         # 恢复复制记录
-        saved_copied_files = self.get_data("openlistcopy_copied_files")
-        if saved_copied_files:
-            self._copied_files = saved_copied_files
-        else:
-            self._copied_files = {}
+        self._copied_files = self.get_data("openlistcopy_copied_files") or {}
 
         # 恢复执行历史记录
-        saved_history = self.get_data("openlistcopy_execution_history")
-        if saved_history:
-            self._execution_history = saved_history
-        else:
-            self._execution_history = []
+        self._execution_history = self.get_data("openlistcopy_execution_history") or []
 
         # 恢复目标目录文件数
-        saved_target_count = self.get_data("openlistcopy_target_files_count")
-        if saved_target_count is not None:
-            self._target_files_count = saved_target_count
-        else:
-            self._target_files_count = 0
+        self._target_files_count = self.get_data("openlistcopy_target_files_count") or 0
 
         # 启动服务
-        if self._enabled:
+        if self._enabled or (config and config.get("enabled")):
+            self._enabled = True
+            
             # 启动定时服务
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             
@@ -133,7 +120,7 @@ class OpenListCopyPlugin(_PluginBase):
                     self._scheduler.add_job(
                         func=self.execute_copy_task,
                         trigger=CronTrigger.from_crontab(self._cron),
-                        id="alist_copy_task",
+                        id="openlist_copy_task",
                         name="OpenList自动复制任务"
                     )
                     logger.info(f"定时任务已设置，周期: {self._cron}")
@@ -143,29 +130,28 @@ class OpenListCopyPlugin(_PluginBase):
             # 立即执行一次
             if self._onlyonce:
                 logger.info("检测到立即运行一次，开始执行AList复制任务")
+                self._onlyonce = False
+                self.update_config({
+                    "enabled": self._enabled,
+                    "cron": self._cron,
+                    "onlyonce": self._onlyonce,
+                    "clear_cache": self._clear_cache,
+                    "alist_url": self._alist_url,
+                    "alist_token": self._alist_token,
+                    "directory_pairs": self._directory_pairs,
+                    "file_suffix": self._file_suffix
+                })
                 import threading
                 threading.Thread(target=self.execute_copy_task, daemon=True).start()
 
             # 启动调度器
             if self._scheduler.get_jobs():
-                if not self._scheduler.running:
-                    self._scheduler.start()
-                    logger.info("OpenList自动复制服务启动成功")
+                self._scheduler.print_jobs()
+                self._scheduler.start()
+                logger.info("OpenList自动复制服务启动成功")
 
     def get_state(self) -> bool:
         return self._enabled
-
-    def __update_config(self):
-        self.update_config({
-            "onlyonce": self._onlyonce,
-            "clear_cache": self._clear_cache,
-            "cron": self._cron,
-            "enabled": self._enabled,
-            "alist_url": self._alist_url,
-            "alist_token": self._alist_token,
-            "directory_pairs": self._directory_pairs,
-            "file_suffix": self._file_suffix
-        })
 
     def _clear_all_data(self):
         """清空所有插件数据"""
@@ -217,6 +203,9 @@ class OpenListCopyPlugin(_PluginBase):
         ]
 
     def get_service(self) -> List[Dict[str, Any]]:
+        """
+        注册插件公共服务
+        """
         if self._enabled and self._cron:
             return [{
                 "id": "OpenListCopyTask",
@@ -228,6 +217,9 @@ class OpenListCopyPlugin(_PluginBase):
         return []
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+        """
         return [
             {
                 "component": "VForm",
@@ -348,7 +340,6 @@ class OpenListCopyPlugin(_PluginBase):
                                             "model": "file_suffix",
                                             "label": "自定义文件尾缀",
                                             "placeholder": ".srt,.ass,.nfo,.jpg,.png",
-                                            "hint": "多个尾缀用逗号分隔，如字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
                                         }
                                     }
                                 ]
@@ -395,48 +386,6 @@ class OpenListCopyPlugin(_PluginBase):
                                             {
                                                 "component": "div",
                                                 "text": "• 填写：作为默认视频尾缀的补充，匹配视频文件+自定义尾缀文件"
-                                            },
-                                            {
-                                                "component": "div",
-                                                "text": "• 常用媒体文件尾缀：字幕(.srt,.ass,.ssa,.vtt)、元数据(.nfo)、封面图(.jpg,.png,.tbn)"
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "warning",
-                                            "text": True,
-                                            "variant": "tonal"
-                                        },
-                                        "content": [
-                                            {
-                                                "component": "div",
-                                                "props": {"class": "font-weight-bold"},
-                                                "text": "清除缓存说明："
-                                            },
-                                            {
-                                                "component": "div",
-                                                "text": "• 勾选此选项后保存，将清空所有复制记录和任务状态"
-                                            },
-                                            {
-                                                "component": "div",
-                                                "text": "• 插件将重新开始记录复制历史"
-                                            },
-                                            {
-                                                "component": "div",
-                                                "text": "• 此操作不可逆，请谨慎使用"
                                             }
                                         ]
                                     }
@@ -458,6 +407,10 @@ class OpenListCopyPlugin(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
+        """
+        拼装插件详情页面，需要返回页面配置
+        """
+        # 获取任务状态配置
         status = self._task_status
         status_config = {
             "idle": {"color": "info", "text": "空闲", "icon": "mdi-play-circle-outline"},
@@ -467,7 +420,7 @@ class OpenListCopyPlugin(_PluginBase):
         }
         config = status_config.get(status.get("status", "idle"), status_config["idle"])
         
-        # 获取最近5次执行记录
+        # 获取最近执行记录
         recent_executions = self._get_recent_executions()
         
         return [
@@ -477,29 +430,11 @@ class OpenListCopyPlugin(_PluginBase):
                     {
                         "component": "VCardText",
                         "content": [
-                            # 第一行：OpenList媒体复制统计
-                            {
-                                "component": "div",
-                                "props": {"class": "d-flex align-center mb-4"},
-                                "content": [
-                                    {
-                                        "component": "VIcon",
-                                        "props": {"icon": "mdi-chart-box", "color": "primary", "size": "large"},
-                                        "text": ""
-                                    },
-                                    {
-                                        "component": "span", 
-                                        "props": {"class": "ml-2 text-h5"},
-                                        "text": "OpenList媒体复制统计"
-                                    }
-                                ]
-                            },
-                            
-                            # 第二行：四个状态框
+                            # 状态卡片
                             {
                                 "component": "VRow",
                                 "content": [
-                                    # 状态框1：目标目录文件数
+                                    # 目标目录文件数
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 3},
@@ -533,7 +468,7 @@ class OpenListCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 状态框2：复制文件数量
+                                    # 复制文件数量
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 3},
@@ -567,7 +502,7 @@ class OpenListCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 状态框3：复制中数量
+                                    # 复制中数量
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 3},
@@ -601,7 +536,7 @@ class OpenListCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 状态框4：最近执行记录
+                                    # 最近执行记录
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 3},
@@ -628,60 +563,12 @@ class OpenListCopyPlugin(_PluginBase):
                                                                 "component": "div",
                                                                 "props": {"class": "text-h6 font-weight-bold text-info"},
                                                                 "text": f"{len(recent_executions)} 次"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-caption text-grey mt-1"},
-                                                                "text": f"共 {sum(execution.get('copied_count', 0) for execution in recent_executions)} 文件"
                                                             }
                                                         ]
                                                     }
                                                 ]
                                             }
                                         ]
-                                    }
-                                ]
-                            },
-                            
-                            # 第三行：最近执行记录的详细内容
-                            {
-                                "component": "VRow",
-                                "props": {"class": "mt-4"},
-                                "content": [
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12},
-                                        "content": [
-                                            {
-                                                "component": "VCard",
-                                                "content": [
-                                                    {
-                                                        "component": "VCardTitle",
-                                                        "content": [
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "d-flex align-center"},
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VIcon",
-                                                                        "props": {"icon": "mdi-history", "color": "info", "class": "mr-2"},
-                                                                        "text": ""
-                                                                    },
-                                                                    {
-                                                                        "component": "span",
-                                                                        "text": "最近执行记录详情"
-                                                                    }
-                                                                ]
-                                                            }
-                                                        ]
-                                                    },
-                                                    {
-                                                        "component": "VCardText",
-                                                        "content": self._render_recent_executions(recent_executions)
-                                                    }
-                                                ]
-                                            }
-                                        ] if recent_executions else []
                                     }
                                 ]
                             },
@@ -743,145 +630,27 @@ class OpenListCopyPlugin(_PluginBase):
                 ]
             }
         ]
-    
+
+    def stop_service(self):
+        """
+        停止插件服务
+        """
+        try:
+            if self._scheduler:
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._scheduler.shutdown()
+                self._scheduler = None
+        except Exception as e:
+            logger.error(f"停止插件服务失败：{str(e)}")
+
     def _get_recent_executions(self) -> List[Dict]:
         """获取最近5次执行记录"""
         filtered_executions = [execution for execution in self._execution_history if execution.get("copied_count", 0) > 0]
         return filtered_executions[:5]
-    
-    def _add_execution_record(self, copied_count: int, files: List[str]):
-        """添加执行记录"""
-        if copied_count <= 0:
-            return
-            
-        record = {
-            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "copied_count": copied_count,
-            "files": files[:10]
-        }
-        
-        self._execution_history.insert(0, record)
-        
-        if len(self._execution_history) > 20:
-            self._execution_history = self._execution_history[:20]
-        
-        self.save_data("openlistcopy_execution_history", self._execution_history)
-    
-    def _render_recent_executions(self, executions: List[Dict]) -> List[Dict]:
-        """渲染最近执行记录"""
-        if not executions:
-            return [
-                {
-                    "component": "div",
-                    "props": {"class": "text-center text-grey py-4"},
-                    "text": "暂无执行记录"
-                }
-            ]
-        
-        content = []
-        for i, execution in enumerate(executions):
-            content.append({
-                "component": "div",
-                "props": {"class": "mb-4" if i < len(executions) - 1 else ""},
-                "content": [
-                    {
-                        "component": "div",
-                        "props": {"class": "d-flex justify-space-between align-center"},
-                        "content": [
-                            {
-                                "component": "div",
-                                "props": {"class": "d-flex align-center"},
-                                "content": [
-                                    {
-                                        "component": "VIcon",
-                                        "props": {"icon": "mdi-calendar-clock", "size": "small", "color": "primary", "class": "mr-2"},
-                                        "text": ""
-                                    },
-                                    {
-                                        "component": "span",
-                                        "props": {"class": "text-body-2 font-weight-medium"},
-                                        "text": execution.get("time", "未知时间")
-                                    }
-                                ]
-                            },
-                            {
-                                "component": "VChip",
-                                "props": {
-                                    "color": "primary" if execution.get("copied_count", 0) > 0 else "default",
-                                    "size": "small"
-                                },
-                                "text": f"复制 {execution.get('copied_count', 0)} 个文件"
-                            }
-                        ]
-                    },
-                    {
-                        "component": "div",
-                        "props": {"class": "mt-2 pl-6"},
-                        "content": self._render_file_list(execution.get("files", []))
-                    }
-                ]
-            })
-        
-        return content
-    
-    def _render_file_list(self, files: List[str]) -> List[Dict]:
-        """渲染文件列表"""
-        if not files:
-            return [
-                {
-                    "component": "div",
-                    "props": {"class": "text-caption text-grey"},
-                    "text": "本次执行没有复制文件"
-                }
-            ]
-        
-        content = []
-        
-        for i in range(0, len(files), 3):
-            file_group = files[i:i+3]
-            
-            row_content = {
-                "component": "VRow",
-                "props": {"class": "mb-2"},
-                "content": []
-            }
-            
-            for file in file_group:
-                row_content["content"].append({
-                    "component": "VCol",
-                    "props": {"cols": 12, "md": 4},
-                    "content": [
-                        {
-                            "component": "div",
-                            "props": {"class": "d-flex align-center"},
-                            "content": [
-                                {
-                                    "component": "VIcon",
-                                    "props": {"icon": "mdi-file", "size": "x-small", "class": "mr-1"},
-                                    "text": ""
-                                },
-                                {
-                                    "component": "span",
-                                    "props": {"class": "text-caption text-truncate"},
-                                    "text": file
-                                }
-                            ]
-                        }
-                    ]
-                })
-            
-            content.append(row_content)
-        
-        if len(files) > 10:
-            content.append({
-                "component": "div",
-                "props": {"class": "text-caption text-grey mt-1"},
-                "text": f"... 还有 {len(files) - 10} 个文件"
-            })
-        
-        return content
 
     def _parse_directory_pairs(self) -> List[Dict[str, str]]:
+        """解析目录配对"""
         pairs = []
         if not self._directory_pairs:
             return pairs
@@ -905,6 +674,7 @@ class OpenListCopyPlugin(_PluginBase):
         return pairs
 
     def _get_current_suffixes(self) -> List[str]:
+        """获取当前文件尾缀列表"""
         all_suffixes = self.DEFAULT_VIDEO_SUFFIXES.copy()
         
         if self._file_suffix:
@@ -915,17 +685,8 @@ class OpenListCopyPlugin(_PluginBase):
         
         return all_suffixes
 
-    def stop_service(self):
-        try:
-            if self._scheduler:
-                self._scheduler.remove_all_jobs()
-                if self._scheduler.running:
-                    self._scheduler.shutdown()
-                self._scheduler = None
-        except Exception as e:
-            logger.error(f"停止插件服务失败：{str(e)}")
-
     def execute_copy_task(self):
+        """执行复制任务"""
         logger.info("开始执行AList多目录复制任务")
         
         if not self._validate_config():
@@ -995,18 +756,30 @@ class OpenListCopyPlugin(_PluginBase):
                                f"复制完成！共检索 {len(directory_pairs)} 组目录，"
                                f"共检索到 {total_files} 个本地文件，"
                                f"本次复制 {total_copied} 个，"
-                               f"本次跳过 {total_skipped} 个，"
-                               f"本次完成 {removed_count} 个文件复制")
+                               f"本次跳过 {total_skipped} 个")
                                
         except Exception as e:
             logger.error(f"复制任务执行失败: {str(e)}")
             self._add_execution_record(len(current_execution_files), current_execution_files)
             self._complete_task("failed", f"任务执行失败: {str(e)}")
-        finally:
-            if self._onlyonce:
-                self._onlyonce = False
-                self.__update_config()
-                logger.info("立即运行任务已完成，重置立即运行标志")
+
+    def _add_execution_record(self, copied_count: int, files: List[str]):
+        """添加执行记录"""
+        if copied_count <= 0:
+            return
+            
+        record = {
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "copied_count": copied_count,
+            "files": files[:10]
+        }
+        
+        self._execution_history.insert(0, record)
+        
+        if len(self._execution_history) > 20:
+            self._execution_history = self._execution_history[:20]
+        
+        self.save_data("openlistcopy_execution_history", self._execution_history)
 
     def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
         """更新目标目录文件数统计"""
@@ -1078,8 +851,6 @@ class OpenListCopyPlugin(_PluginBase):
             if target_dir in target_dirs_index and filename in target_dirs_index[target_dir]:
                 files_to_remove.append(file_key)
                 logger.info(f"复制中文件已在目标目录存在，删除记录: {filename}")
-            else:
-                logger.debug(f"复制中文件在目标目录中不存在，保留记录: {filename}")
         
         if files_to_remove:
             for file_key in files_to_remove:
@@ -1092,6 +863,7 @@ class OpenListCopyPlugin(_PluginBase):
             logger.info("没有需要删除的复制中文件记录")
 
     def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, current_execution_files: List[str]) -> Optional[Dict[str, int]]:
+        """执行单个目录配对复制"""
         try:
             base_progress = int((pair_index) / total_pairs * 100)
             self._update_status(f"正在扫描源目录: {source_dir}", base_progress + 5)
@@ -1135,6 +907,7 @@ class OpenListCopyPlugin(_PluginBase):
         return index
 
     def _validate_config(self) -> bool:
+        """验证配置"""
         if not self._alist_url or not self._alist_token:
             self._complete_task("failed", "OpenList地址或令牌未配置")
             return False
@@ -1147,6 +920,7 @@ class OpenListCopyPlugin(_PluginBase):
         return True
 
     def _verify_alist_connection(self) -> bool:
+        """验证AList连接"""
         try:
             url = f"{self._alist_url}/api/me"
             headers = {
@@ -1164,6 +938,7 @@ class OpenListCopyPlugin(_PluginBase):
             return False
 
     def _get_alist_files(self, path: str) -> List[dict]:
+        """获取AList文件列表"""
         try:
             url = f"{self._alist_url}/api/fs/list"
             headers = {
@@ -1217,6 +992,7 @@ class OpenListCopyPlugin(_PluginBase):
             return []
 
     def _remove_suffix(self, filename: str, suffixes: List[str]) -> str:
+        """移除文件尾缀"""
         for suffix in suffixes:
             if filename.endswith(suffix):
                 return filename[:-len(suffix)]
@@ -1224,6 +1000,7 @@ class OpenListCopyPlugin(_PluginBase):
 
     def _copy_files(self, source_files: List[dict], target_index: set, source_dir: str, target_dir: str, 
                    base_progress: int, progress_range: int, current_execution_files: List[str]) -> Dict[str, int]:
+        """复制文件"""
         if not source_files:
             logger.warning("源文件列表为空，跳过复制")
             return {"copied": 0, "skipped": 0, "total": 0}
@@ -1304,7 +1081,7 @@ class OpenListCopyPlugin(_PluginBase):
         return {"copied": copied, "skipped": skipped, "total": total}
 
     def _get_relative_path(self, file_path: str, base_dir: str) -> str:
-        """获取文件相对于基础目录的相对路径"""
+        """获取相对路径"""
         if not base_dir.endswith('/'):
             base_dir += '/'
         
@@ -1322,7 +1099,7 @@ class OpenListCopyPlugin(_PluginBase):
         return hashlib.md5(key_string.encode()).hexdigest()
 
     def _execute_alist_copy_standard(self, source_path: str, target_path: str, filename: str) -> bool:
-        """使用标准AList API复制方式"""
+        """执行AList复制"""
         try:
             target_dir = os.path.dirname(target_path)
             
@@ -1398,12 +1175,14 @@ class OpenListCopyPlugin(_PluginBase):
             return False
 
     def _update_status(self, message: str, progress: int = None):
+        """更新状态"""
         self._task_status["message"] = message
         if progress is not None:
             self._task_status["progress"] = progress
         self._save_task_status()
         
     def _complete_task(self, status: str, message: str):
+        """完成任务"""
         self._task_status.update({
             "status": status,
             "message": message,
@@ -1413,12 +1192,15 @@ class OpenListCopyPlugin(_PluginBase):
         self._save_task_status()
 
     def _save_task_status(self):
+        """保存任务状态"""
         self.save_data("openlistcopy_task_status", self._task_status)
         
     def _save_copied_files(self):
+        """保存复制文件记录"""
         self.save_data("openlistcopy_copied_files", self._copied_files)
 
     def get_status(self):
+        """获取状态API"""
         current_suffixes = self._get_current_suffixes()
         directory_pairs = self._parse_directory_pairs()
         return {
@@ -1440,11 +1222,21 @@ class OpenListCopyPlugin(_PluginBase):
         }
 
     def run_task(self):
+        """运行任务API"""
         if self._task_status.get("status") == "running":
             return {"success": False, "message": "任务正在运行中，请等待完成"}
         
         self._onlyonce = True
-        self.__update_config()
+        self.update_config({
+            "enabled": self._enabled,
+            "cron": self._cron,
+            "onlyonce": self._onlyonce,
+            "clear_cache": self._clear_cache,
+            "alist_url": self._alist_url,
+            "alist_token": self._alist_token,
+            "directory_pairs": self._directory_pairs,
+            "file_suffix": self._file_suffix
+        })
         
         import threading
         threading.Thread(target=self.execute_copy_task, daemon=True).start()
