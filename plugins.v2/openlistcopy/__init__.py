@@ -12,7 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
-class OpenListPlugin(_PluginBase):
+class OpenListCopy(_PluginBase):
     """
     AList复制插件 - 通过AList API实现多目录间文件复制
     """
