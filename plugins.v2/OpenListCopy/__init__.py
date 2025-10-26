@@ -16,7 +16,7 @@ class OpenListPlugin(_PluginBase):
     """
     AList复制插件 - 通过AList API实现多目录间文件复制
     """
-    # 插件基本信息
+    # 插件基本信息 
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
