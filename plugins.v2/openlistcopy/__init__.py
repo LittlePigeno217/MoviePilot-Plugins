@@ -22,9 +22,9 @@ class OpenListCopyPlugin(_PluginBase):
     plugin_icon = "Alist_B.png"
     plugin_version = "1.0.0"
     plugin_author = "LittlePigeno"
-    author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
+    author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "openlistcopy_"
-    plugin_order = 25
+    plugin_order = 0
     auth_level = 1
 
     # 私有属性
