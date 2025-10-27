@@ -20,7 +20,7 @@ class OpenListCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0.6"
+    plugin_version = "1.0.7"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlistcopy_"
