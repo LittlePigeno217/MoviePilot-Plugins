@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0"
+    plugin_version = "1.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "alistcopy_"
@@ -223,7 +223,7 @@ class AlistCopyPlugin(_PluginBase):
         if self._enabled and self._cron:
             return [{
                 "id": "AlistCopyTask",
-                "name": "AList复制任务",
+                "name": "OpenList复制任务",
                 "trigger": CronTrigger.from_crontab(self._cron),
                 "func": self.execute_copy_task,
                 "kwargs": {}
@@ -290,7 +290,7 @@ class AlistCopyPlugin(_PluginBase):
                                         "component": "VTextField",
                                         "props": {
                                             "model": "alist_url",
-                                            "label": "AList地址",
+                                            "label": "AList/OpenList地址",
                                             "placeholder": "http://localhost:5244"
                                         }
                                     }
@@ -309,9 +309,9 @@ class AlistCopyPlugin(_PluginBase):
                                         "component": "VTextField",
                                         "props": {
                                             "model": "alist_token",
-                                            "label": "AList令牌",
+                                            "label": "AList/OpenList令牌",
                                             "type": "password",
-                                            "placeholder": "在AList后台获取"
+                                            "placeholder": "在AList/OpenList后台获取"
                                         }
                                     }
                                 ]
