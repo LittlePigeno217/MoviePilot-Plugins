@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0"
+    plugin_version = "1.0.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "alistcopy_"
