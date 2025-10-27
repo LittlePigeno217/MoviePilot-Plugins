@@ -1,5 +1,5 @@
 {
-  "OpenListCopy": {
+  "AlistCopyPlugin": {
     "name": "OpenList自动复制",
     "description": "实现OpenList多目录间文件复制自动化。",
     "labels": "OpenList",
