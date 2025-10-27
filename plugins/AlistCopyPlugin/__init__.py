@@ -12,7 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
-class OpenListCopy(_PluginBase):
+class AlistCopyPlugin(_PluginBase):
     """
     AList复制插件 - 通过AList API实现多目录间文件复制
     """
@@ -24,7 +24,7 @@ class OpenListCopy(_PluginBase):
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "alistcopy_"
-    plugin_order = 25
+    plugin_order = 1
     auth_level = 1
 
     # 默认视频文件尾缀
