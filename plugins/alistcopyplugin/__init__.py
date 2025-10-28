@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.4"
+    plugin_version = "1.5"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -984,6 +984,20 @@ class AlistCopyPlugin(_PluginBase):
             self._complete_task("failed", "未配置有效的目录配对")
             return
         
+        # 任务执行前先更新文件状态
+        logger.info("开始更新文件状态...")
+        self._update_file_status_and_counts()
+        
+        # 检查复制中和已完成的文件数量
+        copying_count, completed_count = self._get_file_status_counts()
+        total_files_count = copying_count + completed_count
+        
+        # 如果检测到文件（复制中或已完成），则跳过执行复制任务
+        if total_files_count > 0:
+            logger.info(f"检测到 {total_files_count} 个文件（复制中: {copying_count}, 已完成: {completed_count}），跳过执行复制任务")
+            self._complete_task("success", f"检测到 {total_files_count} 个文件，跳过执行复制任务")
+            return
+        
         # 用于记录本次执行成功复制的文件
         successfully_copied_files = []
             
@@ -1005,10 +1019,6 @@ class AlistCopyPlugin(_PluginBase):
         try:
             if not self._verify_alist_connection():
                 raise Exception("AList连接失败，请检查地址和令牌")
-            
-            # 任务运行前先更新文件状态
-            logger.info("开始更新文件状态...")
-            self._update_file_status_and_counts()
             
             total_copied = 0
             total_skipped = 0
