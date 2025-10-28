@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.1"
+    plugin_version = "1.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "alistcopy_"
@@ -473,6 +473,9 @@ class AlistCopyPlugin(_PluginBase):
         # 获取最近5次执行记录（过滤掉没有复制文件的记录）
         recent_executions = self._get_recent_executions()
         
+        # 获取最近一次有复制文件的记录
+        latest_copied_record = self._get_latest_copied_record()
+        
         return [
             {
                 "component": "VCard",
@@ -498,14 +501,14 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 第二行：四个状态框
+                            # 第二行：三个状态框（每行4列，共12列）
                             {
                                 "component": "VRow",
                                 "content": [
                                     # 状态框1：目标目录文件数
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 12, "md": 3},
+                                        "props": {"cols": 12, "md": 4},
                                         "content": [
                                             {
                                                 "component": "VCard",
@@ -536,44 +539,10 @@ class AlistCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 状态框2：复制文件数量
+                                    # 状态框2：复制中数量
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 12, "md": 3},
-                                        "content": [
-                                            {
-                                                "component": "VCard",
-                                                "props": {"color": "success", "variant": "tonal", "height": "100%"},
-                                                "content": [
-                                                    {
-                                                        "component": "VCardText",
-                                                        "props": {"class": "text-center"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VIcon",
-                                                                "props": {"icon": "mdi-check-circle", "size": "large", "color": "success"},
-                                                                "text": ""
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-caption mt-2"},
-                                                                "text": "复制文件数量"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-h6 font-weight-bold text-success"},
-                                                                "text": str(status.get("copied_files", 0))
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    # 状态框3：复制中数量
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12, "md": 3},
+                                        "props": {"cols": 12, "md": 4},
                                         "content": [
                                             {
                                                 "component": "VCard",
@@ -604,10 +573,10 @@ class AlistCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 状态框4：最近执行记录
+                                    # 状态框3：最近执行记录
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 12, "md": 3},
+                                        "props": {"cols": 12, "md": 4},
                                         "content": [
                                             {
                                                 "component": "VCard",
@@ -646,7 +615,7 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 第三行：最近执行记录的详细内容（只有有记录时才显示）
+                            # 第三行：最近复制文件记录状态框
                             {
                                 "component": "VRow",
                                 "props": {"class": "mt-4"},
@@ -657,34 +626,36 @@ class AlistCopyPlugin(_PluginBase):
                                         "content": [
                                             {
                                                 "component": "VCard",
+                                                "props": {"color": "deep-purple", "variant": "tonal"},
                                                 "content": [
                                                     {
-                                                        "component": "VCardTitle",
+                                                        "component": "VCardText",
                                                         "content": [
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "d-flex align-center"},
+                                                                "props": {"class": "d-flex align-center mb-3"},
                                                                 "content": [
                                                                     {
                                                                         "component": "VIcon",
-                                                                        "props": {"icon": "mdi-history", "color": "info", "class": "mr-2"},
+                                                                        "props": {"icon": "mdi-file-multiple", "color": "deep-purple", "class": "mr-2"},
                                                                         "text": ""
                                                                     },
                                                                     {
                                                                         "component": "span",
-                                                                        "text": "最近执行记录详情"
+                                                                        "props": {"class": "text-h6"},
+                                                                        "text": "最近复制文件记录"
                                                                     }
                                                                 ]
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "content": self._render_latest_copied_record(latest_copied_record)
                                                             }
                                                         ]
-                                                    },
-                                                    {
-                                                        "component": "VCardText",
-                                                        "content": self._render_recent_executions(recent_executions)
                                                     }
                                                 ]
                                             }
-                                        ] if recent_executions else []
+                                        ]
                                     }
                                 ]
                             },
@@ -753,6 +724,15 @@ class AlistCopyPlugin(_PluginBase):
         filtered_executions = [execution for execution in self._execution_history if execution.get("copied_count", 0) > 0]
         return filtered_executions[:5]
     
+    def _get_latest_copied_record(self) -> Optional[Dict]:
+        """获取最近一次有复制文件的记录"""
+        if not self._execution_history:
+            return None
+        
+        # 过滤掉复制文件数为0的记录，然后取第一条
+        filtered_executions = [execution for execution in self._execution_history if execution.get("copied_count", 0) > 0]
+        return filtered_executions[0] if filtered_executions else None
+    
     def _add_execution_record(self, copied_count: int, files: List[str]):
         """添加执行记录（只有复制文件数大于0时才记录）"""
         if copied_count <= 0:
@@ -761,7 +741,7 @@ class AlistCopyPlugin(_PluginBase):
         record = {
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "copied_count": copied_count,
-            "files": files[:10]  # 只保留前10个文件，避免存储过大
+            "files": files  # 不再限制文件数量，保留所有文件
         }
         
         # 添加到历史记录开头
@@ -774,121 +754,103 @@ class AlistCopyPlugin(_PluginBase):
         # 保存历史记录
         self.save_data("alistcopy_execution_history", self._execution_history)
     
-    def _render_recent_executions(self, executions: List[Dict]) -> List[Dict]:
-        """渲染最近执行记录"""
-        if not executions:
+    def _render_latest_copied_record(self, execution: Optional[Dict]) -> List[Dict]:
+        """渲染最近一次复制文件记录"""
+        if not execution:
             return [
                 {
                     "component": "div",
                     "props": {"class": "text-center text-grey py-4"},
-                    "text": "暂无执行记录"
+                    "text": "暂无复制文件记录"
                 }
             ]
         
-        content = []
-        for i, execution in enumerate(executions):
-            # 执行记录项
-            content.append({
+        # 对文件列表进行正序排序
+        sorted_files = sorted(execution.get("files", []))
+        
+        content = [
+            {
                 "component": "div",
-                "props": {"class": "mb-4" if i < len(executions) - 1 else ""},
+                "props": {"class": "d-flex justify-space-between align-center mb-3"},
                 "content": [
                     {
                         "component": "div",
-                        "props": {"class": "d-flex justify-space-between align-center"},
+                        "props": {"class": "d-flex align-center"},
                         "content": [
                             {
-                                "component": "div",
-                                "props": {"class": "d-flex align-center"},
-                                "content": [
-                                    {
-                                        "component": "VIcon",
-                                        "props": {"icon": "mdi-calendar-clock", "size": "small", "color": "primary", "class": "mr-2"},
-                                        "text": ""
-                                    },
-                                    {
-                                        "component": "span",
-                                        "props": {"class": "text-body-2 font-weight-medium"},
-                                        "text": execution.get("time", "未知时间")
-                                    }
-                                ]
+                                "component": "VIcon",
+                                "props": {"icon": "mdi-clock-outline", "size": "small", "color": "deep-purple", "class": "mr-2"},
+                                "text": ""
                             },
                             {
-                                "component": "VChip",
-                                "props": {
-                                    "color": "primary" if execution.get("copied_count", 0) > 0 else "default",
-                                    "size": "small"
-                                },
-                                "text": f"复制 {execution.get('copied_count', 0)} 个文件"
+                                "component": "span",
+                                "props": {"class": "text-body-1 font-weight-medium"},
+                                "text": execution.get("time", "未知时间")
                             }
                         ]
                     },
                     {
-                        "component": "div",
-                        "props": {"class": "mt-2 pl-6"},
-                        "content": self._render_file_list(execution.get("files", []))
+                        "component": "VChip",
+                        "props": {
+                            "color": "deep-purple",
+                            "size": "small"
+                        },
+                        "text": f"复制 {execution.get('copied_count', 0)} 个文件"
                     }
                 ]
+            }
+        ]
+        
+        # 添加文件列表
+        if sorted_files:
+            content.append({
+                "component": "div",
+                "props": {"class": "mt-2"},
+                "content": self._render_multi_line_file_list(sorted_files)
+            })
+        else:
+            content.append({
+                "component": "div",
+                "props": {"class": "text-caption text-grey"},
+                "text": "本次执行没有复制文件"
             })
         
         return content
     
-    def _render_file_list(self, files: List[str]) -> List[Dict]:
-        """渲染文件列表（每行最多显示3个文件）"""
+    def _render_multi_line_file_list(self, files: List[str]) -> List[Dict]:
+        """渲染多行文件列表，每行最多三个文件名"""
         if not files:
-            return [
-                {
-                    "component": "div",
-                    "props": {"class": "text-caption text-grey"},
-                    "text": "本次执行没有复制文件"
-                }
-            ]
+            return []
         
         content = []
         
-        # 将文件列表分成每3个一组
-        for i in range(0, len(files), 3):
-            file_group = files[i:i+3]
-            
-            # 创建一行
-            row_content = {
-                "component": "VRow",
-                "props": {"class": "mb-2"},
-                "content": []
-            }
-            
-            # 为每个文件创建列
-            for file in file_group:
-                row_content["content"].append({
-                    "component": "VCol",
-                    "props": {"cols": 12, "md": 4},
+        # 将文件列表按每3个一组进行分组
+        file_groups = [files[i:i+3] for i in range(0, len(files), 3)]
+        
+        for group in file_groups:
+            row_content = []
+            for file in group:
+                row_content.append({
+                    "component": "div",
+                    "props": {"class": "d-flex align-center mb-1", "style": "flex: 1 0 33%;"},
                     "content": [
                         {
-                            "component": "div",
-                            "props": {"class": "d-flex align-center"},
-                            "content": [
-                                {
-                                    "component": "VIcon",
-                                    "props": {"icon": "mdi-file", "size": "x-small", "class": "mr-1"},
-                                    "text": ""
-                                },
-                                {
-                                    "component": "span",
-                                    "props": {"class": "text-caption text-truncate"},
-                                    "text": file
-                                }
-                            ]
+                            "component": "VIcon",
+                            "props": {"icon": "mdi-file", "size": "x-small", "class": "mr-2"},
+                            "text": ""
+                        },
+                        {
+                            "component": "span",
+                            "props": {"class": "text-caption text-truncate"},
+                            "text": file
                         }
                     ]
                 })
             
-            content.append(row_content)
-        
-        # 如果文件数量超过10个，显示更多提示
-        if len(files) > 10:
             content.append({
                 "component": "div",
-                "props": {"class": "text-caption text-grey mt-1"},
-                "text": f"... 还有 {len(files) - 10} 个文件"
+                "props": {"class": "d-flex justify-space-between"},
+                "content": row_content
             })
         
         return content
@@ -948,8 +910,8 @@ class AlistCopyPlugin(_PluginBase):
             self._complete_task("failed", "未配置有效的目录配对")
             return
         
-        # 用于记录本次执行复制的文件
-        current_execution_files = []
+        # 用于记录本次执行成功复制的文件
+        successfully_copied_files = []
             
         self._task_status.update({
             "status": "running",
@@ -985,6 +947,9 @@ class AlistCopyPlugin(_PluginBase):
             total_skipped = 0
             total_files = 0
             
+            # 创建全局已处理文件集合，确保在整个任务执行期间文件只被处理一次
+            global_processed_files = set()
+            
             for i, pair in enumerate(directory_pairs):
                 source_dir = pair["source"]
                 target_dir = pair["target"]
@@ -993,7 +958,7 @@ class AlistCopyPlugin(_PluginBase):
                 self._update_status(f"正在处理第 {i+1}/{len(directory_pairs)} 组目录配对: {source_dir} → {target_dir}", 
                                   int((i) / len(directory_pairs) * 100))
                 
-                pair_result = self._execute_single_copy(source_dir, target_dir, i, len(directory_pairs), current_execution_files)
+                pair_result = self._execute_single_copy(source_dir, target_dir, i, len(directory_pairs), successfully_copied_files, global_processed_files)
                 if pair_result:
                     total_copied += pair_result["copied"]
                     total_skipped += pair_result["skipped"]
@@ -1003,7 +968,7 @@ class AlistCopyPlugin(_PluginBase):
                 self._save_task_status()
             
             # 添加执行记录（只有复制文件数大于0时才记录）
-            self._add_execution_record(total_copied, current_execution_files)
+            self._add_execution_record(total_copied, successfully_copied_files)
             
             # 任务完成后更新目标目录文件数
             self._update_target_files_count(directory_pairs)
@@ -1012,13 +977,12 @@ class AlistCopyPlugin(_PluginBase):
                                f"复制完成！共处理 {len(directory_pairs)} 组目录配对，"
                                f"总计 {total_files} 个文件，"
                                f"复制 {total_copied} 个，"
-                               f"跳过 {total_skipped} 个，"
-                               f"已完成 {removed_count} 个文件复制")
+                               f"跳过 {total_skipped} 个")
                                
         except Exception as e:
             logger.error(f"复制任务执行失败: {str(e)}")
             # 即使失败也记录执行记录（只有复制文件数大于0时才记录）
-            self._add_execution_record(len(current_execution_files), current_execution_files)
+            self._add_execution_record(len(successfully_copied_files), successfully_copied_files)
             self._complete_task("failed", f"任务执行失败: {str(e)}")
         finally:
             if self._onlyonce:
@@ -1120,24 +1084,24 @@ class AlistCopyPlugin(_PluginBase):
         else:
             logger.info("没有需要删除的复制中文件记录")
 
-    def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, current_execution_files: List[str]) -> Optional[Dict[str, int]]:
+    def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
         try:
             base_progress = int((pair_index) / total_pairs * 100)
-            self._update_status(f"正在扫描源目录: {source_dir}", base_progress + 5)
+            
+            # 首先扫描目标目录，构建目标文件索引
+            self._update_status(f"正在扫描目标目录: {target_dir}", base_progress + 5)
+            target_files = self._get_alist_files(target_dir)
+            target_index = self._build_target_index(target_files)
+            
+            # 然后扫描源目录
+            self._update_status(f"正在扫描源目录: {source_dir}", base_progress + 15)
             source_files = self._get_alist_files(source_dir)
             if not source_files:
                 logger.info(f"源目录 {source_dir} 为空，跳过处理")
                 return {"copied": 0, "skipped": 0, "total": 0}
-                
-            # 扫描目标目录
-            self._update_status(f"正在扫描目标目录: {target_dir}", base_progress + 15)
-            target_files = self._get_alist_files(target_dir)
-            
-            # 构建目标索引
-            target_index = self._build_target_index(target_files)
             
             self._update_status(f"开始复制文件: {source_dir} → {target_dir}", base_progress + 25)
-            copy_result = self._copy_files(source_files, target_index, source_dir, target_dir, base_progress + 25, 70, current_execution_files)
+            copy_result = self._copy_files(source_files, target_index, source_dir, target_dir, base_progress + 25, 70, successfully_copied_files, global_processed_files)
             
             return copy_result
             
@@ -1257,7 +1221,7 @@ class AlistCopyPlugin(_PluginBase):
         return filename
 
     def _copy_files(self, source_files: List[dict], target_index: set, source_dir: str, target_dir: str, 
-                   base_progress: int, progress_range: int, current_execution_files: List[str]) -> Dict[str, int]:
+                   base_progress: int, progress_range: int, successfully_copied_files: List[str], global_processed_files: set) -> Dict[str, int]:
         if not source_files:
             logger.warning("源文件列表为空，跳过复制")
             return {"copied": 0, "skipped": 0, "total": 0}
@@ -1294,28 +1258,35 @@ class AlistCopyPlugin(_PluginBase):
                 # 构建完整的目标路径（保留目录结构）
                 target_path = os.path.join(target_dir, relative_path).replace('\\', '/')
                 
-                # 生成文件唯一标识
+                # 生成文件唯一标识 - 使用源路径和目标路径的组合
                 file_key = self._generate_file_key(source_path, target_path)
                 
-                # 检查文件是否已经复制过
+                # 检查1: 文件是否已经在本次任务执行中处理过
+                if file_key in global_processed_files:
+                    skipped += 1
+                    logger.debug(f"跳过本次任务已处理文件: {filename}")
+                    self._update_status(f"跳过已处理文件: {filename}", progress)
+                    continue
+                
+                # 检查2: 文件是否在历史记录中已经复制过
                 if file_key in self._copied_files:
                     skipped += 1
                     # 添加详细日志显示
                     record_info = self._copied_files[file_key]
                     copied_time = record_info.get("copied_time", "未知时间")
-                    logger.info(f"跳过已复制文件: {filename} (记录于: {copied_time})")
+                    logger.debug(f"跳过历史已复制文件: {filename} (记录于: {copied_time})")
                     self._update_status(f"跳过已复制文件: {filename}", progress)
                     continue
                 
-                # 检查目标目录是否已存在相同文件（基于文件名比对）
+                # 检查3: 目标目录是否已存在相同文件（基于文件名比对）
                 base_name = self._remove_suffix(filename, current_suffixes)
                 if base_name in target_index:
                     skipped += 1
-                    # 删除目标目录已存在文件的日志，只更新状态
+                    logger.debug(f"跳过目标目录已存在文件: {filename}")
                     self._update_status(f"跳过目标目录已存在文件: {filename}", progress)
                     continue
                     
-                # 使用标准AList API复制方式
+                # 执行复制操作 - 只在 _execute_alist_copy_standard 中记录一次成功日志
                 if self._execute_alist_copy_standard(source_path, target_path, filename):
                     copied += 1
                     self._task_status["copied_files"] += 1
@@ -1327,12 +1298,15 @@ class AlistCopyPlugin(_PluginBase):
                         "filename": filename,
                         "copied_time": time.strftime("%Y-%m-%d %H:%M:%S")
                     }
-                    self._save_copied_files()
+                    self._save_copied_files()  # 立即保存，避免重复复制
                     
-                    # 添加到本次执行的文件列表
-                    current_execution_files.append(filename)
+                    # 添加到全局已处理文件集合
+                    global_processed_files.add(file_key)
                     
-                    logger.info(f"复制成功: {filename} -> {target_path}")
+                    # 记录成功复制的文件名
+                    successfully_copied_files.append(filename)
+                    
+                    # 注意：这里不再记录成功日志，因为已经在 _execute_alist_copy_standard 中记录了
                     self._update_status(f"复制成功: {filename}", progress)
                 else:
                     logger.error(f"复制失败: {filename}")
@@ -1406,6 +1380,7 @@ class AlistCopyPlugin(_PluginBase):
             result = response.json()
             
             if result.get("code") == 200:
+                # 只在这里记录一次成功日志，避免重复记录
                 logger.info(f"复制成功: {filename} -> {target_path}")
                 return True
             else:
