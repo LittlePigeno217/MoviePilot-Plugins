@@ -610,7 +610,6 @@ class AlistCopyPlugin(_PluginBase):
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-body-2 text-grey mt-1"},
-                                                                "text": f"最近 {len(recent_executions)} 次"
                                                             }
                                                         ]
                                                     }
@@ -865,22 +864,6 @@ class AlistCopyPlugin(_PluginBase):
                 "props": {"class": "d-flex justify-space-between align-center mb-3"},
                 "content": [
                     {
-                        "component": "div",
-                        "props": {"class": "d-flex align-center"},
-                        "content": [
-                            {
-                                "component": "VIcon",
-                                "props": {"icon": "mdi-clock-outline", "size": "small", "color": "deep-purple", "class": "mr-2"},
-                                "text": ""
-                            },
-                            {
-                                "component": "span",
-                                "props": {"class": "text-body-1 font-weight-medium"},
-                                "text": execution.get("time", "未知时间")
-                            }
-                        ]
-                    },
-                    {
                         "component": "VChip",
                         "props": {
                             "color": "deep-purple",
@@ -909,21 +892,21 @@ class AlistCopyPlugin(_PluginBase):
         return content
     
     def _render_multi_line_file_list(self, files: List[str]) -> List[Dict]:
-        """渲染多行文件列表，每行最多三个文件名"""
+        """渲染多行文件列表，每行最多五个文件名"""
         if not files:
             return []
         
         content = []
         
-        # 将文件列表按每3个一组进行分组
-        file_groups = [files[i:i+3] for i in range(0, len(files), 3)]
+        # 将文件列表按每5个一组进行分组
+        file_groups = [files[i:i+5] for i in range(0, len(files), 5)]
         
         for group in file_groups:
             row_content = []
             for file in group:
                 row_content.append({
                     "component": "div",
-                    "props": {"class": "d-flex align-center mb-1", "style": "flex: 1 0 33%;"},
+                    "props": {"class": "d-flex align-center mb-1", "style": "flex: 1 0 20%;"},
                     "content": [
                         {
                             "component": "VIcon",
