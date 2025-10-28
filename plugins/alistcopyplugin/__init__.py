@@ -22,7 +22,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_icon = "Alist_B.png"
     plugin_version = "1.2"
     plugin_author = "LittlePigeno"
-    author_url = "https://github.com/LittlePigeno217"
+    author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
     plugin_order = 1
     auth_level = 1
