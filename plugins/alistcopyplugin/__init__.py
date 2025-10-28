@@ -56,6 +56,9 @@ class AlistCopyPlugin(_PluginBase):
     # 目标目录文件数统计
     _target_files_count: int = 0
     
+    # 累计已成功复制的文件数量
+    _total_copied_count: int = 0
+    
     # 调度器
     _scheduler: Optional[BackgroundScheduler] = None
 
@@ -125,6 +128,13 @@ class AlistCopyPlugin(_PluginBase):
             self._target_files_count = saved_target_count
         else:
             self._target_files_count = 0
+
+        # 恢复累计已成功复制的文件数量
+        saved_total_copied = self.get_data("alistcopy_total_copied_count")
+        if saved_total_copied is not None:
+            self._total_copied_count = saved_total_copied
+        else:
+            self._total_copied_count = 0
 
         # 启动服务
         if self._enabled:
@@ -200,6 +210,10 @@ class AlistCopyPlugin(_PluginBase):
         # 清空目标目录文件数
         self._target_files_count = 0
         self.save_data("alistcopy_target_files_count", self._target_files_count)
+        
+        # 清空累计已成功复制的文件数量
+        self._total_copied_count = 0
+        self.save_data("alistcopy_total_copied_count", self._total_copied_count)
         
         logger.info("插件数据已全部清空，将重新开始记录")
 
@@ -525,12 +539,12 @@ class AlistCopyPlugin(_PluginBase):
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-caption mt-2"},
+                                                                "props": {"class": "text-h6 font-weight-bold mt-2"},
                                                                 "text": "目标目录文件数"
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h6 font-weight-bold text-primary"},
+                                                                "props": {"class": "text-h4 font-weight-bold text-primary mt-2"},
                                                                 "text": str(self._target_files_count)
                                                             }
                                                         ]
@@ -559,12 +573,12 @@ class AlistCopyPlugin(_PluginBase):
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-caption mt-2"},
+                                                                "props": {"class": "text-h6 font-weight-bold mt-2"},
                                                                 "text": "复制中数量"
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h6 font-weight-bold text-warning"},
+                                                                "props": {"class": "text-h4 font-weight-bold text-warning mt-2"},
                                                                 "text": str(len(self._copied_files))
                                                             }
                                                         ]
@@ -593,18 +607,18 @@ class AlistCopyPlugin(_PluginBase):
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-caption mt-2"},
+                                                                "props": {"class": "text-h6 font-weight-bold mt-2"},
                                                                 "text": "最近执行记录"
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h6 font-weight-bold text-info"},
+                                                                "props": {"class": "text-h4 font-weight-bold text-info mt-2"},
                                                                 "text": f"{len(recent_executions)} 次"
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-caption text-grey mt-1"},
-                                                                "text": f"共 {sum(execution.get('copied_count', 0) for execution in recent_executions)} 文件"
+                                                                "props": {"class": "text-body-2 text-grey mt-1"},
+                                                                "text": f"累计 {self._total_copied_count} 文件"
                                                             }
                                                         ]
                                                     }
@@ -750,6 +764,10 @@ class AlistCopyPlugin(_PluginBase):
         # 限制历史记录数量，最多保留20条
         if len(self._execution_history) > 20:
             self._execution_history = self._execution_history[:20]
+        
+        # 更新累计已成功复制的文件数量
+        self._total_copied_count += copied_count
+        self.save_data("alistcopy_total_copied_count", self._total_copied_count)
         
         # 保存历史记录
         self.save_data("alistcopy_execution_history", self._execution_history)
@@ -935,13 +953,10 @@ class AlistCopyPlugin(_PluginBase):
             # 任务运行前先检查所有目录配对的目标目录
             logger.info("开始检查复制中文件的目标目录状态...")
             initial_copied_count = len(self._copied_files)
-            self._check_copied_files_in_target_dirs(directory_pairs)
-            final_copied_count = len(self._copied_files)
+            modified_count, existing_files = self._check_copied_files_in_target_dirs(directory_pairs)
             
-            # 计算并记录删除的复制中文件数量
-            removed_count = initial_copied_count - final_copied_count
-            if removed_count > 0:
-                logger.info(f"已删除 {removed_count} 个在目标目录中已存在的复制中文件记录")
+            if modified_count > 0:
+                logger.info(f"已修改 {modified_count} 个在目标目录中已存在的复制中文件记录，同时已存在的复制中文件记录: {existing_files}")
             
             total_copied = 0
             total_skipped = 0
@@ -1017,10 +1032,10 @@ class AlistCopyPlugin(_PluginBase):
         logger.info(f"目标目录文件数统计完成，总计: {total_target_files} 个文件")
 
     def _check_copied_files_in_target_dirs(self, directory_pairs: List[Dict[str, str]]):
-        """检查复制中文件在目标目录中的状态"""
+        """检查复制中文件在目标目录中的状态，修改已存在的记录而不是删除"""
         if not self._copied_files:
             logger.info("没有复制中的文件需要检查")
-            return
+            return 0, []
             
         logger.info(f"开始检查 {len(self._copied_files)} 个复制中文件的目标目录状态")
         
@@ -1045,7 +1060,8 @@ class AlistCopyPlugin(_PluginBase):
                     logger.info(f"目标目录 {target_dir} 为空")
         
         # 检查每个复制中的文件
-        files_to_remove = []
+        files_to_modify = []
+        existing_files_list = []
         for file_key, record in self._copied_files.items():
             target_path = record.get("target_path", "")
             filename = record.get("filename", "")
@@ -1066,23 +1082,28 @@ class AlistCopyPlugin(_PluginBase):
                 
             # 检查文件是否在目标目录中存在
             if target_dir in target_dirs_index and filename in target_dirs_index[target_dir]:
-                # 文件在目标目录中存在，删除记录
-                files_to_remove.append(file_key)
-                logger.info(f"复制中文件已在目标目录存在，删除记录: {filename}")
+                # 文件在目标目录中存在，修改记录状态
+                files_to_modify.append(file_key)
+                existing_files_list.append(filename)
+                logger.info(f"复制中文件已在目标目录存在，修改记录状态: {filename}")
             else:
                 # 文件在目标目录中不存在，保留记录
                 logger.debug(f"复制中文件在目标目录中不存在，保留记录: {filename}")
         
-        # 删除需要移除的文件记录
-        if files_to_remove:
-            for file_key in files_to_remove:
+        # 修改需要更新的文件记录
+        if files_to_modify:
+            for file_key in files_to_modify:
                 if file_key in self._copied_files:
-                    del self._copied_files[file_key]
+                    # 修改记录状态，添加一个标记表示文件已在目标目录存在
+                    self._copied_files[file_key]["exists_in_target"] = True
+                    self._copied_files[file_key]["modified_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
             
             self._save_copied_files()
-            logger.info(f"已删除 {len(files_to_remove)} 个在目标目录中已存在的复制中文件记录")
+            logger.info(f"已修改 {len(files_to_modify)} 个在目标目录中已存在的复制中文件记录")
+            return len(files_to_modify), existing_files_list
         else:
-            logger.info("没有需要删除的复制中文件记录")
+            logger.info("没有需要修改的复制中文件记录")
+            return 0, []
 
     def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
         try:
@@ -1270,13 +1291,21 @@ class AlistCopyPlugin(_PluginBase):
                 
                 # 检查2: 文件是否在历史记录中已经复制过
                 if file_key in self._copied_files:
-                    skipped += 1
-                    # 添加详细日志显示
+                    # 检查文件记录是否标记为已在目标目录存在
                     record_info = self._copied_files[file_key]
-                    copied_time = record_info.get("copied_time", "未知时间")
-                    logger.debug(f"跳过历史已复制文件: {filename} (记录于: {copied_time})")
-                    self._update_status(f"跳过已复制文件: {filename}", progress)
-                    continue
+                    if record_info.get("exists_in_target", False):
+                        # 文件已在目标目录存在，跳过复制
+                        skipped += 1
+                        logger.debug(f"跳过目标目录已存在文件: {filename}")
+                        self._update_status(f"跳过目标目录已存在文件: {filename}", progress)
+                        continue
+                    else:
+                        # 文件已复制过但未标记为存在，跳过复制
+                        skipped += 1
+                        copied_time = record_info.get("copied_time", "未知时间")
+                        logger.debug(f"跳过历史已复制文件: {filename} (记录于: {copied_time})")
+                        self._update_status(f"跳过已复制文件: {filename}", progress)
+                        continue
                 
                 # 检查3: 目标目录是否已存在相同文件（基于文件名比对）
                 base_name = self._remove_suffix(filename, current_suffixes)
@@ -1296,7 +1325,8 @@ class AlistCopyPlugin(_PluginBase):
                         "source_path": source_path,
                         "target_path": target_path,
                         "filename": filename,
-                        "copied_time": time.strftime("%Y-%m-%d %H:%M:%S")
+                        "copied_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "exists_in_target": False  # 默认标记为不存在于目标目录
                     }
                     self._save_copied_files()  # 立即保存，避免重复复制
                     
@@ -1465,7 +1495,8 @@ class AlistCopyPlugin(_PluginBase):
                     "parsed_pairs": directory_pairs
                 },
                 "copied_files_count": len(self._copied_files),
-                "target_files_count": self._target_files_count
+                "target_files_count": self._target_files_count,
+                "total_copied_count": self._total_copied_count
             }
         }
 
