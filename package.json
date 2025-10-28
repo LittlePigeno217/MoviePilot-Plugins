@@ -9,7 +9,7 @@
     "level": 1,
     "v2": true,
     "release": true,
-    "history": {
+    "history": { 
       "v1.3": "记录管理改进。",
       "v1.2": "统计信息增强。",
       "v1.1": "状态显示优化。",
