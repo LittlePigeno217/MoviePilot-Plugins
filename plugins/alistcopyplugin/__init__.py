@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.3"
+    plugin_version = "1.4"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -47,7 +47,7 @@ class AlistCopyPlugin(_PluginBase):
     # 任务状态
     _task_status: Dict[str, Any] = {}
     
-    # 复制记录 - 记录已成功复制的文件
+    # 复制记录 - 记录已成功复制的文件，现在包含状态字段
     _copied_files: Dict[str, Any] = {}
     
     # 执行历史记录 - 独立存储，避免冲突
@@ -55,9 +55,6 @@ class AlistCopyPlugin(_PluginBase):
     
     # 目标目录文件数统计
     _target_files_count: int = 0
-    
-    # 累计已成功复制的文件数量
-    _total_copied_count: int = 0
     
     # 调度器
     _scheduler: Optional[BackgroundScheduler] = None
@@ -128,13 +125,6 @@ class AlistCopyPlugin(_PluginBase):
             self._target_files_count = saved_target_count
         else:
             self._target_files_count = 0
-
-        # 恢复累计已成功复制的文件数量
-        saved_total_copied = self.get_data("alistcopy_total_copied_count")
-        if saved_total_copied is not None:
-            self._total_copied_count = saved_total_copied
-        else:
-            self._total_copied_count = 0
 
         # 启动服务
         if self._enabled:
@@ -210,10 +200,6 @@ class AlistCopyPlugin(_PluginBase):
         # 清空目标目录文件数
         self._target_files_count = 0
         self.save_data("alistcopy_target_files_count", self._target_files_count)
-        
-        # 清空累计已成功复制的文件数量
-        self._total_copied_count = 0
-        self.save_data("alistcopy_total_copied_count", self._total_copied_count)
         
         logger.info("插件数据已全部清空，将重新开始记录")
 
@@ -475,6 +461,9 @@ class AlistCopyPlugin(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
+        # 每次打开页面时更新文件状态和数量统计
+        self._update_file_status_and_counts()
+        
         status = self._task_status
         status_config = {
             "idle": {"color": "info", "text": "空闲", "icon": "mdi-play-circle-outline"},
@@ -483,6 +472,9 @@ class AlistCopyPlugin(_PluginBase):
             "failed": {"color": "error", "text": "失败", "icon": "mdi-alert-circle"}
         }
         config = status_config.get(status.get("status", "idle"), status_config["idle"])
+        
+        # 获取状态统计
+        copying_count, completed_count = self._get_file_status_counts()
         
         # 获取最近5次执行记录（过滤掉没有复制文件的记录）
         recent_executions = self._get_recent_executions()
@@ -553,7 +545,7 @@ class AlistCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 状态框2：复制中数量
+                                    # 状态框2：当前复制数量
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 4},
@@ -574,12 +566,12 @@ class AlistCopyPlugin(_PluginBase):
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-h6 font-weight-bold mt-2"},
-                                                                "text": "复制中数量"
+                                                                "text": "当前复制数量"
                                                             },
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-h4 font-weight-bold text-warning mt-2"},
-                                                                "text": str(len(self._copied_files))
+                                                                "text": str(copying_count)
                                                             }
                                                         ]
                                                     }
@@ -587,7 +579,7 @@ class AlistCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 状态框3：最近执行记录
+                                    # 状态框3：累计复制数量
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 4},
@@ -608,17 +600,17 @@ class AlistCopyPlugin(_PluginBase):
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-h6 font-weight-bold mt-2"},
-                                                                "text": "最近执行记录"
+                                                                "text": "累计复制数量"
                                                             },
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-h4 font-weight-bold text-info mt-2"},
-                                                                "text": f"{len(recent_executions)} 次"
+                                                                "text": str(completed_count)
                                                             },
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-body-2 text-grey mt-1"},
-                                                                "text": f"累计 {self._total_copied_count} 文件"
+                                                                "text": f"最近 {len(recent_executions)} 次"
                                                             }
                                                         ]
                                                     }
@@ -732,6 +724,91 @@ class AlistCopyPlugin(_PluginBase):
             }
         ]
     
+    def _update_file_status_and_counts(self):
+        """更新文件状态和数量统计"""
+        if not self._copied_files:
+            return
+            
+        directory_pairs = self._parse_directory_pairs()
+        if not directory_pairs:
+            return
+            
+        logger.info("正在更新文件状态和数量统计...")
+        
+        # 为每个目标目录构建文件索引
+        target_dirs_index = {}
+        for pair in directory_pairs:
+            target_dir = pair["target"]
+            if target_dir not in target_dirs_index:
+                logger.info(f"扫描目标目录以更新文件状态: {target_dir}")
+                target_files = self._get_alist_files(target_dir)
+                if target_files:
+                    # 构建文件名索引（不包含路径）
+                    file_index = {}
+                    for file in target_files:
+                        filename = file.get("name")
+                        if filename:
+                            file_index[filename] = file.get("path", "")
+                    target_dirs_index[target_dir] = file_index
+                    logger.info(f"目标目录 {target_dir} 有 {len(file_index)} 个文件")
+                else:
+                    target_dirs_index[target_dir] = {}
+                    logger.info(f"目标目录 {target_dir} 为空")
+        
+        # 检查每个文件的状态并更新
+        updated_count = 0
+        for file_key, record in self._copied_files.items():
+            target_path = record.get("target_path", "")
+            filename = record.get("filename", "")
+            current_status = record.get("status", "copying")  # 默认为复制中
+            
+            if not target_path or not filename:
+                continue
+                
+            # 找到对应的目标目录
+            target_dir = None
+            for pair in directory_pairs:
+                if target_path.startswith(pair["target"]):
+                    target_dir = pair["target"]
+                    break
+            
+            if not target_dir:
+                continue
+                
+            # 检查文件是否在目标目录中存在
+            if target_dir in target_dirs_index and filename in target_dirs_index[target_dir]:
+                # 文件在目标目录中存在，更新状态为已完成
+                if current_status != "completed":
+                    self._copied_files[file_key]["status"] = "completed"
+                    self._copied_files[file_key]["completed_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    updated_count += 1
+            else:
+                # 文件在目标目录中不存在，保持状态为复制中
+                if current_status != "copying":
+                    self._copied_files[file_key]["status"] = "copying"
+                    updated_count += 1
+        
+        if updated_count > 0:
+            self._save_copied_files()
+            logger.info(f"已更新 {updated_count} 个文件的状态")
+        
+        # 更新目标目录文件数
+        self._update_target_files_count(directory_pairs)
+    
+    def _get_file_status_counts(self) -> Tuple[int, int]:
+        """获取文件状态统计数量"""
+        copying_count = 0
+        completed_count = 0
+        
+        for record in self._copied_files.values():
+            status = record.get("status", "copying")
+            if status == "completed":
+                completed_count += 1
+            else:
+                copying_count += 1
+                
+        return copying_count, completed_count
+    
     def _get_recent_executions(self) -> List[Dict]:
         """获取最近5次执行记录（过滤掉没有复制文件的记录）"""
         # 过滤掉复制文件数为0的记录，然后取前5条
@@ -764,10 +841,6 @@ class AlistCopyPlugin(_PluginBase):
         # 限制历史记录数量，最多保留20条
         if len(self._execution_history) > 20:
             self._execution_history = self._execution_history[:20]
-        
-        # 更新累计已成功复制的文件数量
-        self._total_copied_count += copied_count
-        self.save_data("alistcopy_total_copied_count", self._total_copied_count)
         
         # 保存历史记录
         self.save_data("alistcopy_execution_history", self._execution_history)
@@ -950,13 +1023,9 @@ class AlistCopyPlugin(_PluginBase):
             if not self._verify_alist_connection():
                 raise Exception("AList连接失败，请检查地址和令牌")
             
-            # 任务运行前先检查所有目录配对的目标目录
-            logger.info("开始检查复制中文件的目标目录状态...")
-            initial_copied_count = len(self._copied_files)
-            modified_count, existing_files = self._check_copied_files_in_target_dirs(directory_pairs)
-            
-            if modified_count > 0:
-                logger.info(f"已修改 {modified_count} 个在目标目录中已存在的复制中文件记录，同时已存在的复制中文件记录: {existing_files}")
+            # 任务运行前先更新文件状态
+            logger.info("开始更新文件状态...")
+            self._update_file_status_and_counts()
             
             total_copied = 0
             total_skipped = 0
@@ -985,8 +1054,8 @@ class AlistCopyPlugin(_PluginBase):
             # 添加执行记录（只有复制文件数大于0时才记录）
             self._add_execution_record(total_copied, successfully_copied_files)
             
-            # 任务完成后更新目标目录文件数
-            self._update_target_files_count(directory_pairs)
+            # 任务完成后更新文件状态
+            self._update_file_status_and_counts()
             
             self._complete_task("success", 
                                f"复制完成！共处理 {len(directory_pairs)} 组目录配对，"
@@ -1030,80 +1099,6 @@ class AlistCopyPlugin(_PluginBase):
         self._target_files_count = total_target_files
         self.save_data("alistcopy_target_files_count", self._target_files_count)
         logger.info(f"目标目录文件数统计完成，总计: {total_target_files} 个文件")
-
-    def _check_copied_files_in_target_dirs(self, directory_pairs: List[Dict[str, str]]):
-        """检查复制中文件在目标目录中的状态，修改已存在的记录而不是删除"""
-        if not self._copied_files:
-            logger.info("没有复制中的文件需要检查")
-            return 0, []
-            
-        logger.info(f"开始检查 {len(self._copied_files)} 个复制中文件的目标目录状态")
-        
-        # 为每个目标目录构建文件索引
-        target_dirs_index = {}
-        for pair in directory_pairs:
-            target_dir = pair["target"]
-            if target_dir not in target_dirs_index:
-                logger.info(f"扫描目标目录: {target_dir}")
-                target_files = self._get_alist_files(target_dir)
-                if target_files:
-                    # 构建文件名索引（不包含路径）
-                    file_index = {}
-                    for file in target_files:
-                        filename = file.get("name")
-                        if filename:
-                            file_index[filename] = file.get("path", "")
-                    target_dirs_index[target_dir] = file_index
-                    logger.info(f"目标目录 {target_dir} 有 {len(file_index)} 个文件")
-                else:
-                    target_dirs_index[target_dir] = {}
-                    logger.info(f"目标目录 {target_dir} 为空")
-        
-        # 检查每个复制中的文件
-        files_to_modify = []
-        existing_files_list = []
-        for file_key, record in self._copied_files.items():
-            target_path = record.get("target_path", "")
-            filename = record.get("filename", "")
-            
-            if not target_path or not filename:
-                continue
-                
-            # 找到对应的目标目录
-            target_dir = None
-            for pair in directory_pairs:
-                if target_path.startswith(pair["target"]):
-                    target_dir = pair["target"]
-                    break
-            
-            if not target_dir:
-                # 如果找不到对应的目标目录，跳过这个文件
-                continue
-                
-            # 检查文件是否在目标目录中存在
-            if target_dir in target_dirs_index and filename in target_dirs_index[target_dir]:
-                # 文件在目标目录中存在，修改记录状态
-                files_to_modify.append(file_key)
-                existing_files_list.append(filename)
-                logger.info(f"复制中文件已在目标目录存在，修改记录状态: {filename}")
-            else:
-                # 文件在目标目录中不存在，保留记录
-                logger.debug(f"复制中文件在目标目录中不存在，保留记录: {filename}")
-        
-        # 修改需要更新的文件记录
-        if files_to_modify:
-            for file_key in files_to_modify:
-                if file_key in self._copied_files:
-                    # 修改记录状态，添加一个标记表示文件已在目标目录存在
-                    self._copied_files[file_key]["exists_in_target"] = True
-                    self._copied_files[file_key]["modified_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            
-            self._save_copied_files()
-            logger.info(f"已修改 {len(files_to_modify)} 个在目标目录中已存在的复制中文件记录")
-            return len(files_to_modify), existing_files_list
-        else:
-            logger.info("没有需要修改的复制中文件记录")
-            return 0, []
 
     def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
         try:
@@ -1291,20 +1286,23 @@ class AlistCopyPlugin(_PluginBase):
                 
                 # 检查2: 文件是否在历史记录中已经复制过
                 if file_key in self._copied_files:
-                    # 检查文件记录是否标记为已在目标目录存在
+                    # 检查文件记录状态
                     record_info = self._copied_files[file_key]
-                    if record_info.get("exists_in_target", False):
-                        # 文件已在目标目录存在，跳过复制
+                    record_status = record_info.get("status", "copying")
+                    
+                    if record_status == "completed":
+                        # 文件已完成复制，跳过
                         skipped += 1
-                        logger.debug(f"跳过目标目录已存在文件: {filename}")
-                        self._update_status(f"跳过目标目录已存在文件: {filename}", progress)
+                        completed_time = record_info.get("completed_time", "未知时间")
+                        logger.debug(f"跳过已完成文件: {filename} (完成于: {completed_time})")
+                        self._update_status(f"跳过已完成文件: {filename}", progress)
                         continue
                     else:
-                        # 文件已复制过但未标记为存在，跳过复制
+                        # 文件状态为复制中，跳过复制但保留记录
                         skipped += 1
                         copied_time = record_info.get("copied_time", "未知时间")
-                        logger.debug(f"跳过历史已复制文件: {filename} (记录于: {copied_time})")
-                        self._update_status(f"跳过已复制文件: {filename}", progress)
+                        logger.debug(f"跳过复制中文件: {filename} (记录于: {copied_time})")
+                        self._update_status(f"跳过复制中文件: {filename}", progress)
                         continue
                 
                 # 检查3: 目标目录是否已存在相同文件（基于文件名比对）
@@ -1320,13 +1318,13 @@ class AlistCopyPlugin(_PluginBase):
                     copied += 1
                     self._task_status["copied_files"] += 1
                     
-                    # 记录成功复制的文件
+                    # 记录成功复制的文件，默认状态为复制中
                     self._copied_files[file_key] = {
                         "source_path": source_path,
                         "target_path": target_path,
                         "filename": filename,
                         "copied_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "exists_in_target": False  # 默认标记为不存在于目标目录
+                        "status": "copying"  # 默认状态为复制中
                     }
                     self._save_copied_files()  # 立即保存，避免重复复制
                     
@@ -1479,8 +1477,13 @@ class AlistCopyPlugin(_PluginBase):
         self.save_data("alistcopy_copied_files", self._copied_files)
 
     def get_status(self):
+        # 更新文件状态和数量统计
+        self._update_file_status_and_counts()
+        
         current_suffixes = self._get_current_suffixes()
         directory_pairs = self._parse_directory_pairs()
+        copying_count, completed_count = self._get_file_status_counts()
+        
         return {
             "success": True,
             "data": {
@@ -1495,8 +1498,9 @@ class AlistCopyPlugin(_PluginBase):
                     "parsed_pairs": directory_pairs
                 },
                 "copied_files_count": len(self._copied_files),
-                "target_files_count": self._target_files_count,
-                "total_copied_count": self._total_copied_count
+                "copying_count": copying_count,
+                "completed_count": completed_count,
+                "target_files_count": self._target_files_count
             }
         }
 
