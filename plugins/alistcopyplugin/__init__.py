@@ -1083,11 +1083,8 @@ class AlistCopyPlugin(_PluginBase):
                 target_files = self._get_alist_files(target_dir)
                 if target_files:
                     total_target_files += len(target_files)
-                    #logger.info(f"目标目录 {target_dir} 有 {len(target_files)} 个文件")
-                else:
-                    #logger.info(f"目标目录 {target_dir} 为空")
             except Exception as e:
-                #logger.error(f"统计目标目录 {target_dir} 文件数失败: {str(e)}")
+                logger.error(f"统计目标目录 {target_dir} 文件数失败: {str(e)}")
         
         self._target_files_count = total_target_files
         self.save_data("alistcopy_target_files_count", self._target_files_count)
