@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.5"
+    plugin_version = "1.6"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -1069,7 +1069,7 @@ class AlistCopyPlugin(_PluginBase):
 
     def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
         """更新目标目录文件数统计"""
-        logger.info("开始统计目标目录文件数...")
+        #logger.info("开始统计目标目录文件数...")
         total_target_files = 0
         
         # 获取所有唯一的目标目录
@@ -1083,15 +1083,15 @@ class AlistCopyPlugin(_PluginBase):
                 target_files = self._get_alist_files(target_dir)
                 if target_files:
                     total_target_files += len(target_files)
-                    logger.info(f"目标目录 {target_dir} 有 {len(target_files)} 个文件")
+                    #logger.info(f"目标目录 {target_dir} 有 {len(target_files)} 个文件")
                 else:
-                    logger.info(f"目标目录 {target_dir} 为空")
+                    #logger.info(f"目标目录 {target_dir} 为空")
             except Exception as e:
-                logger.error(f"统计目标目录 {target_dir} 文件数失败: {str(e)}")
+                #logger.error(f"统计目标目录 {target_dir} 文件数失败: {str(e)}")
         
         self._target_files_count = total_target_files
         self.save_data("alistcopy_target_files_count", self._target_files_count)
-        logger.info(f"目标目录文件数统计完成，总计: {total_target_files} 个文件")
+        #logger.info(f"目标目录文件数统计完成，总计: {total_target_files} 个文件")
 
     def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
         try:
@@ -1106,7 +1106,7 @@ class AlistCopyPlugin(_PluginBase):
             self._update_status(f"正在扫描源目录: {source_dir}", base_progress + 15)
             source_files = self._get_alist_files(source_dir)
             if not source_files:
-                logger.info(f"源目录 {source_dir} 为空，跳过处理")
+                #logger.info(f"源目录 {source_dir} 为空，跳过处理")
                 return {"copied": 0, "skipped": 0, "total": 0}
             
             self._update_status(f"开始复制文件: {source_dir} → {target_dir}", base_progress + 25)
