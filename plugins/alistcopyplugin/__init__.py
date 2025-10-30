@@ -722,7 +722,7 @@ class AlistCopyPlugin(_PluginBase):
                 ]
             }
         ]
-    
+      
     def _update_file_status_and_counts(self):
         """更新文件状态和数量统计"""
         if not self._copied_files:
