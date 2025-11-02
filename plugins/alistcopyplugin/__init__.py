@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.6"
+    plugin_version = "1.7"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -461,8 +461,8 @@ class AlistCopyPlugin(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
-        # 每次打开页面时更新文件状态和数量统计
-        self._update_file_status_and_counts()
+        # 不再每次打开页面时自动更新文件状态和数量统计
+        # 直接使用已保存的数据显示页面
         
         status = self._task_status
         status_config = {
@@ -475,9 +475,6 @@ class AlistCopyPlugin(_PluginBase):
         
         # 获取状态统计
         copying_count, completed_count = self._get_file_status_counts()
-        
-        # 获取最近5次执行记录（过滤掉没有复制文件的记录）
-        recent_executions = self._get_recent_executions()
         
         # 获取最近一次有复制文件的记录
         latest_copied_record = self._get_latest_copied_record()
@@ -990,14 +987,23 @@ class AlistCopyPlugin(_PluginBase):
         
         # 检查复制中和已完成的文件数量
         copying_count, completed_count = self._get_file_status_counts()
-        total_files_count = copying_count + completed_count
         
-        # 如果检测到文件（复制中或已完成），则跳过执行复制任务
-        if total_files_count > 0:
-            logger.info(f"检测到 {total_files_count} 个文件（复制中: {copying_count}, 已完成: {completed_count}），跳过执行复制任务")
-            self._complete_task("success", f"检测到 {total_files_count} 个文件，跳过执行复制任务")
+        # 如果检测到复制中的文件，先检查目标目录是否存在这些文件
+        if copying_count > 0:
+            logger.info(f"检测到 {copying_count} 个复制中的文件，正在检查目标目录是否存在这些文件...")
+            updated_count = self._check_and_update_copying_files(directory_pairs)
+            if updated_count > 0:
+                logger.info(f"已将 {updated_count} 个复制中的文件更新为已完成状态")
+            
+            # 重新获取状态统计
+            copying_count, completed_count = self._get_file_status_counts()
+        
+        # 检查是否需要执行复制任务
+        if not self._should_execute_copy_task(directory_pairs, copying_count):
+            logger.info("无需执行复制任务，所有文件已处理完成")
+            self._complete_task("success", "无需执行复制任务，所有文件已处理完成")
             return
-        
+            
         # 用于记录本次执行成功复制的文件
         successfully_copied_files = []
             
@@ -1066,6 +1072,118 @@ class AlistCopyPlugin(_PluginBase):
                 self._onlyonce = False
                 self.__update_config()
                 logger.info("立即运行任务已完成，重置立即运行标志")
+
+    def _should_execute_copy_task(self, directory_pairs: List[Dict[str, str]], copying_count: int) -> bool:
+        """
+        判断是否需要执行复制任务
+        
+        返回:
+            bool: True表示需要执行复制任务，False表示跳过
+        """
+        # 如果还有复制中的文件，需要执行任务
+        if copying_count > 0:
+            return True
+            
+        # 检查源目录是否有新文件需要复制
+        logger.info("检查源目录是否有新文件需要复制...")
+        
+        for pair in directory_pairs:
+            source_dir = pair["source"]
+            target_dir = pair["target"]
+            
+            try:
+                # 扫描源目录
+                source_files = self._get_alist_files(source_dir)
+                if not source_files:
+                    continue
+                
+                # 扫描目标目录，构建目标文件索引
+                target_files = self._get_alist_files(target_dir)
+                target_index = self._build_target_index(target_files)
+                
+                # 检查源目录中是否有新文件
+                current_suffixes = self._get_current_suffixes()
+                
+                for source_file in source_files:
+                    filename = source_file.get("name")
+                    if not filename:
+                        continue
+                        
+                    # 只处理指定后缀的文件
+                    if not any(filename.endswith(suffix) for suffix in current_suffixes):
+                        continue
+                    
+                    # 检查文件是否已经在目标目录中存在
+                    base_name = self._remove_suffix(filename, current_suffixes)
+                    if base_name not in target_index:
+                        logger.info(f"发现新文件需要复制: {filename}")
+                        return True
+                        
+            except Exception as e:
+                logger.error(f"检查目录配对 {source_dir} → {target_dir} 时出错: {str(e)}")
+                # 如果检查过程中出错，保守起见执行复制任务
+                return True
+        
+        logger.info("所有源目录文件已在目标目录中存在，无需执行复制任务")
+        return False
+
+    def _check_and_update_copying_files(self, directory_pairs: List[Dict[str, str]]) -> int:
+        """检查并更新复制中的文件状态"""
+        updated_count = 0
+        
+        # 为每个目标目录构建文件索引
+        target_dirs_index = {}
+        for pair in directory_pairs:
+            target_dir = pair["target"]
+            if target_dir not in target_dirs_index:
+                logger.info(f"扫描目标目录以检查复制中文件: {target_dir}")
+                target_files = self._get_alist_files(target_dir)
+                if target_files:
+                    # 构建文件名索引（不包含路径）
+                    file_index = {}
+                    for file in target_files:
+                        filename = file.get("name")
+                        if filename:
+                            file_index[filename] = file.get("path", "")
+                    target_dirs_index[target_dir] = file_index
+                    logger.info(f"目标目录 {target_dir} 有 {len(file_index)} 个文件")
+                else:
+                    target_dirs_index[target_dir] = {}
+                    logger.info(f"目标目录 {target_dir} 为空")
+        
+        # 检查每个复制中的文件
+        for file_key, record in self._copied_files.items():
+            if record.get("status") != "copying":
+                continue
+                
+            target_path = record.get("target_path", "")
+            filename = record.get("filename", "")
+            
+            if not target_path or not filename:
+                continue
+                
+            # 找到对应的目标目录
+            target_dir = None
+            for pair in directory_pairs:
+                if target_path.startswith(pair["target"]):
+                    target_dir = pair["target"]
+                    break
+            
+            if not target_dir:
+                continue
+                
+            # 检查文件是否在目标目录中存在
+            if target_dir in target_dirs_index and filename in target_dirs_index[target_dir]:
+                # 文件在目标目录中存在，更新状态为已完成
+                self._copied_files[file_key]["status"] = "completed"
+                self._copied_files[file_key]["completed_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                updated_count += 1
+                logger.info(f"复制中文件 {filename} 已在目标目录中存在，状态已更新为已完成")
+        
+        if updated_count > 0:
+            self._save_copied_files()
+        
+        return updated_count
 
     def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
         """更新目标目录文件数统计"""
@@ -1325,7 +1443,7 @@ class AlistCopyPlugin(_PluginBase):
                     successfully_copied_files.append(filename)
                     
                     # 注意：这里不再记录成功日志，因为已经在 _execute_alist_copy_standard 中记录了
-                    self._update_status(f"复制成功: {filename}", progress)
+                    self._update_status(f"创建任务: {filename}", progress)
                 else:
                     logger.error(f"复制失败: {filename}")
                     
