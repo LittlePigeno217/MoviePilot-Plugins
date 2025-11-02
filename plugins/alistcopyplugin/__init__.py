@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.8"
+    plugin_version = "1.9"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -58,6 +58,9 @@ class AlistCopyPlugin(_PluginBase):
     
     # 目标目录文件数统计
     _target_files_count: int = 0
+    
+    # 调度器
+    _scheduler: Optional[BackgroundScheduler] = None
 
     def init_plugin(self, config: dict = None):
         """
@@ -128,11 +131,32 @@ class AlistCopyPlugin(_PluginBase):
 
         # 启动服务
         if self._enabled:
+            # 启动定时服务
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+            
+            if self._cron:
+                try:
+                    self._scheduler.add_job(
+                        func=self.execute_copy_task,
+                        trigger=CronTrigger.from_crontab(self._cron),
+                        id="alist_copy_task",
+                        name="AList复制任务"
+                    )
+                    logger.info(f"定时任务已设置，周期: {self._cron}")
+                except Exception as e:
+                    logger.error(f"定时任务配置错误：{str(e)}")
+
             # 立即执行一次
             if self._onlyonce:
                 logger.info("检测到立即运行一次，开始执行AList复制任务")
                 import threading
                 threading.Thread(target=self.execute_copy_task, daemon=True).start()
+
+            # 启动调度器
+            if self._scheduler.get_jobs():
+                if not self._scheduler.running:
+                    self._scheduler.start()
+                    logger.info("AList复制管理器服务启动成功")
 
     def get_state(self) -> bool:
         return self._enabled
@@ -199,9 +223,6 @@ class AlistCopyPlugin(_PluginBase):
         ]
 
     def get_service(self) -> List[Dict[str, Any]]:
-        """
-        注册插件服务
-        """
         if self._enabled and self._cron:
             return [{
                 "id": "AlistCopyTask",
@@ -936,11 +957,14 @@ class AlistCopyPlugin(_PluginBase):
         return all_suffixes
 
     def stop_service(self):
-        """
-        停止插件服务
-        现在定时任务由MoviePilot统一管理，不需要单独停止
-        """
-        pass
+        try:
+            if self._scheduler:
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._scheduler.shutdown()
+                self._scheduler = None
+        except Exception as e:
+            logger.error(f"停止插件服务失败：{str(e)}")
 
     def execute_copy_task(self):
         logger.info("开始执行AList多目录复制任务")
