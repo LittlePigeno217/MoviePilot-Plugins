@@ -238,167 +238,71 @@ class AlistCopyPlugin(_PluginBase):
             {
                 "component": "VForm",
                 "content": [
+                    # 第一块：基本设置
                     {
-                        "component": "VRow",
+                        "component": "VCard",
+                        "props": {"variant": "outlined", "class": "mb-4"},
                         "content": [
                             {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "component": "VCardText",
                                 "content": [
                                     {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "enabled",
-                                            "label": "启用插件",
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "onlyonce",
-                                            "label": "立即运行一次",
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "clear_cache",
-                                            "label": "清除缓存后运行",
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "alist_url",
-                                            "label": "AList/OpenList地址",
-                                            "placeholder": "http://localhost:5244"
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "alist_token",
-                                            "label": "AList/OpenList令牌",
-                                            "type": "password",
-                                            "placeholder": "在AList/OpenList后台获取"
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VTextarea",
-                                        "props": {
-                                            "model": "directory_pairs",
-                                            "label": "目录配对",
-                                            "placeholder": "源目录1#目标目录1\n源目录2#目标目录2",
-                                            "rows": 4
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "enable_custom_suffix",
-                                            "label": "复制字幕/元数据/封面图文件",
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "cron",
-                                            "label": "执行周期",
-                                            "placeholder": "0 2 * * *"
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "info",
-                                            "text": True,
-                                            "variant": "tonal"
-                                        },
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
                                         "content": [
                                             {
-                                                "component": "div",
-                                                "text": "文件尾缀说明："
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-cog", "color": "primary", "class": "mr-2"},
+                                                "text": ""
                                             },
                                             {
-                                                "component": "div", 
-                                                "text": "• 默认：自动匹配常用视频格式（mp4, mkv, avi, mov等）"
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "基本设置"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
+                                                    {
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "enabled",
+                                                            "label": "启用插件",
+                                                        }
+                                                    }
+                                                ]
                                             },
                                             {
-                                                "component": "div",
-                                                "text": "• 勾选复制字幕/元数据/封面图：额外匹配字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
+                                                    {
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "onlyonce",
+                                                            "label": "立即运行一次",
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
+                                                    {
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "clear_cache",
+                                                            "label": "清除缓存后运行",
+                                                        }
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }
@@ -406,37 +310,284 @@ class AlistCopyPlugin(_PluginBase):
                             }
                         ]
                     },
+                    
+                    # 第二块：AList/OpenList连接设置
                     {
-                        "component": "VRow",
+                        "component": "VCard",
+                        "props": {"variant": "outlined", "class": "mb-4"},
                         "content": [
                             {
-                                "component": "VCol",
-                                "props": {"cols": 12},
+                                "component": "VCardText",
                                 "content": [
                                     {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "warning",
-                                            "text": True,
-                                            "variant": "tonal"
-                                        },
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
                                         "content": [
                                             {
-                                                "component": "div",
-                                                "props": {"class": "font-weight-bold"},
-                                                "text": "清除缓存说明："
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-server-network", "color": "primary", "class": "mr-2"},
+                                                "text": ""
                                             },
                                             {
-                                                "component": "div",
-                                                "text": "• 勾选此选项后保存，将清空所有复制记录和任务状态"
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "AList/OpenList连接设置"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12},
+                                                "content": [
+                                                    {
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "alist_url",
+                                                            "label": "AList/OpenList地址",
+                                                            "placeholder": "http://localhost:5244",
+                                                            "hint": "请输入完整的AList或OpenList服务地址"
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12},
+                                                "content": [
+                                                    {
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "alist_token",
+                                                            "label": "AList/OpenList令牌",
+                                                            "type": "password",
+                                                            "placeholder": "在AList/OpenList后台获取",
+                                                            "hint": "在AList/OpenList管理后台的'设置'-'全局'中获取令牌"
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    
+                    # 第三块：目录配对设置
+                    {
+                        "component": "VCard",
+                        "props": {"variant": "outlined", "class": "mb-4"},
+                        "content": [
+                            {
+                                "component": "VCardText",
+                                "content": [
+                                    {
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
+                                        "content": [
+                                            {
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-folder-multiple", "color": "primary", "class": "mr-2"},
+                                                "text": ""
                                             },
                                             {
-                                                "component": "div",
-                                                "text": "• 插件将重新开始记录复制历史"
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "目录配对设置"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12},
+                                                "content": [
+                                                    {
+                                                        "component": "VTextarea",
+                                                        "props": {
+                                                            "model": "directory_pairs",
+                                                            "label": "目录配对",
+                                                            "placeholder": "源目录1#目标目录1\n源目录2#目标目录2",
+                                                            "rows": 4,
+                                                            "hint": "每行一组配对，使用#分隔源目录和目标目录"
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    
+                    # 第四块：文件类型与定时设置
+                    {
+                        "component": "VCard",
+                        "props": {"variant": "outlined", "class": "mb-4"},
+                        "content": [
+                            {
+                                "component": "VCardText",
+                                "content": [
+                                    {
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
+                                        "content": [
+                                            {
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-file-cog", "color": "primary", "class": "mr-2"},
+                                                "text": ""
                                             },
                                             {
-                                                "component": "div",
-                                                "text": "• 此操作不可逆，请谨慎使用"
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "文件类型与定时设置"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 6},
+                                                "content": [
+                                                    {
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "enable_custom_suffix",
+                                                            "label": "复制字幕/元数据/封面图文件",
+                                                            "hint": "额外复制字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)文件"
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 6},
+                                                "content": [
+                                                    {
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "cron",
+                                                            "label": "执行周期",
+                                                            "placeholder": "0 2 * * *",
+                                                            "hint": "Cron表达式，默认每天凌晨2点执行"
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    
+                    # 第五块：说明信息
+                    {
+                        "component": "VCard",
+                        "props": {"variant": "outlined", "class": "mb-4"},
+                        "content": [
+                            {
+                                "component": "VCardText",
+                                "content": [
+                                    {
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
+                                        "content": [
+                                            {
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-information", "color": "info", "class": "mr-2"},
+                                                "text": ""
+                                            },
+                                            {
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "说明信息"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12},
+                                                "content": [
+                                                    {
+                                                        "component": "VAlert",
+                                                        "props": {
+                                                            "type": "info",
+                                                            "text": True,
+                                                            "variant": "tonal"
+                                                        },
+                                                        "content": [
+                                                            {
+                                                                "component": "div",
+                                                                "props": {"class": "font-weight-bold mb-2"},
+                                                                "text": "文件尾缀说明："
+                                                            },
+                                                            {
+                                                                "component": "div", 
+                                                                "text": "• 默认：自动匹配常用视频格式（mp4, mkv, avi, mov等）"
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 勾选复制字幕/元数据/封面图：额外匹配字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "props": {"class": "mt-3"},
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12},
+                                                "content": [
+                                                    {
+                                                        "component": "VAlert",
+                                                        "props": {
+                                                            "type": "warning",
+                                                            "text": True,
+                                                            "variant": "tonal"
+                                                        },
+                                                        "content": [
+                                                            {
+                                                                "component": "div",
+                                                                "props": {"class": "font-weight-bold mb-2"},
+                                                                "text": "清除缓存说明："
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 勾选此选项后保存，将清空所有复制记录和任务状态"
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 插件将重新开始记录复制历史"
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 此操作不可逆，请谨慎使用"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }
@@ -457,6 +608,7 @@ class AlistCopyPlugin(_PluginBase):
             "cron": self._cron or "0 2 * * *"
         }
 
+    # 其余方法保持不变...
     def get_page(self) -> List[dict]:
         # 不再每次打开页面时自动更新文件状态和数量统计
         # 直接使用已保存的数据显示页面
@@ -717,6 +869,7 @@ class AlistCopyPlugin(_PluginBase):
             }
         ]
       
+    # 其余方法保持不变...
     def _update_file_status_and_counts(self):
         """更新文件状态和数量统计"""
         if not self._copied_files:
