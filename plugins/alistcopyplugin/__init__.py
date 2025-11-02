@@ -20,7 +20,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.7"
+    plugin_version = "1.8"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -33,6 +33,9 @@ class AlistCopyPlugin(_PluginBase):
         '.m4v', '.3gp', '.ts', '.mts', '.m2ts', '.vob', '.ogv',
         '.mpg', '.mpeg', '.rm', '.rmvb', '.asf', '.divx'
     ]
+    
+    # 自定义文件尾缀（字幕、元数据、封面图）
+    CUSTOM_SUFFIXES = ['.srt', '.ass', '.nfo', '.jpg', '.png']
 
     # 可配置项
     _enabled: bool = False
@@ -42,7 +45,7 @@ class AlistCopyPlugin(_PluginBase):
     _alist_url: str = ""
     _alist_token: str = ""
     _directory_pairs: str = ""
-    _file_suffix: str = ""
+    _enable_custom_suffix: bool = False
 
     # 任务状态
     _task_status: Dict[str, Any] = {}
@@ -75,7 +78,7 @@ class AlistCopyPlugin(_PluginBase):
             self._alist_url = config.get("alist_url", "").rstrip('/')
             self._alist_token = config.get("alist_token", "")
             self._directory_pairs = config.get("directory_pairs", "")
-            self._file_suffix = config.get("file_suffix", "")
+            self._enable_custom_suffix = config.get("enable_custom_suffix", False)
 
         # 如果启用了清除缓存，则清空所有数据
         if self._clear_cache:
@@ -167,7 +170,7 @@ class AlistCopyPlugin(_PluginBase):
             "alist_url": self._alist_url,
             "alist_token": self._alist_token,
             "directory_pairs": self._directory_pairs,
-            "file_suffix": self._file_suffix
+            "enable_custom_suffix": self._enable_custom_suffix
         })
 
     def _clear_all_data(self):
@@ -346,12 +349,10 @@ class AlistCopyPlugin(_PluginBase):
                                 "props": {"cols": 12, "md": 6},
                                 "content": [
                                     {
-                                        "component": "VTextField",
+                                        "component": "VSwitch",
                                         "props": {
-                                            "model": "file_suffix",
-                                            "label": "自定义文件尾缀",
-                                            "placeholder": ".srt,.ass,.nfo,.jpg,.png",
-                                            "hint": "多个尾缀用逗号分隔，如字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
+                                            "model": "enable_custom_suffix",
+                                            "label": "复制字幕/元数据/封面图文件",
                                         }
                                     }
                                 ]
@@ -393,15 +394,11 @@ class AlistCopyPlugin(_PluginBase):
                                             },
                                             {
                                                 "component": "div", 
-                                                "text": "• 留空：自动匹配常用视频格式（mp4, mkv, avi, mov等）"
+                                                "text": "• 默认：自动匹配常用视频格式（mp4, mkv, avi, mov等）"
                                             },
                                             {
                                                 "component": "div",
-                                                "text": "• 填写：作为默认视频尾缀的补充，匹配视频文件+自定义尾缀文件"
-                                            },
-                                            {
-                                                "component": "div",
-                                                "text": "• 常用媒体文件尾缀：字幕(.srt,.ass,.ssa,.vtt)、元数据(.nfo)、封面图(.jpg,.png,.tbn)"
+                                                "text": "• 勾选复制字幕/元数据/封面图：额外匹配字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
                                             }
                                         ]
                                     }
@@ -456,7 +453,7 @@ class AlistCopyPlugin(_PluginBase):
             "alist_url": self._alist_url,
             "alist_token": self._alist_token,
             "directory_pairs": self._directory_pairs,
-            "file_suffix": self._file_suffix,
+            "enable_custom_suffix": self._enable_custom_suffix,
             "cron": self._cron or "0 2 * * *"
         }
 
@@ -952,9 +949,8 @@ class AlistCopyPlugin(_PluginBase):
     def _get_current_suffixes(self) -> List[str]:
         all_suffixes = self.DEFAULT_VIDEO_SUFFIXES.copy()
         
-        if self._file_suffix:
-            custom_suffixes = [suffix.strip() for suffix in self._file_suffix.split(',') if suffix.strip()]
-            for suffix in custom_suffixes:
+        if self._enable_custom_suffix:
+            for suffix in self.CUSTOM_SUFFIXES:
                 if suffix not in all_suffixes:
                     all_suffixes.append(suffix)
         
@@ -1068,6 +1064,7 @@ class AlistCopyPlugin(_PluginBase):
             self._add_execution_record(len(successfully_copied_files), successfully_copied_files)
             self._complete_task("failed", f"任务执行失败: {str(e)}")
         finally:
+            # 确保立即运行标志被重置
             if self._onlyonce:
                 self._onlyonce = False
                 self.__update_config()
@@ -1113,9 +1110,8 @@ class AlistCopyPlugin(_PluginBase):
                     if not any(filename.endswith(suffix) for suffix in current_suffixes):
                         continue
                     
-                    # 检查文件是否已经在目标目录中存在
-                    base_name = self._remove_suffix(filename, current_suffixes)
-                    if base_name not in target_index:
+                    # 检查文件是否已经在目标目录中存在 - 使用完整文件名判断
+                    if filename not in target_index:
                         logger.info(f"发现新文件需要复制: {filename}")
                         return True
                         
@@ -1187,7 +1183,6 @@ class AlistCopyPlugin(_PluginBase):
 
     def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
         """更新目标目录文件数统计"""
-        #logger.info("开始统计目标目录文件数...")
         total_target_files = 0
         
         # 获取所有唯一的目标目录
@@ -1206,7 +1201,6 @@ class AlistCopyPlugin(_PluginBase):
         
         self._target_files_count = total_target_files
         self.save_data("alistcopy_target_files_count", self._target_files_count)
-        #logger.info(f"目标目录文件数统计完成，总计: {total_target_files} 个文件")
 
     def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
         try:
@@ -1221,7 +1215,6 @@ class AlistCopyPlugin(_PluginBase):
             self._update_status(f"正在扫描源目录: {source_dir}", base_progress + 15)
             source_files = self._get_alist_files(source_dir)
             if not source_files:
-                #logger.info(f"源目录 {source_dir} 为空，跳过处理")
                 return {"copied": 0, "skipped": 0, "total": 0}
             
             self._update_status(f"开始复制文件: {source_dir} → {target_dir}", base_progress + 25)
@@ -1234,7 +1227,7 @@ class AlistCopyPlugin(_PluginBase):
             return {"copied": 0, "skipped": 0, "total": 0}
 
     def _build_target_index(self, target_files: List[dict]) -> set:
-        """构建目标索引"""
+        """构建目标索引 - 使用完整文件名"""
         index = set()
         
         if not target_files:
@@ -1248,8 +1241,7 @@ class AlistCopyPlugin(_PluginBase):
                 continue
                 
             if any(filename.endswith(suffix) for suffix in current_suffixes):
-                base_name = self._remove_suffix(filename, current_suffixes)
-                index.add(base_name)
+                index.add(filename)  # 使用完整文件名
                 
         return index
 
@@ -1306,7 +1298,6 @@ class AlistCopyPlugin(_PluginBase):
             content = data_content.get("content") if data_content else None
             
             if content is None:
-                # 不记录空目录的日志
                 return []
                 
             if not isinstance(content, list):
@@ -1334,15 +1325,8 @@ class AlistCopyPlugin(_PluginBase):
             return files
             
         except Exception as e:
-            # 对于连接错误等情况，仍然记录错误
             logger.error(f"获取文件列表失败: {str(e)}")
             return []
-
-    def _remove_suffix(self, filename: str, suffixes: List[str]) -> str:
-        for suffix in suffixes:
-            if filename.endswith(suffix):
-                return filename[:-len(suffix)]
-        return filename
 
     def _copy_files(self, source_files: List[dict], target_index: set, source_dir: str, target_dir: str, 
                    base_progress: int, progress_range: int, successfully_copied_files: List[str], global_processed_files: set) -> Dict[str, int]:
@@ -1413,15 +1397,14 @@ class AlistCopyPlugin(_PluginBase):
                         self._update_status(f"跳过复制中文件: {filename}", progress)
                         continue
                 
-                # 检查3: 目标目录是否已存在相同文件（基于文件名比对）
-                base_name = self._remove_suffix(filename, current_suffixes)
-                if base_name in target_index:
+                # 检查3: 目标目录是否已存在相同文件（基于完整文件名比对）
+                if filename in target_index:
                     skipped += 1
                     logger.debug(f"跳过目标目录已存在文件: {filename}")
                     self._update_status(f"跳过目标目录已存在文件: {filename}", progress)
                     continue
                     
-                # 执行复制操作 - 只在 _execute_alist_copy_standard 中记录一次成功日志
+                # 执行复制操作
                 if self._execute_alist_copy_standard(source_path, target_path, filename):
                     copied += 1
                     self._task_status["copied_files"] += 1
@@ -1442,7 +1425,6 @@ class AlistCopyPlugin(_PluginBase):
                     # 记录成功复制的文件名
                     successfully_copied_files.append(filename)
                     
-                    # 注意：这里不再记录成功日志，因为已经在 _execute_alist_copy_standard 中记录了
                     self._update_status(f"创建任务: {filename}", progress)
                 else:
                     logger.error(f"复制失败: {filename}")
@@ -1516,7 +1498,6 @@ class AlistCopyPlugin(_PluginBase):
             result = response.json()
             
             if result.get("code") == 200:
-                # 只在这里记录一次成功日志，避免重复记录
                 logger.info(f"复制成功: {filename} -> {target_path}")
                 return True
             else:
@@ -1600,7 +1581,7 @@ class AlistCopyPlugin(_PluginBase):
                     "enabled": self._enabled,
                     "alist_url": self._alist_url,
                     "directory_pairs": self._directory_pairs,
-                    "file_suffix": self._file_suffix,
+                    "enable_custom_suffix": self._enable_custom_suffix,
                     "cron": self._cron,
                     "current_suffixes": current_suffixes,
                     "parsed_pairs": directory_pairs
