@@ -7,6 +7,7 @@
     "icon": "Time_machine_B.png",
     "author": "thsrite",
     "level": 1,
+    "release": true,
     "history": {
       "v2.1.0": "支持postgresql备份（权限问题，需手动执行插件详情命令安装client）",
       "v2.0.4": "优化执行周期输入，需要MoviePilot v2.2.1+",
