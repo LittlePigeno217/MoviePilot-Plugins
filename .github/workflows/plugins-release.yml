@@ -16,7 +16,7 @@ on:
           - plugins
           - plugins.v2
           - plugins.v3
-        default: 'plugins'
+        default: 'plugins.v2'
       # 手动输入要打包的插件ID
       plugin_id:
         description: '请输入 package.json 中的插件 ID (例如: AutoSignIn)'

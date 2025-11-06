@@ -1,21 +1,25 @@
 {
-  "AutoBackup": {
-    "name": "自动备份(自用)",
-    "description": "自动备份数据和配置文件。",
-    "labels": "系统设置",
-    "version": "2.1.0",
-    "icon": "Time_machine_B.png",
-    "author": "thsrite",
+  "AlistCopyPlugin": {
+    "name": "OpenList自动复制",
+    "description": "实现OpenList多目录间文件复制自动化。",
+    "labels": "OpenList",
+    "version": "2.0",
+    "icon": "Alist_B.png",
+    "author": "LittlePigeno",
     "level": 1,
     "release": true,
     "history": {
-      "v2.1.0": "支持postgresql备份（权限问题，需手动执行插件详情命令安装client）",
-      "v2.0.4": "优化执行周期输入，需要MoviePilot v2.2.1+",
-      "v2.0.3": "增加对MoviePilot V2 版本 SQLite WAL模式的支持",
-      "v2.0.1": "修复cookies文件夹备份失败",
-      "v2.0": "支持备份app.env及cookies,支持自定义保存路径",
-      "v1.3": "去除已废弃的环境变量引用",
-      "v1.2": "增强API安全性"
+      "v2.0": "优化执行性能。",
+      "v1.9": "修复已知BUG。",
+      "v1.8": "不知道优化了啥。",
+      "v1.7": "优化执行逻辑。",
+      "v1.6": "删除不必要的日志记录。",
+      "v1.5": "加入智能任务执行控制。",
+      "v1.4": "实时状态更新，统计数量更新。",
+      "v1.3": "记录管理改进。",
+      "v1.2": "统计信息增强。",
+      "v1.1": "状态显示优化。",
+      "v1.0": "清除缓存功能完善。"
     }
   }
 }
