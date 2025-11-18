@@ -1,24 +1,21 @@
-from datetime import datetime, timedelta
+from app.plugins import _PluginBase
 from typing import Any, Dict, List, Optional, Tuple
 import requests
 import time
 import json
 import os
 import hashlib
-import pytz
-
-from app.plugins import _PluginBase
 from app.core.config import settings
 from app.log import logger
 from app.schemas.types import EventType
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import APIRouter
 
 # 导入通知相关模块
 try:
     from app.schemas import Notification, NotificationType, MessageChannel
     from app.helper.notification import NotificationHelper
+    from app.utils.http import RequestUtils
     NOTIFICATION_AVAILABLE = True
 except ImportError:
     NOTIFICATION_AVAILABLE = False
@@ -32,12 +29,10 @@ except ImportError:
     ALIST_AVAILABLE = False
     logger.warning("MoviePilot Alist模块不可用，将使用手动配置")
 
-router = APIRouter()
-
 
 class AlistCopyPlugin(_PluginBase):
     """
-    OpenList自动复制插件 - 通过AList API实现多目录间文件复制
+    AList复制插件 - 通过AList API实现多目录间文件复制
     """
     # 插件基本信息
     plugin_name = "OpenList自动复制"
@@ -50,121 +45,43 @@ class AlistCopyPlugin(_PluginBase):
     plugin_order = 1
     auth_level = 1
 
-    # 默认视频文件尾缀
+    # 文件后缀配置
     DEFAULT_VIDEO_SUFFIXES = [
         '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', 
         '.m4v', '.3gp', '.ts', '.mts', '.m2ts', '.vob', '.ogv',
         '.mpg', '.mpeg', '.rm', '.rmvb', '.asf', '.divx'
     ]
-    
-    # 自定义文件尾缀（字幕、元数据、封面图）
     CUSTOM_SUFFIXES = ['.srt', '.ass', '.nfo', '.jpg', '.png']
 
-    # 私有属性
-    _enabled: bool = False
-    _cron: str = ""
-    _onlyonce: bool = False
-    _clear_cache: bool = False
-    _alist_url: str = ""
-    _alist_token: str = ""
-    _directory_pairs: str = ""
-    _enable_custom_suffix: bool = False
-    _use_moviepilot_config: bool = True
-    _enable_wechat_notify: bool = False
-    _notify_type: str = "default"
+    def __init__(self):
+        super().__init__()
+        # 初始化配置项
+        self._enabled: bool = False
+        self._cron: str = ""
+        self._onlyonce: bool = False
+        self._clear_cache: bool = False
+        self._alist_url: str = ""
+        self._alist_token: str = ""
+        self._directory_pairs: str = ""
+        self._enable_custom_suffix: bool = False
+        self._use_moviepilot_config: bool = True
+        self._enable_wechat_notify: bool = False
 
-    # 任务状态
-    _task_status: Dict[str, Any] = {}
-    _copied_files: Dict[str, Any] = {}
-    _target_files_count: int = 0
+        # 实例变量
+        self._alist_instance: Any = None
+        self._notification_helper: Any = None
 
-    # 调度器
-    _scheduler: Optional[BackgroundScheduler] = None
+        # 状态数据
+        self._task_status: Dict[str, Any] = self._get_default_task_status()
+        self._copied_files: Dict[str, Any] = {}
+        self._target_files_count: int = 0
 
-    def init_plugin(self, config: dict = None):
-        """
-        初始化插件
-        """
-        # 停止现有服务
-        self.stop_service()
-
-        # 读取配置
-        if config:
-            self._enabled = config.get("enabled", False)
-            self._cron = config.get("cron", "")
-            self._onlyonce = config.get("onlyonce", False)
-            self._clear_cache = config.get("clear_cache", False)
-            self._alist_url = config.get("alist_url", "").rstrip('/')
-            self._alist_token = config.get("alist_token", "")
-            self._directory_pairs = config.get("directory_pairs", "")
-            self._enable_custom_suffix = config.get("enable_custom_suffix", False)
-            self._use_moviepilot_config = config.get("use_moviepilot_config", True)
-            self._enable_wechat_notify = config.get("enable_wechat_notify", False)
-            self._notify_type = config.get("notify_type", "default")
-
-        # 如果启用了清除缓存，则清空所有数据
-        if self._clear_cache:
-            logger.info("检测到清除缓存选项，正在清空插件数据...")
-            self._clear_all_data()
-            # 重置清除缓存标志
-            self._clear_cache = False
-            self.__update_config()
-
-        # 恢复任务状态
-        saved_status = self.get_data("alistcopy_task_status")
-        if saved_status:
-            self._task_status = saved_status
-        else:
-            self._task_status = self._get_default_task_status()
-
-        # 恢复复制记录
-        saved_copied_files = self.get_data("alistcopy_copied_files")
-        if saved_copied_files:
-            self._copied_files = saved_copied_files
-        else:
-            self._copied_files = {}
-
-        # 恢复目标目录文件数
-        saved_target_count = self.get_data("alistcopy_target_files_count")
-        if saved_target_count is not None:
-            self._target_files_count = saved_target_count
-        else:
-            self._target_files_count = 0
-
-        # 启动服务
-        if self._enabled:
-            # 初始化调度器
-            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-
-            # 添加定时任务
-            if self._cron:
-                try:
-                    self._scheduler.add_job(
-                        func=self.execute_copy_task,
-                        trigger=CronTrigger.from_crontab(self._cron),
-                        name="OpenList自动复制任务"
-                    )
-                    logger.info(f"定时任务已设置：{self._cron}")
-                except Exception as err:
-                    logger.error(f"定时任务配置错误：{str(err)}")
-
-            # 立即执行一次
-            if self._onlyonce:
-                logger.info("检测到立即运行一次，开始执行OpenList复制任务")
-                self._scheduler.add_job(
-                    func=self.execute_copy_task,
-                    trigger='date',
-                    run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                    name="立即执行OpenList复制"
-                )
-                # 关闭一次性开关
-                self._onlyonce = False
-                self.__update_config()
-
-            # 启动任务
-            if self._scheduler.get_jobs():
-                self._scheduler.print_jobs()
-                self._scheduler.start()
+        # 固定的卡片样式图片URL
+        self._default_card_image = "https://raw.githubusercontent.com/LittlePigeno217/MoviePilot-Plugins/main/icons/Alist_B.png"
+        
+        # 用于记录本次执行前的已完成文件数量
+        self._previous_completed_count: int = 0
+        self._previous_completed_files: List[str] = []
 
     def _get_default_task_status(self) -> Dict[str, Any]:
         """获取默认任务状态"""
@@ -183,40 +100,293 @@ class AlistCopyPlugin(_PluginBase):
             "completed_pairs": 0
         }
 
+    def _get_current_suffixes(self) -> List[str]:
+        """获取当前启用的文件后缀列表"""
+        all_suffixes = self.DEFAULT_VIDEO_SUFFIXES.copy()
+        if self._enable_custom_suffix:
+            for suffix in self.CUSTOM_SUFFIXES:
+                if suffix not in all_suffixes:
+                    all_suffixes.append(suffix)
+        return all_suffixes
+
+    def _is_media_file(self, filename: str) -> bool:
+        """判断文件是否为媒体文件"""
+        current_suffixes = self._get_current_suffixes()
+        return any(filename.endswith(suffix) for suffix in current_suffixes)
+
+    def _normalize_path(self, path: str) -> str:
+        """标准化路径"""
+        return path.rstrip('/')
+
+    def _get_relative_path(self, file_path: str, base_dir: str) -> str:
+        """获取文件相对于基础目录的相对路径"""
+        if not base_dir.endswith('/'):
+            base_dir += '/'
+        
+        if file_path.startswith(base_dir):
+            return file_path[len(base_dir):]
+        
+        try:
+            return os.path.relpath(file_path, base_dir)
+        except:
+            return os.path.basename(file_path)
+
+    def _generate_file_key(self, source_path: str, target_path: str) -> str:
+        """生成文件唯一标识"""
+        key_string = f"{source_path}->{target_path}"
+        return hashlib.md5(key_string.encode()).hexdigest()
+
+    def init_plugin(self, config: dict = None):
+        """初始化插件"""
+        self.stop_service()
+
+        # 读取配置
+        if config:
+            self._enabled = config.get("enabled", False)
+            self._cron = config.get("cron", "")
+            self._onlyonce = config.get("onlyonce", False)
+            self._clear_cache = config.get("clear_cache", False)
+            self._alist_url = config.get("alist_url", "").rstrip('/')
+            self._alist_token = config.get("alist_token", "")
+            self._directory_pairs = config.get("directory_pairs", "")
+            self._enable_custom_suffix = config.get("enable_custom_suffix", False)
+            self._use_moviepilot_config = config.get("use_moviepilot_config", True)
+            self._enable_wechat_notify = config.get("enable_wechat_notify", False)
+
+        # 初始化实例
+        self._init_moviepilot_alist()
+        if NOTIFICATION_AVAILABLE:
+            self._notification_helper = NotificationHelper()
+
+        # 处理清除缓存
+        if self._clear_cache:
+            logger.info("检测到清除缓存选项，正在清空插件数据...")
+            self._clear_all_data()
+            self._clear_cache = False
+            self.__update_config()
+
+        # 恢复状态数据
+        self._task_status = self.get_data("alistcopy_task_status") or self._get_default_task_status()
+        self._copied_files = self.get_data("alistcopy_copied_files") or {}
+        self._target_files_count = self.get_data("alistcopy_target_files_count") or 0
+
+        # 启动服务
+        if self._enabled:
+            if self._onlyonce:
+                logger.info("检测到立即运行一次，开始执行AList复制任务")
+                import threading
+                threading.Thread(target=self.execute_copy_task, daemon=True).start()
+                self._onlyonce = False
+                self.__update_config()
+
+    def _create_notification(self, title: str, text: str) -> Notification:
+        """
+        创建通知对象 - 固定使用卡片样式
+        """
+        return Notification(
+            mtype=NotificationType.Manual,
+            title=title,
+            text=text,
+            image=self._default_card_image,
+            channel=MessageChannel.Wechat
+        )
+
+    def _get_wechat_instance(self) -> Any:
+        """
+        获取可用的企业微信实例
+        返回: 企业微信实例或None
+        """
+        if not self._notification_helper:
+            return None
+            
+        service_names = self._notification_helper.get_services()
+        for service_name in service_names:
+            service = self._notification_helper.get_service(name=service_name)
+            if service and service.config.enabled:
+                return service.instance
+        return None
+
+    def _send_wecom_card(self, title: str, text: str, picurl: str = None, wechat_instance=None) -> bool:
+        """
+        发送企业微信卡片消息（支持指定实例）
+        """
+        try:
+            # 允许外部传入实例，优先用传入的
+            if wechat_instance is None:
+                wechat_instance = self._get_wechat_instance()
+            if not wechat_instance:
+                logger.error("未找到企业微信服务实例")
+                return False
+
+            # 获取access_token
+            if not wechat_instance._WeChat__get_access_token():
+                logger.error("获取微信access_token失败，请检查参数配置")
+                return False
+
+            # 构建卡片消息（news类型，支持图片）
+            article = {
+                "title": title,
+                "description": text,
+                "picurl": picurl or self._default_card_image
+            }
+
+            req_json = {
+                "touser": "@all",
+                "msgtype": "news",
+                "agentid": wechat_instance._appid,
+                "news": {
+                    "articles": [article]
+                },
+                "safe": 0,
+                "enable_id_trans": 0,
+                "enable_duplicate_check": 0
+            }
+
+            # 拼接代理地址
+            base_url = "https://qyapi.weixin.qq.com"
+            if getattr(wechat_instance, '_proxy', None):
+                base_url = wechat_instance._proxy
+            message_url = f"{base_url}/cgi-bin/message/send?access_token={wechat_instance._access_token}"
+
+            res = RequestUtils().post(message_url, json=req_json)
+            if res is None:
+                logger.error("发送请求失败，未获取到返回信息")
+                return False
+            if res.status_code != 200:
+                logger.error(f"发送请求失败，错误码：{res.status_code}，错误原因：{res.reason}")
+                return False
+
+            ret_json = res.json()
+            if ret_json.get("errcode") == 0:
+                return True
+            else:
+                logger.error(f"企业微信消息发送失败: {ret_json.get('errmsg')}")
+                return False
+        except Exception as e:
+            logger.error(f"企业微信文本卡片消息发送异常: {str(e)}")
+            return False
+
+    def _send_wechat_message(self, service: Any, title: str, text: str) -> bool:
+        """
+        发送企业微信消息的通用方法 - 固定使用卡片样式
+        """
+        if not service or not service.instance:
+            return False
+
+        wechat_instance = service.instance
+        
+        # 固定使用卡片样式
+        return self._send_wecom_card(title, text, picurl=self._default_card_image, wechat_instance=wechat_instance)
+
+    def post_message(self, message: Notification):
+        """
+        兼容主程序类型分发逻辑，支持企业微信card推送。
+        """
+        try:
+            # 获取消息属性
+            mtype = getattr(message, "mtype", None)
+            mtype_value = mtype.value if mtype else None
+            channel = getattr(message, "channel", None)
+            text = getattr(message, "text", "")
+            title = getattr(message, "title", "")
+            
+            # 获取所有通知服务名称
+            if not self._notification_helper:
+                logger.warning("通知助手未初始化，无法发送通知")
+                return
+                
+            service_names = self._notification_helper.get_services()
+            for service_name in service_names:
+                service = self._notification_helper.get_service(name=service_name)
+                if not service or not service.config.enabled:
+                    continue
+
+                # 检查消息类型开关
+                switchs = getattr(service.config, 'switchs', []) or []
+                if mtype_value and mtype_value not in switchs:
+                    continue
+
+                # 处理企业微信消息
+                if channel == MessageChannel.Wechat:
+                    try:
+                        self._send_wechat_message(service, title, text)
+                        logger.info(f"企业微信通知发送成功: {title}")
+                    except Exception as e:
+                        logger.error(f"发送企业微信消息失败: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"插件post_message分发异常: {str(e)}")
+
+    def _init_moviepilot_alist(self):
+        """初始化MoviePilot Alist实例"""
+        if not ALIST_AVAILABLE:
+            logger.warning("MoviePilot Alist模块不可用，请确保安装了正确版本的MoviePilot")
+            return
+            
+        try:
+            self._alist_instance = Alist()
+            logger.info("MoviePilot Alist实例初始化成功")
+            
+            if self._use_moviepilot_config:
+                self._update_alist_config_from_instance()
+                
+        except Exception as e:
+            logger.error(f"初始化MoviePilot Alist实例失败: {str(e)}")
+
+    def _update_alist_config_from_instance(self):
+        """从MoviePilot Alist实例更新配置"""
+        if not self._alist_instance:
+            return
+            
+        try:
+            # 获取基础URL
+            if hasattr(self._alist_instance, '_Alist__get_base_url'):
+                base_url = self._alist_instance._Alist__get_base_url
+                if base_url:
+                    self._alist_url = base_url.rstrip('/')
+                    logger.info(f"从MoviePilot Alist实例获取地址: {self._alist_url}")
+            
+            # 获取Token
+            if hasattr(self._alist_instance, '_Alist__get_valuable_toke'):
+                token = self._alist_instance._Alist__get_valuable_toke
+                if token:
+                    self._alist_token = token
+                    logger.info("从MoviePilot Alist实例获取Token成功")
+                    
+        except Exception as e:
+            logger.error(f"从MoviePilot Alist实例获取配置失败: {str(e)}")
+
+    def get_state(self) -> bool:
+        return self._enabled
+
     def __update_config(self):
-        """更新配置"""
+        """统一更新配置"""
         self.update_config({
-            "enabled": self._enabled,
             "onlyonce": self._onlyonce,
             "clear_cache": self._clear_cache,
             "cron": self._cron,
+            "enabled": self._enabled,
             "alist_url": self._alist_url,
             "alist_token": self._alist_token,
             "directory_pairs": self._directory_pairs,
             "enable_custom_suffix": self._enable_custom_suffix,
             "use_moviepilot_config": self._use_moviepilot_config,
-            "enable_wechat_notify": self._enable_wechat_notify,
-            "notify_type": self._notify_type
+            "enable_wechat_notify": self._enable_wechat_notify
         })
 
     def _clear_all_data(self):
         """清空所有插件数据"""
-        # 清空任务状态
         self._task_status = self._get_default_task_status()
-        self.save_data("alistcopy_task_status", self._task_status)
-        
-        # 清空复制记录
         self._copied_files = {}
-        self.save_data("alistcopy_copied_files", self._copied_files)
-        
-        # 清空目标目录文件数
         self._target_files_count = 0
+        self._previous_completed_count = 0
+        self._previous_completed_files = []
+        
+        self.save_data("alistcopy_task_status", self._task_status)
+        self.save_data("alistcopy_copied_files", self._copied_files)
         self.save_data("alistcopy_target_files_count", self._target_files_count)
         
         logger.info("插件数据已全部清空，将重新开始记录")
-
-    def get_state(self) -> bool:
-        return self._enabled
 
     def get_api(self) -> List[Dict[str, Any]]:
         return [
@@ -235,9 +405,7 @@ class AlistCopyPlugin(_PluginBase):
         ]
 
     def get_service(self) -> List[Dict[str, Any]]:
-        """
-        获取定时服务 - 使用系统调度器
-        """
+        """获取定时服务"""
         services = []
         if self._enabled and self._cron:
             services.append({
@@ -250,21 +418,14 @@ class AlistCopyPlugin(_PluginBase):
         return services
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        """获取配置表单"""
         # 检查MoviePilot Alist模块是否可用
         alist_available = ALIST_AVAILABLE
-        
-        # 通知类型选项
-        notify_type_options = [
-            {"title": "默认样式", "value": "default"},
-            {"title": "卡片样式", "value": "card"}
-        ]
         
         return [
             {
                 "component": "VForm",
                 "content": [
-                    # 基本设置卡片
+                    # 第一块：基本设置
                     {
                         "component": "VCard",
                         "props": {"variant": "outlined", "class": "mb-4"},
@@ -273,121 +434,165 @@ class AlistCopyPlugin(_PluginBase):
                                 "component": "VCardText",
                                 "content": [
                                     {
-                                        'component': 'VRow',
-                                        'content': [
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
+                                        "content": [
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 3},
-                                                'content': [
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-cog", "color": "primary", "class": "mr-2"},
+                                                "text": ""
+                                            },
+                                            {
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "基本设置"
+                                            }
+                                        ]
+                                    },
+                                    # 第一行：启动插件，刮削文件，立即运行，清除缓存，执行周期
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
                                                     {
-                                                        'component': 'VSwitch',
-                                                        'props': {
-                                                            'model': 'enabled',
-                                                            'label': '启用插件',
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "enabled",
+                                                            "label": "启动插件",
                                                         }
                                                     }
                                                 ]
                                             },
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 3},
-                                                'content': [
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
                                                     {
-                                                        'component': 'VSwitch',
-                                                        'props': {
-                                                            'model': 'onlyonce',
-                                                            'label': '立即运行一次',
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "enable_custom_suffix",
+                                                            "label": "刮削文件",
+                                                            "hint": "额外复制字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)文件"
                                                         }
                                                     }
                                                 ]
                                             },
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 3},
-                                                'content': [
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
                                                     {
-                                                        'component': 'VSwitch',
-                                                        'props': {
-                                                            'model': 'clear_cache',
-                                                            'label': '清除缓存',
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "onlyonce",
+                                                            "label": "立即运行",
                                                         }
                                                     }
                                                 ]
                                             },
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 3},
-                                                'content': [
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
                                                     {
-                                                        'component': 'VSwitch',
-                                                        'props': {
-                                                            'model': 'enable_wechat_notify',
-                                                            'label': '微信通知',
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "clear_cache",
+                                                            "label": "清理统计",
                                                         }
                                                     }
                                                 ]
                                             }
                                         ]
                                     },
+                                    # 第二行：发送通知，使用MoviePilot的内置Alist/OpenList，执行周期
                                     {
-                                        'component': 'VRow',
-                                        'content': [
+                                        "component": "VRow",
+                                        "props": {"class": "mt-4"},
+                                        "content": [
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 4},
-                                                'content': [
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
                                                     {
-                                                        'component': 'VTextField',
-                                                        'props': {
-                                                            'model': 'cron',
-                                                            'label': '执行周期',
-                                                            'placeholder': '0 2 * * *'
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "enable_wechat_notify",
+                                                            "label": "发送通知",
+                                                            "hint": "当有复制任务时发送企业微信卡片通知"
                                                         }
                                                     }
                                                 ]
                                             },
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 4},
-                                                'content': [
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
                                                     {
-                                                        'component': 'VSelect',
-                                                        'props': {
-                                                            'model': 'notify_type',
-                                                            'label': '通知样式',
-                                                            'items': notify_type_options
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "use_moviepilot_config",
+                                                            "label": "使用MoviePilot的内置Alist/OpenList",
+                                                            "hint": "使用MoviePilot中已配置的Alist/OpenList实例",
+                                                            "disabled": not alist_available
                                                         }
                                                     }
                                                 ]
                                             },
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 4},
-                                                'content': [
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
                                                     {
-                                                        'component': 'VSwitch',
-                                                        'props': {
-                                                            'model': 'enable_custom_suffix',
-                                                            'label': '复制字幕元数据',
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "cron",
+                                                            "label": "执行周期",
+                                                            "placeholder": "0 2 * * *",
+                                                            "hint": "Cron表达式，默认每天凌晨2点执行"
                                                         }
                                                     }
                                                 ]
                                             }
                                         ]
                                     },
+                                    # 第三行：如果没有勾选读取内置配置，显示地址和令牌
                                     {
-                                        'component': 'VRow',
-                                        'content': [
+                                        "component": "VRow",
+                                        "props": {"class": "mt-4"},
+                                        "content": [
                                             {
-                                                'component': 'VCol',
-                                                'props': {'cols': 12, 'md': 6},
-                                                'content': [
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 6},
+                                                "content": [
                                                     {
-                                                        'component': 'VSwitch',
-                                                        'props': {
-                                                            'model': 'use_moviepilot_config',
-                                                            'label': '使用MoviePilot配置',
-                                                            'disabled': not alist_available
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "alist_url",
+                                                            "label": "AList/OpenList地址",
+                                                            "placeholder": "http://localhost:5244",
+                                                            "hint": "请输入完整的AList或OpenList服务地址，如果使用MoviePilot配置则此项可留空",
+                                                            "disabled": self._use_moviepilot_config and alist_available
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 6},
+                                                "content": [
+                                                    {
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "alist_token",
+                                                            "label": "AList/OpenList令牌",
+                                                            "type": "password",
+                                                            "placeholder": "在AList/OpenList后台获取",
+                                                            "hint": "在AList/OpenList管理后台的'设置'-'全局'中获取令牌，如果使用MoviePilot配置则此项可留空",
+                                                            "disabled": self._use_moviepilot_config and alist_available
                                                         }
                                                     }
                                                 ]
@@ -399,133 +604,47 @@ class AlistCopyPlugin(_PluginBase):
                         ]
                     },
                     
-                    # 连接设置和目录配对（并排显示）
+                    # 第二块：目录配对设置
                     {
-                        "component": "VRow",
+                        "component": "VCard",
+                        "props": {"variant": "outlined", "class": "mb-4"},
                         "content": [
-                            # Alist/OpenList连接设置
                             {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
+                                "component": "VCardText",
                                 "content": [
                                     {
-                                        "component": "VCard",
-                                        "props": {"variant": "outlined", "class": "mb-4", "height": "100%"},
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
                                         "content": [
                                             {
-                                                "component": "VCardText",
-                                                "content": [
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "d-flex align-center mb-4"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VIcon",
-                                                                "props": {"icon": "mdi-server-network", "color": "primary", "class": "mr-2"},
-                                                                "text": ""
-                                                            },
-                                                            {
-                                                                "component": "span",
-                                                                "props": {"class": "text-h6"},
-                                                                "text": "AList/OpenList连接设置"
-                                                            }
-                                                        ]
-                                                    },
-                                                    {
-                                                        "component": "VRow",
-                                                        "content": [
-                                                            {
-                                                                "component": "VCol",
-                                                                "props": {"cols": 12},
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VTextField",
-                                                                        "props": {
-                                                                            "model": "alist_url",
-                                                                            "label": "服务地址",
-                                                                            "placeholder": "http://localhost:5244",
-                                                                            "disabled": self._use_moviepilot_config and alist_available
-                                                                        }
-                                                                    }
-                                                                ]
-                                                            }
-                                                        ]
-                                                    },
-                                                    {
-                                                        "component": "VRow",
-                                                        "content": [
-                                                            {
-                                                                "component": "VCol",
-                                                                "props": {"cols": 12},
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VTextField",
-                                                                        "props": {
-                                                                            "model": "alist_token",
-                                                                            "label": "访问令牌",
-                                                                            "type": "password",
-                                                                            "placeholder": "在AList后台获取",
-                                                                            "disabled": self._use_moviepilot_config and alist_available
-                                                                        }
-                                                                    }
-                                                                ]
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-folder-multiple", "color": "primary", "class": "mr-2"},
+                                                "text": ""
+                                            },
+                                            {
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "目录配对设置"
                                             }
                                         ]
-                                    }
-                                ]
-                            },
-                            # 目录配对设置
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
+                                    },
+                                    # 目录配对设置
                                     {
-                                        "component": "VCard",
-                                        "props": {"variant": "outlined", "class": "mb-4", "height": "100%"},
+                                        "component": "VRow",
                                         "content": [
                                             {
-                                                "component": "VCardText",
+                                                "component": "VCol",
+                                                "props": {"cols": 12},
                                                 "content": [
                                                     {
-                                                        "component": "div",
-                                                        "props": {"class": "d-flex align-center mb-4"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VIcon",
-                                                                "props": {"icon": "mdi-folder-multiple", "color": "primary", "class": "mr-2"},
-                                                                "text": ""
-                                                            },
-                                                            {
-                                                                "component": "span",
-                                                                "props": {"class": "text-h6"},
-                                                                "text": "目录配对设置"
-                                                            }
-                                                        ]
-                                                    },
-                                                    {
-                                                        "component": "VRow",
-                                                        "content": [
-                                                            {
-                                                                "component": "VCol",
-                                                                "props": {"cols": 12},
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VTextarea",
-                                                                        "props": {
-                                                                            "model": "directory_pairs",
-                                                                            "label": "目录配对",
-                                                                            "placeholder": "源目录1#目标目录1\n源目录2#目标目录2",
-                                                                            "rows": 8,
-                                                                            "hint": "每行一组配对，使用#分隔源目录和目标目录"
-                                                                        }
-                                                                    }
-                                                                ]
-                                                            }
-                                                        ]
+                                                        "component": "VTextarea",
+                                                        "props": {
+                                                            "model": "directory_pairs",
+                                                            "label": "目录配对",
+                                                            "placeholder": "源目录1#目标目录1\n源目录2#目标目录2",
+                                                            "rows": 3,
+                                                            "hint": "每行一组配对，使用#分隔源目录和目标目录"
+                                                        }
                                                     }
                                                 ]
                                             }
@@ -536,58 +655,94 @@ class AlistCopyPlugin(_PluginBase):
                         ]
                     },
                     
-                    # 说明信息
+                    # 第三块：说明信息
                     {
                         "component": "VCard",
-                        "props": {"variant": "outlined", "class": "mb-4"},
+                        "props": {"variant": "outlined", "class": "mt-4"},
                         "content": [
                             {
                                 "component": "VCardText",
                                 "content": [
                                     {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "info",
-                                            "text": True,
-                                            "variant": "tonal"
-                                        },
+                                        "component": "div",
+                                        "props": {"class": "d-flex align-center mb-4"},
                                         "content": [
                                             {
-                                                "component": "div",
-                                                "props": {"class": "font-weight-bold mb-2"},
-                                                "text": "文件尾缀说明："
+                                                "component": "VIcon",
+                                                "props": {"icon": "mdi-information", "color": "info", "class": "mr-2"},
+                                                "text": ""
                                             },
                                             {
-                                                "component": "div", 
-                                                "text": "• 默认：自动匹配常用视频格式（mp4, mkv, avi, mov等）"
-                                            },
-                                            {
-                                                "component": "div",
-                                                "text": "• 勾选复制字幕元数据：额外匹配字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
+                                                "component": "span",
+                                                "props": {"class": "text-h6"},
+                                                "text": "说明信息"
                                             }
                                         ]
                                     },
                                     {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "warning",
-                                            "text": True,
-                                            "variant": "tonal",
-                                            "class": "mt-3"
-                                        },
+                                        "component": "VRow",
                                         "content": [
                                             {
-                                                "component": "div",
-                                                "props": {"class": "font-weight-bold mb-2"},
-                                                "text": "清除缓存说明："
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 6},
+                                                "content": [
+                                                    {
+                                                        "component": "VAlert",
+                                                        "props": {
+                                                            "type": "info",
+                                                            "text": True,
+                                                            "variant": "tonal"
+                                                        },
+                                                        "content": [
+                                                            {
+                                                                "component": "div",
+                                                                "props": {"class": "font-weight-bold mb-2"},
+                                                                "text": "文件尾缀说明："
+                                                            },
+                                                            {
+                                                                "component": "div", 
+                                                                "text": "• 默认：自动匹配常用视频格式（mp4, mkv, avi, mov等）"
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 勾选复制字幕/元数据/封面图：额外匹配字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
                                             },
                                             {
-                                                "component": "div",
-                                                "text": "• 勾选此选项后保存，将清空所有复制记录和任务状态"
-                                            },
-                                            {
-                                                "component": "div",
-                                                "text": "• 插件将重新开始记录复制历史"
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 6},
+                                                "content": [
+                                                    {
+                                                        "component": "VAlert",
+                                                        "props": {
+                                                            "type": "warning",
+                                                            "text": True,
+                                                            "variant": "tonal"
+                                                        },
+                                                        "content": [
+                                                            {
+                                                                "component": "div",
+                                                                "props": {"class": "font-weight-bold mb-2"},
+                                                                "text": "清除缓存说明："
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 勾选此选项后保存，将清空所有复制记录和任务状态"
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 插件将重新开始记录复制历史"
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "text": "• 此操作不可逆，请谨慎使用"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }
@@ -607,13 +762,12 @@ class AlistCopyPlugin(_PluginBase):
             "enable_custom_suffix": self._enable_custom_suffix,
             "use_moviepilot_config": self._use_moviepilot_config,
             "enable_wechat_notify": self._enable_wechat_notify,
-            "notify_type": self._notify_type,
             "cron": self._cron or "0 2 * * *"
         }
 
     def get_page(self) -> List[dict]:
-        """获取插件页面"""
-        # 获取状态信息
+        # 直接使用已保存的数据显示页面
+        
         status = self._task_status
         status_config = {
             "idle": {"color": "info", "text": "空闲", "icon": "mdi-play-circle-outline"},
@@ -626,8 +780,10 @@ class AlistCopyPlugin(_PluginBase):
         # 获取状态统计
         copying_count, completed_count = self._get_file_status_counts()
         
-        # 获取最近完成的媒体文件
+        # 获取最近完成的50个媒体文件
         recent_media_files = self._get_recent_media_files(50)
+        
+        # 获取正在复制的50个媒体文件
         copying_media_files = self._get_copying_media_files(50)
         
         return [
@@ -637,7 +793,7 @@ class AlistCopyPlugin(_PluginBase):
                     {
                         "component": "VCardText",
                         "content": [
-                            # 统计标题
+                            # 第一行：OpenList媒体复制统计
                             {
                                 "component": "div",
                                 "props": {"class": "d-flex align-center mb-4"},
@@ -655,11 +811,11 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 统计卡片
+                            # 第二行：三个状态框（每行4列，共12列）
                             {
                                 "component": "VRow",
                                 "content": [
-                                    # 目标目录媒体文件数
+                                    # 状态框1：目标目录媒体文件数
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 4},
@@ -693,7 +849,7 @@ class AlistCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 当前复制媒体文件数量
+                                    # 状态框2：当前复制媒体文件数量
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 4},
@@ -727,7 +883,7 @@ class AlistCopyPlugin(_PluginBase):
                                             }
                                         ]
                                     },
-                                    # 累计复制媒体文件数量
+                                    # 状态框3：累计复制媒体文件数量
                                     {
                                         "component": "VCol",
                                         "props": {"cols": 12, "md": 4},
@@ -764,7 +920,7 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 正在复制的媒体文件
+                            # 第三行：正在复制的媒体文件记录状态框
                             {
                                 "component": "VRow",
                                 "props": {"class": "mt-4"},
@@ -809,7 +965,7 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 最近完成的媒体文件
+                            # 第四行：最近完成的媒体文件记录状态框
                             {
                                 "component": "VRow",
                                 "props": {"class": "mt-4"},
@@ -854,7 +1010,7 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 任务状态
+                            # 任务状态信息
                             {
                                 "component": "VRow",
                                 "props": {"class": "mt-4"},
@@ -912,547 +1068,6 @@ class AlistCopyPlugin(_PluginBase):
             }
         ]
 
-    def execute_copy_task(self):
-        """执行复制任务"""
-        logger.info("开始执行OpenList多目录复制任务")
-        
-        # 验证配置
-        if not self._validate_config():
-            directory_pairs = self._parse_directory_pairs()
-            if directory_pairs:
-                self._update_target_files_count(directory_pairs)
-            return
-            
-        directory_pairs = self._parse_directory_pairs()
-        if not directory_pairs:
-            self._complete_task("failed", "未配置有效的目录配对")
-            self._update_target_files_count(directory_pairs)
-            return
-        
-        # 任务执行前先更新媒体文件状态
-        self._update_file_status_and_counts(silent=True)
-        
-        # 检查是否需要执行复制任务
-        copying_count, completed_count = self._get_file_status_counts()
-        if not self._should_execute_copy_task(directory_pairs, copying_count):
-            logger.info("无需执行复制任务，所有媒体文件已处理完成")
-            self._update_target_files_count(directory_pairs)
-            self._complete_task("success", "无需执行复制任务，所有媒体文件已处理完成")
-            return
-            
-        # 执行复制任务
-        successfully_copied_files = []
-        global_processed_files = set()
-            
-        self._task_status.update({
-            "status": "running",
-            "progress": 0,
-            "message": f"开始准备复制任务，共 {len(directory_pairs)} 组目录配对...",
-            "start_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "end_time": None,
-            "total_files": 0,
-            "copied_files": 0,
-            "skipped_files": 0,
-            "current_pair": "",
-            "total_pairs": len(directory_pairs),
-            "completed_pairs": 0
-        })
-        self._save_task_status()
-        
-        try:
-            if not self._verify_alist_connection():
-                raise Exception("AList连接失败，请检查地址和令牌")
-            
-            total_copied = 0
-            total_skipped = 0
-            total_files = 0
-            
-            for i, pair in enumerate(directory_pairs):
-                source_dir = pair["source"]
-                target_dir = pair["target"]
-                
-                self._task_status["current_pair"] = f"{source_dir} → {target_dir}"
-                self._update_status(f"正在处理第 {i+1}/{len(directory_pairs)} 组目录配对: {source_dir} → {target_dir}", 
-                                  int((i) / len(directory_pairs) * 100))
-                
-                pair_result = self._execute_single_copy(source_dir, target_dir, i, len(directory_pairs), 
-                                                      successfully_copied_files, global_processed_files)
-                if pair_result:
-                    total_copied += pair_result["copied"]
-                    total_skipped += pair_result["skipped"]
-                    total_files += pair_result["total"]
-                
-                self._task_status["completed_pairs"] = i + 1
-                self._save_task_status()
-            
-            # 任务完成后更新媒体文件状态
-            self._update_file_status_and_counts(silent=False)
-            
-            # 发送通知
-            if self._enable_wechat_notify and successfully_copied_files:
-                self._send_wechat_notification(total_copied, successfully_copied_files)
-            
-            self._complete_task("success", 
-                               f"复制完成！共处理 {len(directory_pairs)} 组目录配对，"
-                               f"总计 {total_files} 个媒体文件，"
-                               f"复制 {total_copied} 个，"
-                               f"跳过 {total_skipped} 个")
-                               
-        except Exception as e:
-            logger.error(f"复制任务执行失败: {str(e)}")
-            self._complete_task("failed", f"任务执行失败: {str(e)}")
-        finally:
-            # 更新目标目录媒体文件数
-            self._update_target_files_count(directory_pairs)
-
-    # 以下为辅助方法，保持原有逻辑不变
-    def _parse_directory_pairs(self) -> List[Dict[str, str]]:
-        """解析目录配对"""
-        pairs = []
-        if not self._directory_pairs:
-            return pairs
-            
-        lines = self._directory_pairs.strip().split('\n')
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            if '#' in line:
-                parts = line.split('#', 1)
-                if len(parts) == 2:
-                    source = parts[0].strip()
-                    target = parts[1].strip()
-                    if source and target:
-                        pairs.append({
-                            "source": source,
-                            "target": target
-                        })
-        return pairs
-
-    def _get_current_suffixes(self) -> List[str]:
-        """获取当前文件尾缀列表"""
-        all_suffixes = self.DEFAULT_VIDEO_SUFFIXES.copy()
-        
-        if self._enable_custom_suffix:
-            for suffix in self.CUSTOM_SUFFIXES:
-                if suffix not in all_suffixes:
-                    all_suffixes.append(suffix)
-        
-        return all_suffixes
-
-    def _validate_config(self) -> bool:
-        """验证配置"""
-        if not self._alist_url or not self._alist_token:
-            self._complete_task("failed", "AList地址或令牌未配置")
-            return False
-            
-        directory_pairs = self._parse_directory_pairs()
-        if not directory_pairs:
-            self._complete_task("failed", "未配置有效的目录配对")
-            return False
-            
-        return True
-
-    def _verify_alist_connection(self) -> bool:
-        """验证AList连接"""
-        try:
-            url = f"{self._alist_url}/api/me"
-            headers = {
-                "Authorization": self._alist_token,
-                "Content-Type": "application/json"
-            }
-            
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            return data.get("code") == 200
-        except Exception as e:
-            logger.error(f"AList连接验证失败: {str(e)}")
-            return False
-
-    def _should_execute_copy_task(self, directory_pairs: List[Dict[str, str]], copying_count: int) -> bool:
-        """判断是否需要执行复制任务"""
-        if copying_count > 0:
-            return True
-            
-        logger.info("检查源目录是否有新媒体文件需要复制...")
-        
-        for pair in directory_pairs:
-            source_dir = pair["source"]
-            target_dir = pair["target"]
-            
-            try:
-                source_files = self._get_alist_files(source_dir)
-                if not source_files:
-                    continue
-                
-                target_files = self._get_alist_files(target_dir)
-                target_index = self._build_target_index(target_files)
-                
-                current_suffixes = self._get_current_suffixes()
-                
-                for source_file in source_files:
-                    filename = source_file.get("name")
-                    if not filename:
-                        continue
-                        
-                    if not any(filename.endswith(suffix) for suffix in current_suffixes):
-                        continue
-                    
-                    if filename not in target_index:
-                        logger.info(f"发现新媒体文件需要复制: {filename}")
-                        return True
-                        
-            except Exception as e:
-                logger.error(f"检查目录配对 {source_dir} → {target_dir} 时出错: {str(e)}")
-                return True
-        
-        logger.info("所有源目录媒体文件已在目标目录中存在，无需执行复制任务")
-        return False
-
-    def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, 
-                           successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
-        """执行单个目录配对复制"""
-        try:
-            base_progress = int((pair_index) / total_pairs * 100)
-            
-            self._update_status(f"正在扫描目标目录: {target_dir}", base_progress + 5)
-            target_files = self._get_alist_files(target_dir)
-            target_index = self._build_target_index(target_files)
-            
-            self._update_status(f"正在扫描源目录: {source_dir}", base_progress + 15)
-            source_files = self._get_alist_files(source_dir)
-            if not source_files:
-                return {"copied": 0, "skipped": 0, "total": 0}
-            
-            self._update_status(f"开始复制媒体文件: {source_dir} → {target_dir}", base_progress + 25)
-            copy_result = self._copy_files(source_files, target_index, source_dir, target_dir, 
-                                         base_progress + 25, 70, successfully_copied_files, global_processed_files)
-            
-            return copy_result
-            
-        except Exception as e:
-            logger.error(f"处理目录配对 {source_dir} → {target_dir} 时出错: {str(e)}")
-            return {"copied": 0, "skipped": 0, "total": 0}
-
-    def _get_alist_files(self, path: str) -> List[dict]:
-        """获取AList文件列表"""
-        try:
-            url = f"{self._alist_url}/api/fs/list"
-            headers = {
-                "Authorization": self._alist_token,
-                "Content-Type": "application/json"
-            }
-            data = {"path": path, "password": ""}
-            
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            response.raise_for_status()
-            result = response.json()
-            
-            if result.get("code") != 200:
-                if "path not found" in result.get("message", "").lower() or "not exist" in result.get("message", "").lower():
-                    return []
-                logger.error(f"获取目录 {path} 文件失败: {result.get('message')}")
-                return []
-                
-            data_content = result.get("data", {})
-            content = data_content.get("content") if data_content else None
-            
-            if content is None:
-                return []
-                
-            if not isinstance(content, list):
-                logger.error(f"目录 {path} 返回的content不是列表类型: {type(content)}")
-                return []
-                
-            files = []
-            
-            for item in content:
-                if not isinstance(item, dict):
-                    continue
-                    
-                if item.get("is_dir"):
-                    sub_path = f"{path.rstrip('/')}/{item.get('name')}"
-                    sub_files = self._get_alist_files(sub_path)
-                    files.extend(sub_files)
-                else:
-                    files.append({
-                        "name": item.get("name"),
-                        "path": f"{path.rstrip('/')}/{item.get('name')}",
-                        "size": item.get("size"),
-                        "modified": item.get("modified")
-                    })
-                    
-            return files
-            
-        except Exception as e:
-            logger.error(f"获取文件列表失败: {str(e)}")
-            return []
-
-    def _build_target_index(self, target_files: List[dict]) -> set:
-        """构建目标索引"""
-        index = set()
-        
-        if not target_files:
-            return index
-            
-        current_suffixes = self._get_current_suffixes()
-            
-        for file in target_files:
-            filename = file.get("name")
-            if not filename:
-                continue
-                
-            if any(filename.endswith(suffix) for suffix in current_suffixes):
-                index.add(filename)
-                
-        return index
-
-    def _copy_files(self, source_files: List[dict], target_index: set, source_dir: str, target_dir: str, 
-                   base_progress: int, progress_range: int, successfully_copied_files: List[str], global_processed_files: set) -> Dict[str, int]:
-        """复制文件"""
-        if not source_files:
-            logger.warning("源文件列表为空，跳过复制")
-            return {"copied": 0, "skipped": 0, "total": 0}
-            
-        current_suffixes = self._get_current_suffixes()
-        
-        media_files = []
-        for file in source_files:
-            filename = file.get("name")
-            if filename and any(filename.endswith(suffix) for suffix in current_suffixes):
-                media_files.append(file)
-        
-        total = len(media_files)
-        copied = 0
-        skipped = 0
-        
-        logger.info(f"目录 {source_dir} → {target_dir} 需要处理的媒体文件数量: {total}")
-        
-        for i, source_file in enumerate(media_files):
-            try:
-                filename = source_file.get("name")
-                if not filename:
-                    continue
-                    
-                source_path = source_file.get("path")
-                if not source_path:
-                    continue
-                
-                progress = base_progress + int((i + 1) / total * progress_range)
-                
-                relative_path = self._get_relative_path(source_path, source_dir)
-                target_path = os.path.join(target_dir, relative_path).replace('\\', '/')
-                file_key = self._generate_file_key(source_path, target_path)
-                
-                if file_key in global_processed_files:
-                    skipped += 1
-                    logger.debug(f"跳过本次任务已处理媒体文件: {filename}")
-                    self._update_status(f"跳过已处理媒体文件: {filename}", progress)
-                    continue
-                
-                if file_key in self._copied_files:
-                    record_info = self._copied_files[file_key]
-                    record_status = record_info.get("status", "copying")
-                    
-                    if record_status == "completed":
-                        skipped += 1
-                        completed_time = record_info.get("completed_time", "未知时间")
-                        logger.debug(f"跳过已完成媒体文件: {filename} (完成于: {completed_time})")
-                        self._update_status(f"跳过已完成媒体文件: {filename}", progress)
-                        continue
-                    else:
-                        skipped += 1
-                        copied_time = record_info.get("copied_time", "未知时间")
-                        logger.debug(f"跳过复制中媒体文件: {filename} (记录于: {copied_time})")
-                        self._update_status(f"跳过复制中媒体文件: {filename}", progress)
-                        continue
-                
-                if filename in target_index:
-                    skipped += 1
-                    logger.debug(f"跳过目标目录已存在媒体文件: {filename}")
-                    self._update_status(f"跳过目标目录已存在媒体文件: {filename}", progress)
-                    continue
-                    
-                if self._execute_alist_copy_standard(source_path, target_path, filename):
-                    copied += 1
-                    self._task_status["copied_files"] += 1
-                    
-                    self._copied_files[file_key] = {
-                        "source_path": source_path,
-                        "target_path": target_path,
-                        "filename": filename,
-                        "copied_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "status": "copying"
-                    }
-                    self._save_copied_files()
-                    
-                    global_processed_files.add(file_key)
-                    successfully_copied_files.append(filename)
-                    
-                    self._update_status(f"创建复制任务: {filename}", progress)
-                else:
-                    logger.error(f"复制失败: {filename}")
-                    
-            except Exception as e:
-                logger.error(f"处理媒体文件 {source_file.get('name', '未知文件')} 时出错: {str(e)}")
-                continue
-        
-        self._task_status["skipped_files"] += skipped
-        self._task_status["total_files"] += total
-        self._save_task_status()
-                
-        return {"copied": copied, "skipped": skipped, "total": total}
-
-    def _get_relative_path(self, file_path: str, base_dir: str) -> str:
-        """获取相对路径"""
-        if not base_dir.endswith('/'):
-            base_dir += '/'
-        
-        if file_path.startswith(base_dir):
-            return file_path[len(base_dir):]
-        
-        try:
-            return os.path.relpath(file_path, base_dir)
-        except:
-            return os.path.basename(file_path)
-
-    def _generate_file_key(self, source_path: str, target_path: str) -> str:
-        """生成文件唯一标识"""
-        key_string = f"{source_path}->{target_path}"
-        return hashlib.md5(key_string.encode()).hexdigest()
-
-    def _execute_alist_copy_standard(self, source_path: str, target_path: str, filename: str) -> bool:
-        """执行AList复制"""
-        try:
-            target_dir = os.path.dirname(target_path)
-            
-            if not self._ensure_directory_exists(target_dir):
-                logger.error(f"无法确保目标目录存在: {target_dir}")
-                return False
-            
-            url = f"{self._alist_url}/api/fs/copy"
-            headers = {
-                "Authorization": self._alist_token,
-                "Content-Type": "application/json"
-            }
-            
-            data = {
-                "src_dir": os.path.dirname(source_path),
-                "dst_dir": target_dir,
-                "names": [filename]
-            }
-            
-            logger.debug(f"复制参数: {data}")
-            response = requests.post(url, headers=headers, json=data, timeout=60)
-            
-            if response.status_code != 200:
-                logger.error(f"复制请求失败，状态码: {response.status_code}")
-                return False
-                
-            result = response.json()
-            
-            if result.get("code") == 200:
-                logger.info(f"复制成功: {filename} -> {target_path}")
-                return True
-            else:
-                error_msg = result.get('message', '未知错误')
-                logger.error(f"复制失败: {error_msg}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"复制媒体文件异常: {filename}, 错误: {str(e)}")
-            return False
-
-    def _ensure_directory_exists(self, path: str) -> bool:
-        """确保目录存在"""
-        try:
-            url = f"{self._alist_url}/api/fs/get"
-            headers = {
-                "Authorization": self._alist_token,
-                "Content-Type": "application/json"
-            }
-            params = {"path": path}
-            
-            response = requests.post(url, headers=headers, json=params, timeout=10)
-            if response.status_code == 200:
-                result = response.json()
-                if result.get("code") == 200:
-                    return True
-            
-            url = f"{self._alist_url}/api/fs/mkdir"
-            data = {"path": path}
-            
-            response = requests.post(url, headers=headers, json=data, timeout=10)
-            if response.status_code == 200:
-                result = response.json()
-                if result.get("code") == 200:
-                    logger.info(f"创建目录成功: {path}")
-                    return True
-                else:
-                    logger.warning(f"创建目录失败: {result.get('message')}")
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"确保目录存在失败: {path}, 错误: {str(e)}")
-            return False
-
-    def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
-        """更新目标目录媒体文件数统计"""
-        if not directory_pairs:
-            self._target_files_count = 0
-            self.save_data("alistcopy_target_files_count", self._target_files_count)
-            return
-            
-        total_target_files = 0
-        target_dirs = set()
-        
-        for pair in directory_pairs:
-            target_dir = self._normalize_path(pair["target"])
-            target_dirs.add(target_dir)
-        
-        logger.info(f"开始统计 {len(target_dirs)} 个唯一目标目录的媒体文件数")
-        
-        scanned_dirs = {}
-        
-        for target_dir in target_dirs:
-            try:
-                if target_dir in scanned_dirs:
-                    file_count = scanned_dirs[target_dir]
-                    logger.info(f"使用缓存结果: 目标目录 {target_dir} 有 {file_count} 个媒体文件")
-                else:
-                    logger.info(f"正在统计目标目录媒体文件数: {target_dir}")
-                    target_files = self._get_alist_files(target_dir)
-                    if target_files:
-                        media_files = [f for f in target_files if self._is_media_file(f.get("name", ""))]
-                        file_count = len(media_files)
-                        scanned_dirs[target_dir] = file_count
-                        logger.info(f"目标目录 {target_dir} 有 {file_count} 个媒体文件")
-                    else:
-                        file_count = 0
-                        scanned_dirs[target_dir] = file_count
-                        logger.info(f"目标目录 {target_dir} 为空或无法访问")
-                
-                total_target_files += file_count
-            except Exception as e:
-                logger.error(f"统计目标目录 {target_dir} 媒体文件数失败: {str(e)}")
-        
-        logger.info(f"总计目标目录媒体文件数: {total_target_files}")
-        self._target_files_count = total_target_files
-        self.save_data("alistcopy_target_files_count", self._target_files_count)
-
-    def _normalize_path(self, path: str) -> str:
-        """标准化路径"""
-        return path.rstrip('/')
-
-    def _is_media_file(self, filename: str) -> bool:
-        """判断文件是否为媒体文件"""
-        current_suffixes = self._get_current_suffixes()
-        return any(filename.endswith(suffix) for suffix in current_suffixes)
-
     def _update_file_status_and_counts(self, silent: bool = False):
         """更新媒体文件状态和数量统计"""
         if not self._copied_files:
@@ -1465,6 +1080,7 @@ class AlistCopyPlugin(_PluginBase):
         if not silent:
             logger.info("正在更新媒体文件状态和数量统计...")
         
+        # 为每个目标目录构建媒体文件索引
         target_dirs_index = {}
         for pair in directory_pairs:
             target_dir = self._normalize_path(pair["target"])
@@ -1473,6 +1089,7 @@ class AlistCopyPlugin(_PluginBase):
                     logger.info(f"扫描目标目录以更新媒体文件状态: {target_dir}")
                 target_files = self._get_alist_files(target_dir)
                 if target_files:
+                    # 构建媒体文件名索引
                     file_index = {}
                     for file in target_files:
                         filename = file.get("name")
@@ -1486,6 +1103,7 @@ class AlistCopyPlugin(_PluginBase):
                     if not silent:
                         logger.info(f"目标目录 {target_dir} 为空")
         
+        # 检查每个媒体文件的状态并更新
         updated_count = 0
         for file_key, record in self._copied_files.items():
             target_path = record.get("target_path", "")
@@ -1495,6 +1113,7 @@ class AlistCopyPlugin(_PluginBase):
             if not target_path or not filename:
                 continue
                 
+            # 找到对应的目标目录
             target_dir = None
             for pair in directory_pairs:
                 normalized_target = self._normalize_path(pair["target"])
@@ -1505,7 +1124,9 @@ class AlistCopyPlugin(_PluginBase):
             if not target_dir:
                 continue
                 
+            # 检查媒体文件是否在目标目录中存在
             if target_dir in target_dirs_index and filename in target_dirs_index[target_dir]:
+                # 文件在目标目录中存在，更新状态为已完成
                 if current_status != "completed":
                     self._copied_files[file_key]["status"] = "completed"
                     self._copied_files[file_key]["completed_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1513,7 +1134,22 @@ class AlistCopyPlugin(_PluginBase):
         
         if updated_count > 0 and not silent:
             logger.info(f"已更新 {updated_count} 个媒体文件的状态")
-
+        
+        # 更新目标目录媒体文件数
+        self._update_target_files_count(directory_pairs)
+    
+    def _normalize_path(self, path: str) -> str:
+        """标准化路径"""
+        # 去除末尾斜杠，转换为小写（如果文件系统是大小写不敏感的）
+        normalized = path.rstrip('/')
+        # 可以根据需要添加更多的标准化规则
+        return normalized
+    
+    def _is_media_file(self, filename: str) -> bool:
+        """判断文件是否为媒体文件"""
+        current_suffixes = self._get_current_suffixes()
+        return any(filename.endswith(suffix) for suffix in current_suffixes)
+    
     def _get_file_status_counts(self) -> Tuple[int, int]:
         """获取媒体文件状态统计数量"""
         copying_count = 0
@@ -1527,7 +1163,7 @@ class AlistCopyPlugin(_PluginBase):
                 copying_count += 1
                 
         return copying_count, completed_count
-
+    
     def _get_recent_media_files(self, count: int = 50) -> List[Dict]:
         """获取最近完成的媒体文件列表"""
         completed_files = []
@@ -1536,9 +1172,12 @@ class AlistCopyPlugin(_PluginBase):
             if record.get("status") == "completed":
                 completed_files.append(record)
         
+        # 按完成时间排序，最新的在前面
         completed_files.sort(key=lambda x: x.get("completed_time", ""), reverse=True)
+        
+        # 返回指定数量的文件
         return completed_files[:count]
-
+    
     def _get_copying_media_files(self, count: int = 50) -> List[Dict]:
         """获取正在复制的媒体文件列表"""
         copying_files = []
@@ -1547,9 +1186,12 @@ class AlistCopyPlugin(_PluginBase):
             if record.get("status") == "copying":
                 copying_files.append(record)
         
+        # 按复制时间排序，最新的在前面
         copying_files.sort(key=lambda x: x.get("copied_time", ""), reverse=True)
+        
+        # 返回指定数量的文件
         return copying_files[:count]
-
+    
     def _render_recent_media_files(self, media_files: List[Dict]) -> List[Dict]:
         """渲染最近完成的媒体文件列表"""
         if not media_files:
@@ -1563,6 +1205,7 @@ class AlistCopyPlugin(_PluginBase):
         
         content = []
         
+        # 添加文件列表
         for i, media_file in enumerate(media_files):
             filename = media_file.get("filename", "未知文件")
             completed_time = media_file.get("completed_time", "未知时间")
@@ -1610,6 +1253,7 @@ class AlistCopyPlugin(_PluginBase):
         
         content = []
         
+        # 添加文件列表
         for i, media_file in enumerate(media_files):
             filename = media_file.get("filename", "未知文件")
             copied_time = media_file.get("copied_time", "未知时间")
@@ -1644,72 +1288,697 @@ class AlistCopyPlugin(_PluginBase):
         
         return content
 
-    def _send_wechat_notification(self, total_copied: int, successfully_copied_files: List[str]):
-        """发送企业微信通知"""
+    def _parse_directory_pairs(self) -> List[Dict[str, str]]:
+        pairs = []
+        if not self._directory_pairs:
+            return pairs
+            
+        lines = self._directory_pairs.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            if '#' in line:
+                parts = line.split('#', 1)
+                if len(parts) == 2:
+                    source = parts[0].strip()
+                    target = parts[1].strip()
+                    if source and target:
+                        pairs.append({
+                            "source": source,
+                            "target": target
+                        })
+        return pairs
+
+    def _get_current_suffixes(self) -> List[str]:
+        all_suffixes = self.DEFAULT_VIDEO_SUFFIXES.copy()
+        
+        if self._enable_custom_suffix:
+            for suffix in self.CUSTOM_SUFFIXES:
+                if suffix not in all_suffixes:
+                    all_suffixes.append(suffix)
+        
+        return all_suffixes
+
+    def stop_service(self):
+        """
+        停止服务
+        """
+        # 由于使用系统调度器，不需要手动停止
+        pass
+
+    def _get_newly_completed_files(self) -> List[str]:
+        """获取本次执行任务中新完成的文件列表"""
+        newly_completed_files = []
+        
+        # 获取当前所有已完成文件
+        current_completed_files = []
+        for record in self._copied_files.values():
+            if record.get("status") == "completed":
+                filename = record.get("filename", "")
+                if filename:
+                    current_completed_files.append(filename)
+        
+        # 找出本次执行任务中新完成的文件
+        for filename in current_completed_files:
+            if filename not in self._previous_completed_files:
+                newly_completed_files.append(filename)
+        
+        return newly_completed_files
+
+    def execute_copy_task(self):
+        logger.info("开始执行AList多目录复制任务")
+        
+        # 如果使用MoviePilot配置，更新Alist配置
+        if self._use_moviepilot_config and self._alist_instance:
+            self._update_alist_config_from_instance()
+        
+        if not self._validate_config():
+            # 即使验证失败也要更新目标目录媒体文件数
+            directory_pairs = self._parse_directory_pairs()
+            if directory_pairs:
+                self._update_target_files_count(directory_pairs)
+            return
+            
+        directory_pairs = self._parse_directory_pairs()
+        if not directory_pairs:
+            self._complete_task("failed", "未配置有效的目录配对")
+            # 即使配对失败也要更新目标目录媒体文件数
+            self._update_target_files_count(directory_pairs)
+            return
+        
+        # 任务执行前先更新媒体文件状态（静默模式，不输出日志）
+        self._update_file_status_and_counts(silent=True)
+        
+        # 记录执行前的已完成文件数量和列表
+        _, old_completed_count = self._get_file_status_counts()
+        self._previous_completed_count = old_completed_count
+        self._previous_completed_files = self._get_completed_files_list()
+        logger.info(f"任务执行前已完成文件数量: {old_completed_count}")
+        
+        # 检查复制中和已完成的媒体文件数量
+        copying_count, completed_count = self._get_file_status_counts()
+        
+        # 检查是否需要执行复制任务
+        if not self._should_execute_copy_task(directory_pairs, copying_count):
+            logger.info("无需执行复制任务，所有媒体文件已处理完成")
+            # 即使跳过任务也要更新目标目录媒体文件数
+            self._update_target_files_count(directory_pairs)
+            self._complete_task("success", "无需执行复制任务，所有媒体文件已处理完成")
+            return
+            
+        # 用于记录本次执行成功复制的媒体文件
+        successfully_copied_files = []
+            
+        self._task_status.update({
+            "status": "running",
+            "progress": 0,
+            "message": f"开始准备复制任务，共 {len(directory_pairs)} 组目录配对...",
+            "start_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "end_time": None,
+            "total_files": 0,
+            "copied_files": 0,
+            "skipped_files": 0,
+            "current_pair": "",
+            "total_pairs": len(directory_pairs),
+            "completed_pairs": 0
+        })
+        self._save_task_status()
+        
         try:
+            if not self._verify_alist_connection():
+                raise Exception("AList连接失败，请检查地址和令牌")
+            
+            total_copied = 0
+            total_skipped = 0
+            total_files = 0
+            
+            # 创建全局已处理媒体文件集合，确保在整个任务执行期间文件只被处理一次
+            global_processed_files = set()
+            
+            for i, pair in enumerate(directory_pairs):
+                source_dir = pair["source"]
+                target_dir = pair["target"]
+                
+                self._task_status["current_pair"] = f"{source_dir} → {target_dir}"
+                self._update_status(f"正在处理第 {i+1}/{len(directory_pairs)} 组目录配对: {source_dir} → {target_dir}", 
+                                  int((i) / len(directory_pairs) * 100))
+                
+                pair_result = self._execute_single_copy(source_dir, target_dir, i, len(directory_pairs), successfully_copied_files, global_processed_files)
+                if pair_result:
+                    total_copied += pair_result["copied"]
+                    total_skipped += pair_result["skipped"]
+                    total_files += pair_result["total"]
+                
+                self._task_status["completed_pairs"] = i + 1
+                self._save_task_status()
+            
+            # 任务完成后更新媒体文件状态（正常模式，输出日志）
+            self._update_file_status_and_counts(silent=False)
+            
+            # 计算本次执行新增的完成文件数量
+            _, new_completed_count = self._get_file_status_counts()
+            increased_completed_count = new_completed_count - self._previous_completed_count
+            logger.info(f"本次执行新增完成文件数量: {increased_completed_count} (从 {self._previous_completed_count} 到 {new_completed_count})")
+            
+            # 获取本次执行任务中新完成的文件列表
+            newly_completed_files = self._get_newly_completed_files()
+            logger.info(f"本次执行新增完成文件列表: {len(newly_completed_files)} 个文件")
+            
+            # 发送企业微信通知
+            if self._enable_wechat_notify and (total_copied > 0 or increased_completed_count > 0):
+                self._send_wechat_notification(total_copied, increased_completed_count, 
+                                             successfully_copied_files, newly_completed_files)
+            
+            self._complete_task("success", 
+                               f"复制完成！共处理 {len(directory_pairs)} 组目录配对，" 
+                               f"总计 {total_files} 个媒体文件，" 
+                               f"复制 {total_copied} 个，" 
+                               f"跳过 {total_skipped} 个，" 
+                               f"新增完成 {increased_completed_count} 个")
+                               
+        except Exception as e:
+            logger.error(f"复制任务执行失败: {str(e)}")
+            self._complete_task("failed", f"任务执行失败: {str(e)}")
+        finally:
+            # 确保立即运行标志被重置 - 无论任务是否成功执行
+            if self._onlyonce:
+                self._onlyonce = False
+                self.__update_config()
+                logger.info("立即运行任务已完成，重置立即运行标志")
+            
+            # 无论任务是否成功，都更新目标目录媒体文件数
+            self._update_target_files_count(directory_pairs)
+
+    def _get_completed_files_list(self) -> List[str]:
+        """获取当前所有已完成文件的列表"""
+        completed_files = []
+        for record in self._copied_files.values():
+            if record.get("status") == "completed":
+                filename = record.get("filename", "")
+                if filename:
+                    completed_files.append(filename)
+        return completed_files
+
+    def _send_wechat_notification(self, total_copied: int, increased_completed_count: int, 
+                                 successfully_copied_files: List[str], newly_completed_files: List[str]):
+        """发送企业微信通知 - 使用固定的卡片样式"""
+        try:
+            # 构建通知内容
             title = "🎬 OpenList复制任务完成"
             
-            file_list_text = ""
-            if len(successfully_copied_files) <= 10:
-                file_list_text = "\n".join([f"• {filename}" for filename in successfully_copied_files])
-            else:
-                file_list_text = "\n".join([f"• {filename}" for filename in successfully_copied_files[:10]])
-                file_list_text += f"\n• ...等 {len(successfully_copied_files)} 个文件"
-            
-            message = f"**本次运行复制任务统计**\n\n" \
-                    f"📊 建立复制任务：{total_copied} 个\n" \
-                    f"✅ 完成复制任务：{total_copied} 个\n\n" \
-                    f"**本次复制文件列表：**\n{file_list_text}"
-            
-            # 使用新的通知方式
-            if NOTIFICATION_AVAILABLE:
-                if self._notify_type == "card":
-                    # 创建卡片通知 - 使用正确的参数
-                    try:
-                        # 方法1: 使用Notification对象
-                        notification = Notification(
-                            mtype=NotificationType.Manual,
-                            title=title,
-                            text=message
-                            # 移除 image 和 channel 参数，因为它们可能不是必需的
-                        )
-                        self.post_message(notification)
-                    except Exception as e:
-                        logger.warning(f"卡片通知发送失败，尝试简化方式: {str(e)}")
-                        # 方法2: 简化方式
-                        self.post_message(
-                            title=title,
-                            text=message,
-                            mtype=NotificationType.Manual
-                        )
+            # 构建本次复制文件列表，最多显示10个文件
+            copied_files_text = ""
+            if successfully_copied_files:
+                if len(successfully_copied_files) <= 10:
+                    copied_files_text = "\n".join([f"• {filename}" for filename in successfully_copied_files])
                 else:
-                    # 默认通知方式
-                    self.post_message(
-                        title=title,
-                        text=message,
-                        mtype=NotificationType.Manual
-                    )
+                    copied_files_text = "\n".join([f"• {filename}" for filename in successfully_copied_files[:10]])
+                    copied_files_text += f"\n• ...等 {len(successfully_copied_files)} 个文件"
             else:
-                # 使用基础通知方式
-                self.post_message(
-                    title=title,
-                    text=message
-                )
+                copied_files_text = "• 无新增复制文件"
             
-            logger.info("企业微信通知发送成功")
+            # 构建完成复制任务的文件列表，最多显示10个文件
+            completed_files_text = ""
+            if newly_completed_files:
+                if len(newly_completed_files) <= 10:
+                    completed_files_text = "\n".join([f"• {filename}" for filename in newly_completed_files])
+                else:
+                    completed_files_text = "\n".join([f"• {filename}" for filename in newly_completed_files[:10]])
+                    completed_files_text += f"\n• ...等 {len(newly_completed_files)} 个文件"
+            else:
+                completed_files_text = "• 无新增完成文件"
+            
+            # 美化通知内容
+            message = f"🏆 **OpenList复制任务统计**\n\n" \
+                    f"📊 **建立复制任务：** {total_copied} 个\n" \
+                    f"✅ **完成复制任务：** {increased_completed_count} 个\n\n" \
+                    f"📁 **本次复制文件列表：**\n{copied_files_text}\n\n" \
+                    f"🎯 **本次完成复制任务的文件列表：**\n{completed_files_text}\n\n" \
+                    f"⏰ **任务时间：** {time.strftime('%Y-%m-%d %H:%M:%S')}"
+            
+            # 创建通知对象 - 固定使用卡片样式
+            notification = self._create_notification(title, message)
+            
+            # 发送通知
+            self.post_message(notification)
+            
+            logger.info(f"企业微信卡片通知发送成功，本次新增完成数量: {increased_completed_count}")
             
         except Exception as e:
             logger.error(f"发送企业微信通知失败: {str(e)}")
+        
+    def _should_execute_copy_task(self, directory_pairs: List[Dict[str, str]], copying_count: int) -> bool:
+        """
+        判断是否需要执行复制任务
+        """
+        # 如果还有复制中的媒体文件，需要执行任务
+        if copying_count > 0:
+            return True
+            
+        # 检查源目录是否有新媒体文件需要复制
+        logger.info("检查源目录是否有新媒体文件需要复制...")
+        
+        for pair in directory_pairs:
+            source_dir = pair["source"]
+            target_dir = pair["target"]
+            
+            try:
+                # 扫描源目录
+                source_files = self._get_alist_files(source_dir)
+                if not source_files:
+                    continue
+                
+                # 扫描目标目录，构建目标媒体文件索引
+                target_files = self._get_alist_files(target_dir)
+                target_index = self._build_target_index(target_files)
+                
+                # 检查源目录中是否有新媒体文件
+                current_suffixes = self._get_current_suffixes()
+                
+                for source_file in source_files:
+                    filename = source_file.get("name")
+                    if not filename:
+                        continue
+                        
+                    # 只处理媒体文件
+                    if not any(filename.endswith(suffix) for suffix in current_suffixes):
+                        continue
+                    
+                    # 检查媒体文件是否已经在目标目录中存在 - 使用完整文件名判断
+                    if filename not in target_index:
+                        logger.info(f"发现新媒体文件需要复制: {filename}")
+                        return True
+                        
+            except Exception as e:
+                logger.error(f"检查目录配对 {source_dir} → {target_dir} 时出错: {str(e)}")
+                # 如果检查过程中出错，保守起见执行复制任务
+                return True
+        
+        logger.info("所有源目录媒体文件已在目标目录中存在，无需执行复制任务")
+        return False
+
+    def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
+        """更新目标目录媒体文件数统计"""
+        if not directory_pairs:
+            self._target_files_count = 0
+            self.save_data("alistcopy_target_files_count", self._target_files_count)
+            return
+            
+        total_target_files = 0
+        
+        # 获取所有唯一的目标目录 - 使用标准化路径避免重复
+        target_dirs = set()
+        for pair in directory_pairs:
+            # 标准化目标目录路径
+            target_dir = self._normalize_path(pair["target"])
+            target_dirs.add(target_dir)
+        
+        logger.info(f"开始统计 {len(target_dirs)} 个唯一目标目录的媒体文件数")
+        
+        # 创建一个字典来缓存已经扫描过的目录结果
+        scanned_dirs = {}
+        
+        # 统计每个目标目录的媒体文件数
+        for target_dir in target_dirs:
+            try:
+                # 如果已经扫描过这个目录，直接使用缓存结果
+                if target_dir in scanned_dirs:
+                    file_count = scanned_dirs[target_dir]
+                    logger.info(f"使用缓存结果: 目标目录 {target_dir} 有 {file_count} 个媒体文件")
+                else:
+                    logger.info(f"正在统计目标目录媒体文件数: {target_dir}")
+                    target_files = self._get_alist_files(target_dir)
+                    if target_files:
+                        # 只统计媒体文件
+                        media_files = [f for f in target_files if self._is_media_file(f.get("name", ""))]
+                        file_count = len(media_files)
+                        scanned_dirs[target_dir] = file_count  # 缓存结果
+                        logger.info(f"目标目录 {target_dir} 有 {file_count} 个媒体文件")
+                    else:
+                        file_count = 0
+                        scanned_dirs[target_dir] = file_count  # 缓存结果
+                        logger.info(f"目标目录 {target_dir} 为空或无法访问")
+                
+                total_target_files += file_count
+            except Exception as e:
+                logger.error(f"统计目标目录 {target_dir} 媒体文件数失败: {str(e)}")
+        
+        logger.info(f"总计目标目录媒体文件数: {total_target_files}")
+        self._target_files_count = total_target_files
+        self.save_data("alistcopy_target_files_count", self._target_files_count)
+
+    def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
+        try:
+            base_progress = int((pair_index) / total_pairs * 100)
+            
+            # 首先扫描目标目录，构建目标媒体文件索引
+            self._update_status(f"正在扫描目标目录: {target_dir}", base_progress + 5)
+            target_files = self._get_alist_files(target_dir)
+            target_index = self._build_target_index(target_files)
+            
+            # 然后扫描源目录
+            self._update_status(f"正在扫描源目录: {source_dir}", base_progress + 15)
+            source_files = self._get_alist_files(source_dir)
+            if not source_files:
+                return {"copied": 0, "skipped": 0, "total": 0}
+            
+            self._update_status(f"开始复制媒体文件: {source_dir} → {target_dir}", base_progress + 25)
+            copy_result = self._copy_files(source_files, target_index, source_dir, target_dir, base_progress + 25, 70, successfully_copied_files, global_processed_files)
+            
+            return copy_result
+            
+        except Exception as e:
+            logger.error(f"处理目录配对 {source_dir} → {target_dir} 时出错: {str(e)}")
+            return {"copied": 0, "skipped": 0, "total": 0}
+
+    def _build_target_index(self, target_files: List[dict]) -> set:
+        """构建目标索引 - 使用完整媒体文件名"""
+        index = set()
+        
+        if not target_files:
+            return index
+            
+        current_suffixes = self._get_current_suffixes()
+            
+        for file in target_files:
+            filename = file.get("name")
+            if not filename:
+                continue
+                
+            if any(filename.endswith(suffix) for suffix in current_suffixes):
+                index.add(filename)  # 使用完整文件名
+                
+        return index
+
+    def _validate_config(self) -> bool:
+        if not self._alist_url or not self._alist_token:
+            self._complete_task("failed", "AList地址或令牌未配置")
+            return False
+            
+        directory_pairs = self._parse_directory_pairs()
+        if not directory_pairs:
+            self._complete_task("failed", "未配置有效的目录配对")
+            return False
+            
+        return True
+
+    def _verify_alist_connection(self) -> bool:
+        try:
+            url = f"{self._alist_url}/api/me"
+            headers = {
+                "Authorization": self._alist_token,
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            return data.get("code") == 200
+        except Exception as e:
+            logger.error(f"AList连接验证失败: {str(e)}")
+            return False
+
+    def _get_alist_files(self, path: str) -> List[dict]:
+        try:
+            url = f"{self._alist_url}/api/fs/list"
+            headers = {
+                "authorization": self._alist_token,
+                "content-type": "application/json"
+            }
+            data = {"path": path, "password": ""}
+            
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get("code") != 200:
+                # 对于目标目录为空的情况，不记录错误日志
+                if "path not found" in result.get("message", "").lower() or "not exist" in result.get("message", "").lower():
+                    return []
+                logger.error(f"获取目录 {path} 文件失败: {result.get('message')}")
+                return []
+                
+            data_content = result.get("data", {})
+            content = data_content.get("content") if data_content else None
+            
+            if content is None:
+                return []
+                
+            if not isinstance(content, list):
+                logger.error(f"目录 {path} 返回的content不是列表类型: {type(content)}")
+                return []
+                
+            files = []
+            
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                    
+                if item.get("is_dir"):
+                    sub_path = f"{path.rstrip('/')}/{item.get('name')}"
+                    sub_files = self._get_alist_files(sub_path)
+                    files.extend(sub_files)
+                else:
+                    files.append({
+                        "name": item.get("name"),
+                        "path": f"{path.rstrip('/')}/{item.get('name')}",
+                        "size": item.get("size"),
+                        "modified": item.get("modified")
+                    })
+                    
+            return files
+            
+        except Exception as e:
+            logger.error(f"获取文件列表失败: {str(e)}")
+            return []
+
+    def _copy_files(self, source_files: List[dict], target_index: set, source_dir: str, target_dir: str, 
+                   base_progress: int, progress_range: int, successfully_copied_files: List[str], global_processed_files: set) -> Dict[str, int]:
+        if not source_files:
+            logger.warning("源文件列表为空，跳过复制")
+            return {"copied": 0, "skipped": 0, "total": 0}
+            
+        current_suffixes = self._get_current_suffixes()
+        
+        # 只过滤媒体文件
+        media_files = []
+        for file in source_files:
+            filename = file.get("name")
+            if filename and any(filename.endswith(suffix) for suffix in current_suffixes):
+                media_files.append(file)
+        
+        total = len(media_files)
+        copied = 0
+        skipped = 0
+        
+        logger.info(f"目录 {source_dir} → {target_dir} 需要处理的媒体文件数量: {total}")
+        
+        for i, source_file in enumerate(media_files):
+            try:
+                filename = source_file.get("name")
+                if not filename:
+                    continue
+                    
+                source_path = source_file.get("path")
+                if not source_path:
+                    continue
+                
+                progress = base_progress + int((i + 1) / total * progress_range)
+                
+                # 计算相对路径
+                relative_path = self._get_relative_path(source_path, source_dir)
+                
+                # 构建完整的目标路径（保留目录结构）
+                target_path = os.path.join(target_dir, relative_path).replace('\\', '/')
+                
+                # 生成文件唯一标识 - 使用源路径和目标路径的组合
+                file_key = self._generate_file_key(source_path, target_path)
+                
+                # 检查1: 媒体文件是否已经在本次任务执行中处理过
+                if file_key in global_processed_files:
+                    skipped += 1
+                    logger.debug(f"跳过本次任务已处理媒体文件: {filename}")
+                    self._update_status(f"跳过已处理媒体文件: {filename}", progress)
+                    continue
+                
+                # 检查2: 媒体文件是否在历史记录中已经复制过
+                if file_key in self._copied_files:
+                    # 检查文件记录状态
+                    record_info = self._copied_files[file_key]
+                    record_status = record_info.get("status", "copying")
+                    
+                    if record_status == "completed":
+                        # 媒体文件已完成复制，跳过
+                        skipped += 1
+                        completed_time = record_info.get("completed_time", "未知时间")
+                        logger.debug(f"跳过已完成媒体文件: {filename} (完成于: {completed_time})")
+                        self._update_status(f"跳过已完成媒体文件: {filename}", progress)
+                        continue
+                    else:
+                        # 媒体文件状态为复制中，跳过复制但保留记录
+                        skipped += 1
+                        copied_time = record_info.get("copied_time", "未知时间")
+                        logger.debug(f"跳过复制中媒体文件: {filename} (记录于: {copied_time})")
+                        self._update_status(f"跳过复制中媒体文件: {filename}", progress)
+                        continue
+                
+                # 检查3: 目标目录是否已存在相同媒体文件（基于完整文件名比对）
+                if filename in target_index:
+                    skipped += 1
+                    logger.debug(f"跳过目标目录已存在媒体文件: {filename}")
+                    self._update_status(f"跳过目标目录已存在媒体文件: {filename}", progress)
+                    continue
+                    
+                # 执行复制操作
+                if self._execute_alist_copy_standard(source_path, target_path, filename):
+                    copied += 1
+                    self._task_status["copied_files"] += 1
+                    
+                    # 记录成功复制的媒体文件，默认状态为复制中
+                    self._copied_files[file_key] = {
+                        "source_path": source_path,
+                        "target_path": target_path,
+                        "filename": filename,
+                        "copied_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "status": "copying"  # 默认状态为复制中
+                    }
+                    self._save_copied_files()  # 立即保存，避免重复复制
+                    
+                    # 添加到全局已处理媒体文件集合
+                    global_processed_files.add(file_key)
+                    
+                    # 记录成功复制的媒体文件名
+                    successfully_copied_files.append(filename)
+                    
+                    self._update_status(f"创建复制任务: {filename}", progress)
+                else:
+                    logger.error(f"复制失败: {filename}")
+                    
+            except Exception as e:
+                logger.error(f"处理媒体文件 {source_file.get('name', '未知文件')} 时出错: {str(e)}")
+                continue
+        
+        self._task_status["skipped_files"] += skipped
+        self._task_status["total_files"] += total
+        self._save_task_status()
+                
+        return {"copied": copied, "skipped": skipped, "total": total}
+
+    def _get_relative_path(self, file_path: str, base_dir: str) -> str:
+        """获取文件相对于基础目录的相对路径"""
+        # 确保基础目录以/结尾
+        if not base_dir.endswith('/'):
+            base_dir += '/'
+        
+        # 如果文件路径以基础目录开头，则提取相对路径
+        if file_path.startswith(base_dir):
+            return file_path[len(base_dir):]
+        
+        # 否则，尝试使用os.path.relpath
+        try:
+            return os.path.relpath(file_path, base_dir)
+        except:
+            # 如果失败，返回文件名
+            return os.path.basename(file_path)
+
+    def _generate_file_key(self, source_path: str, target_path: str) -> str:
+        """生成文件唯一标识"""
+        # 使用源文件路径和目标文件路径的组合作为唯一标识
+        key_string = f"{source_path}->{target_path}"
+        return hashlib.md5(key_string.encode()).hexdigest()
+
+    def _execute_alist_copy_standard(self, source_path: str, target_path: str, filename: str) -> bool:
+        """
+        使用标准AList API复制方式，保留目录结构
+        """
+        try:
+            # 提取目标目录（不包含文件名）
+            target_dir = os.path.dirname(target_path)
+            
+            # 确保目标目录存在
+            if not self._ensure_directory_exists(target_dir):
+                logger.error(f"无法确保目标目录存在: {target_dir}")
+                return False
+            
+            url = f"{self._alist_url}/api/fs/copy"
+            headers = {
+                "authorization": self._alist_token,
+                "content-type": "application/json"
+            }
+            
+            # 根据AList官方API文档，复制API需要以下参数
+            data = {
+                "src_dir": os.path.dirname(source_path),
+                "dst_dir": target_dir,
+                "names": [filename]
+            }
+            
+            logger.debug(f"复制参数: {data}")
+            response = requests.post(url, headers=headers, json=data, timeout=60)
+            
+            if response.status_code != 200:
+                logger.error(f"复制请求失败，状态码: {response.status_code}")
+                return False
+                
+            result = response.json()
+            
+            if result.get("code") == 200:
+                logger.info(f"复制成功: {filename} -> {target_path}")
+                return True
+            else:
+                error_msg = result.get('message', '未知错误')
+                logger.error(f"复制失败: {error_msg}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"复制媒体文件异常: {filename}, 错误: {str(e)}")
+            return False
+
+    def _ensure_directory_exists(self, path: str) -> bool:
+        """确保目录存在"""
+        try:
+            url = f"{self._alist_url}/api/fs/get"
+            headers = {
+                "authorization": self._alist_token,
+                "content-type": "application/json"
+            }
+            params = {"path": path}
+            
+            response = requests.post(url, headers=headers, json=params, timeout=10)
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200:
+                    return True
+            
+            # 目录不存在，创建它
+            url = f"{self._alist_url}/api/fs/mkdir"
+            data = {"path": path}
+            
+            response = requests.post(url, headers=headers, json=data, timeout=10)
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200:
+                    logger.info(f"创建目录成功: {path}")
+                    return True
+                else:
+                    logger.warning(f"创建目录失败: {result.get('message')}")
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"确保目录存在失败: {path}, 错误: {str(e)}")
+            return False
 
     def _update_status(self, message: str, progress: int = None):
-        """更新任务状态"""
         self._task_status["message"] = message
         if progress is not None:
             self._task_status["progress"] = progress
         self._save_task_status()
         
     def _complete_task(self, status: str, message: str):
-        """完成任务"""
         self._task_status.update({
             "status": status,
             "message": message,
@@ -1719,15 +1988,13 @@ class AlistCopyPlugin(_PluginBase):
         self._save_task_status()
 
     def _save_task_status(self):
-        """保存任务状态"""
         self.save_data("alistcopy_task_status", self._task_status)
         
     def _save_copied_files(self):
-        """保存复制文件记录"""
         self.save_data("alistcopy_copied_files", self._copied_files)
 
     def get_status(self):
-        """获取任务状态API"""
+        # 更新媒体文件状态和数量统计
         self._update_file_status_and_counts()
         
         current_suffixes = self._get_current_suffixes()
@@ -1747,7 +2014,6 @@ class AlistCopyPlugin(_PluginBase):
                     "cron": self._cron,
                     "use_moviepilot_config": self._use_moviepilot_config,
                     "enable_wechat_notify": self._enable_wechat_notify,
-                    "notify_type": self._notify_type,
                     "current_suffixes": current_suffixes,
                     "parsed_pairs": directory_pairs
                 },
@@ -1759,7 +2025,6 @@ class AlistCopyPlugin(_PluginBase):
         }
 
     def run_task(self):
-        """运行任务API"""
         if self._task_status.get("status") == "running":
             return {"success": False, "message": "任务正在运行中，请等待完成"}
         
@@ -1769,14 +2034,3 @@ class AlistCopyPlugin(_PluginBase):
         import threading
         threading.Thread(target=self.execute_copy_task, daemon=True).start()
         return {"success": True, "message": "复制任务已开始执行"}
-
-    def stop_service(self):
-        """停止服务"""
-        try:
-            if self._scheduler:
-                self._scheduler.remove_all_jobs()
-                if self._scheduler.running:
-                    self._scheduler.shutdown()
-                self._scheduler = None
-        except Exception as e:
-            logger.error(f"停止插件服务失败：{str(e)}")
