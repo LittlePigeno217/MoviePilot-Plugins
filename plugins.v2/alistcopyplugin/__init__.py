@@ -1486,7 +1486,7 @@ class AlistCopyPlugin(_PluginBase):
         """发送企业微信通知 - 使用固定的卡片样式"""
         try:
             # 构建通知内容
-            title = "🎬 OpenList复制任务完成"
+            title = "🏆 OpenList复制任务统计"
             
             # 构建本次复制文件列表，最多显示10个文件
             copied_files_text = ""
@@ -1511,7 +1511,7 @@ class AlistCopyPlugin(_PluginBase):
                 completed_files_text = "• 无新增完成文件"
             
             # 美化通知内容
-            message = f"🏆 **OpenList复制任务统计**\n\n" \
+            message = f"\n" \
                     f"📊 **建立复制任务：** {total_copied} 个\n" \
                     f"✅ **完成复制任务：** {increased_completed_count} 个\n\n" \
                     f"📁 **本次复制文件列表：**\n{copied_files_text}\n\n" \
