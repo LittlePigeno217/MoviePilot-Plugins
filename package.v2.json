@@ -3,7 +3,7 @@
     "name": "OpenList自动复制",
     "description": "实现OpenList多目录间文件复制自动化。",
     "labels": "OpenList",
-    "version": "1.2",
+    "version": "1.1",
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
