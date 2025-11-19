@@ -38,7 +38,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.1"
+    plugin_version = "1.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -160,7 +160,7 @@ class AlistCopyPlugin(_PluginBase):
 
         # 处理清除缓存
         if self._clear_cache:
-            logger.info("检测到清除缓存选项，正在清空插件数据...")
+            logger.info("正在清空插件数据...")
             self._clear_all_data()
             self._clear_cache = False
             self.__update_config()
@@ -173,7 +173,7 @@ class AlistCopyPlugin(_PluginBase):
         # 启动服务
         if self._enabled:
             if self._onlyonce:
-                logger.info("检测到立即运行一次，开始执行AList复制任务")
+                logger.info("开始执行AList复制任务")
                 import threading
                 threading.Thread(target=self.execute_copy_task, daemon=True).start()
                 self._onlyonce = False
@@ -386,7 +386,7 @@ class AlistCopyPlugin(_PluginBase):
         self.save_data("alistcopy_copied_files", self._copied_files)
         self.save_data("alistcopy_target_files_count", self._target_files_count)
         
-        logger.info("插件数据已全部清空，将重新开始记录")
+        logger.info("插件数据已全部清空")
 
     def get_api(self) -> List[Dict[str, Any]]:
         return [
@@ -1078,15 +1078,13 @@ class AlistCopyPlugin(_PluginBase):
             return
             
         if not silent:
-            logger.info("正在更新媒体文件状态和数量统计...")
+            logger.info("更新媒体文件状态...")
         
         # 为每个目标目录构建媒体文件索引
         target_dirs_index = {}
         for pair in directory_pairs:
             target_dir = self._normalize_path(pair["target"])
             if target_dir not in target_dirs_index:
-                if not silent:
-                    logger.info(f"扫描目标目录以更新媒体文件状态: {target_dir}")
                 target_files = self._get_alist_files(target_dir)
                 if target_files:
                     # 构建媒体文件名索引
@@ -1096,12 +1094,8 @@ class AlistCopyPlugin(_PluginBase):
                         if filename and self._is_media_file(filename):
                             file_index[filename] = file.get("path", "")
                     target_dirs_index[target_dir] = file_index
-                    if not silent:
-                        logger.info(f"目标目录 {target_dir} 有 {len(file_index)} 个媒体文件")
                 else:
                     target_dirs_index[target_dir] = {}
-                    if not silent:
-                        logger.info(f"目标目录 {target_dir} 为空")
         
         # 检查每个媒体文件的状态并更新
         updated_count = 0
@@ -1140,10 +1134,7 @@ class AlistCopyPlugin(_PluginBase):
     
     def _normalize_path(self, path: str) -> str:
         """标准化路径"""
-        # 去除末尾斜杠，转换为小写（如果文件系统是大小写不敏感的）
-        normalized = path.rstrip('/')
-        # 可以根据需要添加更多的标准化规则
-        return normalized
+        return path.rstrip('/')
     
     def _is_media_file(self, filename: str) -> bool:
         """判断文件是否为媒体文件"""
@@ -1375,17 +1366,16 @@ class AlistCopyPlugin(_PluginBase):
         _, old_completed_count = self._get_file_status_counts()
         self._previous_completed_count = old_completed_count
         self._previous_completed_files = self._get_completed_files_list()
-        logger.info(f"任务执行前已完成文件数量: {old_completed_count}")
         
         # 检查复制中和已完成的媒体文件数量
         copying_count, completed_count = self._get_file_status_counts()
         
         # 检查是否需要执行复制任务
         if not self._should_execute_copy_task(directory_pairs, copying_count):
-            logger.info("无需执行复制任务，所有媒体文件已处理完成")
+            logger.info("无需执行复制任务")
             # 即使跳过任务也要更新目标目录媒体文件数
             self._update_target_files_count(directory_pairs)
-            self._complete_task("success", "无需执行复制任务，所有媒体文件已处理完成")
+            self._complete_task("success", "无需执行复制任务")
             return
             
         # 用于记录本次执行成功复制的媒体文件
@@ -1440,11 +1430,9 @@ class AlistCopyPlugin(_PluginBase):
             # 计算本次执行新增的完成文件数量
             _, new_completed_count = self._get_file_status_counts()
             increased_completed_count = new_completed_count - self._previous_completed_count
-            logger.info(f"本次执行新增完成文件数量: {increased_completed_count} (从 {self._previous_completed_count} 到 {new_completed_count})")
             
             # 获取本次执行任务中新完成的文件列表
             newly_completed_files = self._get_newly_completed_files()
-            logger.info(f"本次执行新增完成文件列表: {len(newly_completed_files)} 个文件")
             
             # 发送企业微信通知
             if self._enable_wechat_notify and (total_copied > 0 or increased_completed_count > 0):
@@ -1466,7 +1454,7 @@ class AlistCopyPlugin(_PluginBase):
             if self._onlyonce:
                 self._onlyonce = False
                 self.__update_config()
-                logger.info("立即运行任务已完成，重置立即运行标志")
+                logger.info("立即运行任务已完成")
             
             # 无论任务是否成功，都更新目标目录媒体文件数
             self._update_target_files_count(directory_pairs)
@@ -1538,7 +1526,7 @@ class AlistCopyPlugin(_PluginBase):
             return True
             
         # 检查源目录是否有新媒体文件需要复制
-        logger.info("检查源目录是否有新媒体文件需要复制...")
+        logger.info("检查源目录是否有新媒体文件...")
         
         for pair in directory_pairs:
             source_dir = pair["source"]
@@ -1595,7 +1583,7 @@ class AlistCopyPlugin(_PluginBase):
             target_dir = self._normalize_path(pair["target"])
             target_dirs.add(target_dir)
         
-        logger.info(f"开始统计 {len(target_dirs)} 个唯一目标目录的媒体文件数")
+        logger.info(f"统计 {len(target_dirs)} 个目标目录的媒体文件数")
         
         # 创建一个字典来缓存已经扫描过的目录结果
         scanned_dirs = {}
@@ -1606,20 +1594,16 @@ class AlistCopyPlugin(_PluginBase):
                 # 如果已经扫描过这个目录，直接使用缓存结果
                 if target_dir in scanned_dirs:
                     file_count = scanned_dirs[target_dir]
-                    logger.info(f"使用缓存结果: 目标目录 {target_dir} 有 {file_count} 个媒体文件")
                 else:
-                    logger.info(f"正在统计目标目录媒体文件数: {target_dir}")
                     target_files = self._get_alist_files(target_dir)
                     if target_files:
                         # 只统计媒体文件
                         media_files = [f for f in target_files if self._is_media_file(f.get("name", ""))]
                         file_count = len(media_files)
                         scanned_dirs[target_dir] = file_count  # 缓存结果
-                        logger.info(f"目标目录 {target_dir} 有 {file_count} 个媒体文件")
                     else:
                         file_count = 0
                         scanned_dirs[target_dir] = file_count  # 缓存结果
-                        logger.info(f"目标目录 {target_dir} 为空或无法访问")
                 
                 total_target_files += file_count
             except Exception as e:
@@ -1758,7 +1742,6 @@ class AlistCopyPlugin(_PluginBase):
     def _copy_files(self, source_files: List[dict], target_index: set, source_dir: str, target_dir: str, 
                    base_progress: int, progress_range: int, successfully_copied_files: List[str], global_processed_files: set) -> Dict[str, int]:
         if not source_files:
-            logger.warning("源文件列表为空，跳过复制")
             return {"copied": 0, "skipped": 0, "total": 0}
             
         current_suffixes = self._get_current_suffixes()
@@ -1800,8 +1783,6 @@ class AlistCopyPlugin(_PluginBase):
                 # 检查1: 媒体文件是否已经在本次任务执行中处理过
                 if file_key in global_processed_files:
                     skipped += 1
-                    logger.debug(f"跳过本次任务已处理媒体文件: {filename}")
-                    self._update_status(f"跳过已处理媒体文件: {filename}", progress)
                     continue
                 
                 # 检查2: 媒体文件是否在历史记录中已经复制过
@@ -1813,23 +1794,15 @@ class AlistCopyPlugin(_PluginBase):
                     if record_status == "completed":
                         # 媒体文件已完成复制，跳过
                         skipped += 1
-                        completed_time = record_info.get("completed_time", "未知时间")
-                        logger.debug(f"跳过已完成媒体文件: {filename} (完成于: {completed_time})")
-                        self._update_status(f"跳过已完成媒体文件: {filename}", progress)
                         continue
                     else:
                         # 媒体文件状态为复制中，跳过复制但保留记录
                         skipped += 1
-                        copied_time = record_info.get("copied_time", "未知时间")
-                        logger.debug(f"跳过复制中媒体文件: {filename} (记录于: {copied_time})")
-                        self._update_status(f"跳过复制中媒体文件: {filename}", progress)
                         continue
                 
                 # 检查3: 目标目录是否已存在相同媒体文件（基于完整文件名比对）
                 if filename in target_index:
                     skipped += 1
-                    logger.debug(f"跳过目标目录已存在媒体文件: {filename}")
-                    self._update_status(f"跳过目标目录已存在媒体文件: {filename}", progress)
                     continue
                     
                 # 执行复制操作
@@ -1916,7 +1889,6 @@ class AlistCopyPlugin(_PluginBase):
                 "names": [filename]
             }
             
-            logger.debug(f"复制参数: {data}")
             response = requests.post(url, headers=headers, json=data, timeout=60)
             
             if response.status_code != 200:
@@ -1961,7 +1933,6 @@ class AlistCopyPlugin(_PluginBase):
             if response.status_code == 200:
                 result = response.json()
                 if result.get("code") == 200:
-                    logger.info(f"创建目录成功: {path}")
                     return True
                 else:
                     logger.warning(f"创建目录失败: {result.get('message')}")

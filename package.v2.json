@@ -3,12 +3,13 @@
     "name": "OpenList自动复制",
     "description": "实现OpenList多目录间文件复制自动化。",
     "labels": "OpenList",
-    "version": "1.1",
+    "version": "1.2",
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
     "release": true,
     "history": {
+      "v1.2": "修复已知BUG",
       "v1.1": "支持内置OpenList，增加插件通知",
       "v1.0": "自动化复制到网盘。"
     }
