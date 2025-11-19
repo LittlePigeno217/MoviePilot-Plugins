@@ -1339,6 +1339,7 @@ class AlistCopyPlugin(_PluginBase):
         return newly_completed_files
 
     def execute_copy_task(self):
+        """执行复制任务 - 优化版本，避免重复执行"""
         logger.info("开始执行AList多目录复制任务")
         
         # 如果使用MoviePilot配置，更新Alist配置
@@ -1359,23 +1360,29 @@ class AlistCopyPlugin(_PluginBase):
             self._update_target_files_count(directory_pairs)
             return
         
-        # 任务执行前先更新媒体文件状态（静默模式，不输出日志）
-        self._update_file_status_and_counts(silent=True)
-        
         # 记录执行前的已完成文件数量和列表
         _, old_completed_count = self._get_file_status_counts()
         self._previous_completed_count = old_completed_count
         self._previous_completed_files = self._get_completed_files_list()
         
-        # 检查复制中和已完成的媒体文件数量
-        copying_count, completed_count = self._get_file_status_counts()
-        
         # 检查是否需要执行复制任务
-        if not self._should_execute_copy_task(directory_pairs, copying_count):
+        if not self._should_execute_copy_task(directory_pairs):
             logger.info("无需执行复制任务")
             # 即使跳过任务也要更新目标目录媒体文件数
             self._update_target_files_count(directory_pairs)
-            self._complete_task("success", "无需执行复制任务")
+            
+            # 检查是否有文件状态发生变化（从复制中变为已完成）
+            self._update_file_status_and_counts(silent=True)
+            _, new_completed_count = self._get_file_status_counts()
+            increased_completed_count = new_completed_count - self._previous_completed_count
+            
+            # 即使没有复制任务，如果累计完成数量有增加，也发送通知
+            if self._enable_wechat_notify and increased_completed_count > 0:
+                newly_completed_files = self._get_newly_completed_files()
+                self._send_wechat_notification(0, increased_completed_count, [], newly_completed_files)
+                self._complete_task("success", f"无需执行复制任务，但检测到 {increased_completed_count} 个文件已完成复制")
+            else:
+                self._complete_task("success", "无需执行复制任务")
             return
             
         # 用于记录本次执行成功复制的媒体文件
@@ -1424,8 +1431,8 @@ class AlistCopyPlugin(_PluginBase):
                 self._task_status["completed_pairs"] = i + 1
                 self._save_task_status()
             
-            # 任务完成后更新媒体文件状态（正常模式，输出日志）
-            self._update_file_status_and_counts(silent=False)
+            # 任务完成后更新媒体文件状态
+            self._update_file_status_and_counts(silent=True)
             
             # 计算本次执行新增的完成文件数量
             _, new_completed_count = self._get_file_status_counts()
@@ -1434,8 +1441,13 @@ class AlistCopyPlugin(_PluginBase):
             # 获取本次执行任务中新完成的文件列表
             newly_completed_files = self._get_newly_completed_files()
             
-            # 发送企业微信通知
-            if self._enable_wechat_notify and (total_copied > 0 or increased_completed_count > 0):
+            # 发送企业微信通知的条件：当有产生复制任务或本次任务的累计复制媒体文件数量有增加时发送
+            should_send_notification = (
+                self._enable_wechat_notify and 
+                (total_copied > 0 or increased_completed_count > 0)
+            )
+            
+            if should_send_notification:
                 self._send_wechat_notification(total_copied, increased_completed_count, 
                                              successfully_copied_files, newly_completed_files)
             
@@ -1517,12 +1529,14 @@ class AlistCopyPlugin(_PluginBase):
         except Exception as e:
             logger.error(f"发送企业微信通知失败: {str(e)}")
         
-    def _should_execute_copy_task(self, directory_pairs: List[Dict[str, str]], copying_count: int) -> bool:
+    def _should_execute_copy_task(self, directory_pairs: List[Dict[str, str]]) -> bool:
         """
-        判断是否需要执行复制任务
+        判断是否需要执行复制任务 - 优化版本
         """
-        # 如果还有复制中的媒体文件，需要执行任务
+        # 检查是否有复制中的媒体文件
+        copying_count, _ = self._get_file_status_counts()
         if copying_count > 0:
+            logger.info(f"检测到 {copying_count} 个复制中的媒体文件，需要继续执行")
             return True
             
         # 检查源目录是否有新媒体文件需要复制
@@ -1965,8 +1979,9 @@ class AlistCopyPlugin(_PluginBase):
         self.save_data("alistcopy_copied_files", self._copied_files)
 
     def get_status(self):
-        # 更新媒体文件状态和数量统计
-        self._update_file_status_and_counts()
+        # 只在空闲状态下更新媒体文件状态，避免重复执行
+        if self._task_status.get("status") == "idle":
+            self._update_file_status_and_counts()
         
         current_suffixes = self._get_current_suffixes()
         directory_pairs = self._parse_directory_pairs()

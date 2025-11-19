@@ -9,7 +9,7 @@
     "level": 1,
     "release": true,
     "history": {
-      "v1.2": "修复已知BUG",
+      "v1.2": "修复已经Bug。",
       "v1.1": "支持内置OpenList，增加插件通知",
       "v1.0": "自动化复制到网盘。"
     }
