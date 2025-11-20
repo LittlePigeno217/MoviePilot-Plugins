@@ -38,7 +38,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.2"
+    plugin_version = "1.3"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -1482,30 +1482,30 @@ class AlistCopyPlugin(_PluginBase):
         return completed_files
 
     def _send_wechat_notification(self, total_copied: int, increased_completed_count: int, 
-                                 successfully_copied_files: List[str], newly_completed_files: List[str]):
+                                successfully_copied_files: List[str], newly_completed_files: List[str]):
         """发送企业微信通知 - 使用固定的卡片样式"""
         try:
             # 构建通知内容
             title = "🏆 OpenList复制任务统计"
             
-            # 构建本次复制文件列表，最多显示10个文件
+            # 构建本次复制文件列表，最多显示3个文件
             copied_files_text = ""
             if successfully_copied_files:
-                if len(successfully_copied_files) <= 10:
+                if len(successfully_copied_files) <= 3:
                     copied_files_text = "\n".join([f"• {filename}" for filename in successfully_copied_files])
                 else:
-                    copied_files_text = "\n".join([f"• {filename}" for filename in successfully_copied_files[:10]])
+                    copied_files_text = "\n".join([f"• {filename}" for filename in successfully_copied_files[:3]])
                     copied_files_text += f"\n• ...等 {len(successfully_copied_files)} 个文件"
             else:
                 copied_files_text = "• 无新增复制文件"
             
-            # 构建完成复制任务的文件列表，最多显示10个文件
+            # 构建完成复制任务的文件列表，最多显示3个文件
             completed_files_text = ""
             if newly_completed_files:
-                if len(newly_completed_files) <= 10:
+                if len(newly_completed_files) <= 3:
                     completed_files_text = "\n".join([f"• {filename}" for filename in newly_completed_files])
                 else:
-                    completed_files_text = "\n".join([f"• {filename}" for filename in newly_completed_files[:10]])
+                    completed_files_text = "\n".join([f"• {filename}" for filename in newly_completed_files[:3]])
                     completed_files_text += f"\n• ...等 {len(newly_completed_files)} 个文件"
             else:
                 completed_files_text = "• 无新增完成文件"
@@ -1515,8 +1515,7 @@ class AlistCopyPlugin(_PluginBase):
                     f"📊 **建立复制任务：** {total_copied} 个\n" \
                     f"✅ **完成复制任务：** {increased_completed_count} 个\n\n" \
                     f"📁 **本次复制文件列表：**\n{copied_files_text}\n\n" \
-                    f"🎯 **本次完成复制任务的文件列表：**\n{completed_files_text}\n\n" \
-                    f"⏰ **任务时间：** {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"🎯 **本次完成复制任务的文件列表：**\n{completed_files_text}"
             
             # 创建通知对象 - 固定使用卡片样式
             notification = self._create_notification(title, message)
