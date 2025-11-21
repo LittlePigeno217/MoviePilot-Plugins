@@ -38,7 +38,7 @@ class AlistCopyPlugin(_PluginBase):
     plugin_name = "OpenList自动复制"
     plugin_desc = "实现OpenList多目录间文件复制自动化"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.3"
+    plugin_version = "1.4"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "alistcopy_"
@@ -71,8 +71,8 @@ class AlistCopyPlugin(_PluginBase):
         self._alist_instance: Any = None
         self._notification_helper: Any = None
 
-        # 状态数据
-        self._task_status: Dict[str, Any] = self._get_default_task_status()
+        # 状态数据 - 在init_plugin中从持久化存储恢复
+        self._task_status: Dict[str, Any] = {}
         self._copied_files: Dict[str, Any] = {}
         self._target_files_count: int = 0
 
@@ -137,7 +137,7 @@ class AlistCopyPlugin(_PluginBase):
         return hashlib.md5(key_string.encode()).hexdigest()
 
     def init_plugin(self, config: dict = None):
-        """初始化插件"""
+        """初始化插件 - 确保数据持久化"""
         self.stop_service()
 
         # 读取配置
@@ -165,10 +165,15 @@ class AlistCopyPlugin(_PluginBase):
             self._clear_cache = False
             self.__update_config()
 
-        # 恢复状态数据
+        # 恢复状态数据 - 确保插件更新或重新安装时数据不丢失
+        logger.info("正在恢复插件状态数据...")
         self._task_status = self.get_data("alistcopy_task_status") or self._get_default_task_status()
         self._copied_files = self.get_data("alistcopy_copied_files") or {}
         self._target_files_count = self.get_data("alistcopy_target_files_count") or 0
+        
+        logger.info(f"恢复数据完成: 任务状态={self._task_status.get('status')}, " 
+                   f"复制文件记录={len(self._copied_files)}个, "
+                   f"目标文件数={self._target_files_count}")
 
         # 启动服务
         if self._enabled:
@@ -780,10 +785,10 @@ class AlistCopyPlugin(_PluginBase):
         # 获取状态统计
         copying_count, completed_count = self._get_file_status_counts()
         
-        # 获取最近完成的50个媒体文件
+        # 获取最近完成的媒体文件 - 上限50个
         recent_media_files = self._get_recent_media_files(50)
         
-        # 获取正在复制的50个媒体文件
+        # 获取正在复制的媒体文件 - 上限50个
         copying_media_files = self._get_copying_media_files(50)
         
         return [
@@ -793,25 +798,7 @@ class AlistCopyPlugin(_PluginBase):
                     {
                         "component": "VCardText",
                         "content": [
-                            # 第一行：OpenList媒体复制统计
-                            {
-                                "component": "div",
-                                "props": {"class": "d-flex align-center mb-4"},
-                                "content": [
-                                    {
-                                        "component": "VIcon",
-                                        "props": {"icon": "mdi-chart-box", "color": "primary", "size": "large"},
-                                        "text": ""
-                                    },
-                                    {
-                                        "component": "span", 
-                                        "props": {"class": "ml-2 text-h5"},
-                                        "text": "OpenList媒体复制统计"
-                                    }
-                                ]
-                            },
-                            
-                            # 第二行：三个状态框（每行4列，共12列）
+                            # 第一行：三个状态框（每行4列，共12列） - 缩小高度
                             {
                                 "component": "VRow",
                                 "content": [
@@ -822,25 +809,25 @@ class AlistCopyPlugin(_PluginBase):
                                         "content": [
                                             {
                                                 "component": "VCard",
-                                                "props": {"color": "primary", "variant": "tonal", "height": "100%"},
+                                                "props": {"color": "primary", "variant": "tonal", "style": "min-height: 80px; height: 100%;"},
                                                 "content": [
                                                     {
                                                         "component": "VCardText",
-                                                        "props": {"class": "text-center"},
+                                                        "props": {"class": "text-center pa-2"},
                                                         "content": [
                                                             {
                                                                 "component": "VIcon",
-                                                                "props": {"icon": "mdi-folder-open", "size": "large", "color": "primary"},
+                                                                "props": {"icon": "mdi-folder-open", "size": "small", "color": "primary"},
                                                                 "text": ""
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h6 font-weight-bold mt-2"},
+                                                                "props": {"class": "text-h6 font-weight-bold mt-1"},
                                                                 "text": "目标目录媒体文件数"
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h4 font-weight-bold text-primary mt-2"},
+                                                                "props": {"class": "text-h5 font-weight-bold text-primary mt-1"},
                                                                 "text": str(self._target_files_count)
                                                             }
                                                         ]
@@ -856,25 +843,25 @@ class AlistCopyPlugin(_PluginBase):
                                         "content": [
                                             {
                                                 "component": "VCard",
-                                                "props": {"color": "warning", "variant": "tonal", "height": "100%"},
+                                                "props": {"color": "warning", "variant": "tonal", "style": "min-height: 80px; height: 100%;"},
                                                 "content": [
                                                     {
                                                         "component": "VCardText",
-                                                        "props": {"class": "text-center"},
+                                                        "props": {"class": "text-center pa-2"},
                                                         "content": [
                                                             {
                                                                 "component": "VIcon",
-                                                                "props": {"icon": "mdi-progress-clock", "size": "large", "color": "warning"},
+                                                                "props": {"icon": "mdi-progress-clock", "size": "small", "color": "warning"},
                                                                 "text": ""
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h6 font-weight-bold mt-2"},
+                                                                "props": {"class": "text-h6 font-weight-bold mt-1"},
                                                                 "text": "当前复制媒体文件数量"
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h4 font-weight-bold text-warning mt-2"},
+                                                                "props": {"class": "text-h5 font-weight-bold text-warning mt-1"},
                                                                 "text": str(copying_count)
                                                             }
                                                         ]
@@ -890,25 +877,25 @@ class AlistCopyPlugin(_PluginBase):
                                         "content": [
                                             {
                                                 "component": "VCard",
-                                                "props": {"color": "info", "variant": "tonal", "height": "100%"},
+                                                "props": {"color": "info", "variant": "tonal", "style": "min-height: 80px; height: 100%;"},
                                                 "content": [
                                                     {
                                                         "component": "VCardText",
-                                                        "props": {"class": "text-center"},
+                                                        "props": {"class": "text-center pa-2"},
                                                         "content": [
                                                             {
                                                                 "component": "VIcon",
-                                                                "props": {"icon": "mdi-history", "size": "large", "color": "info"},
+                                                                "props": {"icon": "mdi-history", "size": "small", "color": "info"},
                                                                 "text": ""
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h6 font-weight-bold mt-2"},
+                                                                "props": {"class": "text-h6 font-weight-bold mt-1"},
                                                                 "text": "累计复制媒体文件数量"
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-h4 font-weight-bold text-info mt-2"},
+                                                                "props": {"class": "text-h5 font-weight-bold text-info mt-1"},
                                                                 "text": str(completed_count)
                                                             }
                                                         ]
@@ -920,7 +907,7 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 第三行：正在复制的媒体文件记录状态框
+                            # 第二行：正在复制的媒体文件记录状态框
                             {
                                 "component": "VRow",
                                 "props": {"class": "mt-4"},
@@ -948,7 +935,7 @@ class AlistCopyPlugin(_PluginBase):
                                                                     {
                                                                         "component": "span",
                                                                         "props": {"class": "text-h6"},
-                                                                        "text": f"正在复制的媒体文件（共{len(copying_media_files)}个）"
+                                                                        "text": f"正在复制的媒体文件（共{len(copying_media_files)}个，显示最近50个）"
                                                                     }
                                                                 ]
                                                             },
@@ -965,7 +952,7 @@ class AlistCopyPlugin(_PluginBase):
                                 ]
                             },
                             
-                            # 第四行：最近完成的媒体文件记录状态框
+                            # 第三行：最近完成的媒体文件记录状态框
                             {
                                 "component": "VRow",
                                 "props": {"class": "mt-4"},
@@ -993,7 +980,7 @@ class AlistCopyPlugin(_PluginBase):
                                                                     {
                                                                         "component": "span",
                                                                         "props": {"class": "text-h6"},
-                                                                        "text": f"最近完成的媒体文件（共{len(recent_media_files)}个）"
+                                                                        "text": f"最近完成的媒体文件（共{len(recent_media_files)}个，显示最近50个）"
                                                                     }
                                                                 ]
                                                             },
@@ -1002,59 +989,6 @@ class AlistCopyPlugin(_PluginBase):
                                                                 "content": self._render_recent_media_files(recent_media_files)
                                                             }
                                                         ]
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            },
-                            
-                            # 任务状态信息
-                            {
-                                "component": "VRow",
-                                "props": {"class": "mt-4"},
-                                "content": [
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12},
-                                        "content": [
-                                            {
-                                                "component": "VAlert",
-                                                "props": {
-                                                    "type": config["color"],
-                                                    "text": True,
-                                                    "variant": "tonal"
-                                                },
-                                                "content": [
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "d-flex align-center"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VIcon",
-                                                                "props": {"icon": config["icon"], "color": config["color"], "class": "mr-2"},
-                                                                "text": ""
-                                                            },
-                                                            {
-                                                                "component": "strong",
-                                                                "text": f"当前状态: {config['text']}"
-                                                            }
-                                                        ]
-                                                    },
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "mt-2"},
-                                                        "text": status.get("message", "等待任务开始...")
-                                                    },
-                                                    {
-                                                        "component": "VProgressLinear",
-                                                        "props": {
-                                                            "model-value": status.get("progress", 0),
-                                                            "color": config["color"],
-                                                            "height": "8",
-                                                            "class": "mt-2"
-                                                        }
                                                     }
                                                 ]
                                             }
@@ -1156,125 +1090,217 @@ class AlistCopyPlugin(_PluginBase):
         return copying_count, completed_count
     
     def _get_recent_media_files(self, count: int = 50) -> List[Dict]:
-        """获取最近完成的媒体文件列表"""
+        """获取最近完成的媒体文件列表 - 按时间倒序，文件名倒序排序"""
         completed_files = []
         
         for record in self._copied_files.values():
             if record.get("status") == "completed":
                 completed_files.append(record)
         
-        # 按完成时间排序，最新的在前面
-        completed_files.sort(key=lambda x: x.get("completed_time", ""), reverse=True)
+        # 按完成时间倒序，文件名倒序排序
+        completed_files.sort(key=lambda x: (
+            x.get("completed_time", ""), 
+            x.get("filename", "")
+        ), reverse=True)
         
         # 返回指定数量的文件
         return completed_files[:count]
     
     def _get_copying_media_files(self, count: int = 50) -> List[Dict]:
-        """获取正在复制的媒体文件列表"""
+        """获取正在复制的媒体文件列表 - 按时间倒序，文件名倒序排序"""
         copying_files = []
         
         for record in self._copied_files.values():
             if record.get("status") == "copying":
                 copying_files.append(record)
         
-        # 按复制时间排序，最新的在前面
-        copying_files.sort(key=lambda x: x.get("copied_time", ""), reverse=True)
+        # 按复制时间倒序，文件名倒序排序
+        copying_files.sort(key=lambda x: (
+            x.get("copied_time", ""), 
+            x.get("filename", "")
+        ), reverse=True)
         
         # 返回指定数量的文件
         return copying_files[:count]
     
     def _render_recent_media_files(self, media_files: List[Dict]) -> List[Dict]:
-        """渲染最近完成的媒体文件列表"""
+        """渲染最近完成的媒体文件列表 - 更紧凑的样式"""
         if not media_files:
             return [
                 {
                     "component": "div",
-                    "props": {"class": "text-center text-grey py-4"},
+                    "props": {"class": "text-center text-grey py-2"},
                     "text": "暂无完成的媒体文件记录"
                 }
             ]
         
         content = []
         
-        # 添加文件列表
-        for i, media_file in enumerate(media_files):
-            filename = media_file.get("filename", "未知文件")
-            completed_time = media_file.get("completed_time", "未知时间")
+        # 将文件列表按每行4个分组
+        rows = []
+        for i in range(0, len(media_files), 4):
+            rows.append(media_files[i:i+4])
+        
+        # 渲染每一行
+        for row in rows:
+            row_content = []
+            for media_file in row:
+                filename = media_file.get("filename", "未知文件")
+                
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 3, "md": 3, "lg": 3, "class": "pa-0"},
+                    "content": [
+                        {
+                            "component": "VCard",
+                            "props": {
+                                "color": "deep-purple-lighten-5", 
+                                "variant": "flat", 
+                                "class": "text-center compact-file-card",
+                                "style": "min-height: 28px; height: 100%;"
+                            },
+                            "content": [
+                                {
+                                    "component": "VCardText",
+                                    "props": {
+                                        "class": "pa-0 d-flex align-center justify-center", 
+                                        "style": "min-height: 28px; padding: 2px 4px !important;"
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "div",
+                                            "props": {"class": "d-flex align-center justify-center w-100"},
+                                            "content": [
+                                                {
+                                                    "component": "VIcon",
+                                                    "props": {
+                                                        "icon": "mdi-check-circle", 
+                                                        "size": "x-small", 
+                                                        "class": "text-success mr-1",
+                                                        "style": "min-width: 16px;"
+                                                    },
+                                                    "text": ""
+                                                },
+                                                {
+                                                    "component": "span",
+                                                    "props": {
+                                                        "class": "text-caption text-left compact-filename", 
+                                                        "style": "word-break: break-all; line-height: 1.0; max-height: 2.0em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 0.65rem; flex: 1;"
+                                                    },
+                                                    "text": filename
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                })
+            
+            # 如果一行不足4个，用空列填充以保持对称
+            while len(row_content) < 4:
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 3, "md": 3, "lg": 3, "class": "pa-0"},
+                    "content": []
+                })
             
             content.append({
-                "component": "div",
-                "props": {"class": "d-flex align-center justify-space-between mb-2 py-1", "style": "border-bottom: 1px solid #eee;"},
-                "content": [
-                    {
-                        "component": "div",
-                        "props": {"class": "d-flex align-center", "style": "flex: 1;"},
-                        "content": [
-                            {
-                                "component": "VIcon",
-                                "props": {"icon": "mdi-file", "size": "small", "class": "mr-2 text-grey"},
-                                "text": ""
-                            },
-                            {
-                                "component": "span",
-                                "props": {"class": "text-caption text-truncate"},
-                                "text": filename
-                            }
-                        ]
-                    },
-                    {
-                        "component": "span",
-                        "props": {"class": "text-caption text-grey ml-2"},
-                        "text": completed_time
-                    }
-                ]
+                "component": "VRow",
+                "props": {"class": "mb-0", "dense": True, "align": "stretch"},
+                "content": row_content
             })
         
         return content
-
+    
     def _render_copying_media_files(self, media_files: List[Dict]) -> List[Dict]:
-        """渲染正在复制的媒体文件列表"""
+        """渲染正在复制的媒体文件列表 - 更紧凑的样式"""
         if not media_files:
             return [
                 {
                     "component": "div",
-                    "props": {"class": "text-center text-grey py-4"},
+                    "props": {"class": "text-center text-grey py-2"},
                     "text": "暂无正在复制的媒体文件"
                 }
             ]
         
         content = []
         
-        # 添加文件列表
-        for i, media_file in enumerate(media_files):
-            filename = media_file.get("filename", "未知文件")
-            copied_time = media_file.get("copied_time", "未知时间")
+        # 将文件列表按每行4个分组
+        rows = []
+        for i in range(0, len(media_files), 4):
+            rows.append(media_files[i:i+4])
+        
+        # 渲染每一行
+        for row in rows:
+            row_content = []
+            for media_file in row:
+                filename = media_file.get("filename", "未知文件")
+                
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 3, "md": 3, "lg": 3, "class": "pa-0"},
+                    "content": [
+                        {
+                            "component": "VCard",
+                            "props": {
+                                "color": "orange-lighten-5", 
+                                "variant": "flat", 
+                                "class": "text-center compact-file-card",
+                                "style": "min-height: 28px; height: 100%;"
+                            },
+                            "content": [
+                                {
+                                    "component": "VCardText",
+                                    "props": {
+                                        "class": "pa-0 d-flex align-center justify-center", 
+                                        "style": "min-height: 28px; padding: 2px 4px !important;"
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "div",
+                                            "props": {"class": "d-flex align-center justify-center w-100"},
+                                            "content": [
+                                                {
+                                                    "component": "VIcon",
+                                                    "props": {
+                                                        "icon": "mdi-progress-upload", 
+                                                        "size": "x-small", 
+                                                        "class": "text-orange mr-1",
+                                                        "style": "min-width: 16px;"
+                                                    },
+                                                    "text": ""
+                                                },
+                                                {
+                                                    "component": "span",
+                                                    "props": {
+                                                        "class": "text-caption text-left compact-filename", 
+                                                        "style": "word-break: break-all; line-height: 1.0; max-height: 2.0em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 0.65rem; flex: 1;"
+                                                    },
+                                                    "text": filename
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                })
+            
+            # 如果一行不足4个，用空列填充以保持对称
+            while len(row_content) < 4:
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 3, "md": 3, "lg": 3, "class": "pa-0"},
+                    "content": []
+                })
             
             content.append({
-                "component": "div",
-                "props": {"class": "d-flex align-center justify-space-between mb-2 py-1", "style": "border-bottom: 1px solid #eee;"},
-                "content": [
-                    {
-                        "component": "div",
-                        "props": {"class": "d-flex align-center", "style": "flex: 1;"},
-                        "content": [
-                            {
-                                "component": "VIcon",
-                                "props": {"icon": "mdi-progress-upload", "size": "small", "class": "mr-2 text-orange"},
-                                "text": ""
-                            },
-                            {
-                                "component": "span",
-                                "props": {"class": "text-caption text-truncate"},
-                                "text": filename
-                            }
-                        ]
-                    },
-                    {
-                        "component": "span",
-                        "props": {"class": "text-caption text-grey ml-2"},
-                        "text": copied_time
-                    }
-                ]
+                "component": "VRow",
+                "props": {"class": "mb-0", "dense": True, "align": "stretch"},
+                "content": row_content
             })
         
         return content
