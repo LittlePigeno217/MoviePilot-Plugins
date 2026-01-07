@@ -14,16 +14,43 @@
       font-family: 'Roboto', sans-serif;
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-9859cd48.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/preload-helper-85759c9e.js">
-  <link rel="modulepreload" crossorigin href="/assets/__federation_fn_import-d3ef5293.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-5ed10249.js">
-  <link rel="stylesheet" href="/assets/style-56cc77e8.css">
 </head>
 
 <body>
   <div id="app"></div>
-  
+  <script type="module">
+    import { createApp } from 'vue'
+    import { createVuetify } from 'vuetify'
+    import * as components from 'vuetify/components'
+    import * as directives from 'vuetify/directives'
+    import 'vuetify/styles'
+    import '@mdi/font/css/materialdesignicons.css'
+    
+    const vuetify = createVuetify({
+      components,
+      directives
+    })
+    
+    const app = createApp({
+      template: `
+        <v-app>
+          <v-main>
+            <v-container>
+              <v-alert type="info">
+                OpenList管理器插件已加载
+              </v-alert>
+              <v-alert type="success">
+                Config 和 Status 组件已通过 Module Federation 暴露
+              </v-alert>
+            </v-container>
+          </v-main>
+        </v-app>
+      `
+    })
+    
+    app.use(vuetify)
+    app.mount('#app')
+  </script>
 </body>
 
 </html>

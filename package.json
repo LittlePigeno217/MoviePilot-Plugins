@@ -3,7 +3,7 @@
     "name": "OpenList管理器",
     "description": "OpenList多元化的管理插件。",
     "labels": "OpenList",
-    "version": "1.8",
+    "version": "1.9",
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
@@ -18,7 +18,8 @@
       "v1.5": "添加Vuetify UI框架支持。",
       "v1.6": "修复一些bug。",
       "v1.7": "添加OpenList列表管理功能。",
-      "v1.8": "修复一些bug。"
+      "v1.8": "修复一些bug。",
+      "v1.9": "添加OpenList列表管理功能。"
     }
   }
 }

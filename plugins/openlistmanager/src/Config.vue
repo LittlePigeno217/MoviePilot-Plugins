@@ -1,131 +1,140 @@
 <template>
-  <v-form ref="formRef">
-    <v-card variant="outlined" class="mb-3" style="border-radius: 8px;">
-      <v-card-text class="pa-3">
-        <div class="d-flex align-center mb-3">
-          <v-avatar color="primary" size="32" class="mr-2">
-            <v-icon icon="mdi-cog" size="20"></v-icon>
-          </v-avatar>
-          <div>
-            <div class="text-subtitle-1 font-weight-bold">基本设置</div>
-            <div class="text-caption text-grey-darken-1">配置插件的基本运行参数</div>
-          </div>
-        </div>
+  <v-card flat class="rounded border">
+    <v-card-title class="text-subtitle-1 d-flex align-center px-3 py-2 bg-primary-lighten-5">
+      <v-icon icon="mdi-cog" class="mr-2" color="primary" size="small"></v-icon>
+      <span>OpenList管理器配置</span>
+    </v-card-title>
+    <v-card-text class="px-3 py-2">
+      <v-alert v-if="error" type="error" density="compact" class="mb-2 text-caption" variant="tonal" closable>
+        {{ error }}
+      </v-alert>
+      <v-alert v-if="successMessage" type="success" density="compact" class="mb-2 text-caption" variant="tonal" closable>
+        {{ successMessage }}
+      </v-alert>
 
-        <v-row>
-          <v-col cols="12" sm="6" md="3">
-            <v-switch
-              v-model="config.enabled"
-              label="启动插件"
-              color="primary"
-              hide-details="auto"
-            ></v-switch>
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <v-switch
-              v-model="config.enable_custom_suffix"
-              label="刮削文件"
-              color="primary"
-              hint="额外复制字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)文件"
-              persistent-hint
-            ></v-switch>
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <v-switch
-              v-model="config.onlyonce"
-              label="立即运行复制任务"
-              color="success"
-              hide-details="auto"
-            ></v-switch>
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <v-switch
-              v-model="config.clear_cache"
-              label="清理统计"
-              color="warning"
-              hide-details="auto"
-            ></v-switch>
-          </v-col>
-        </v-row>
+      <v-form ref="formRef" v-model="isFormValid" @submit.prevent="saveFullConfig">
+        <v-card flat class="rounded mb-3 border config-card">
+          <v-card-title class="text-caption d-flex align-center px-3 py-2 bg-primary-lighten-5">
+            <v-icon icon="mdi-tune" class="mr-2" color="primary" size="small"></v-icon>
+            <span>基本设置</span>
+          </v-card-title>
+          <v-card-text class="px-3 py-2">
+            <v-row>
+              <v-col cols="12" md="6">
+                <div class="d-flex align-center">
+                  <v-icon icon="mdi-power" size="small" :color="config.enabled ? 'success' : 'grey'" class="mr-3"></v-icon>
+                  <div>
+                    <div class="text-subtitle-2">启用插件</div>
+                    <div class="text-caption text-grey">是否启用OpenList文件复制功能</div>
+                  </div>
+                  <v-switch v-model="config.enabled" color="primary" inset density="compact" hide-details class="small-switch ml-auto"></v-switch>
+                </div>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div class="d-flex align-center">
+                  <v-icon icon="mdi-file-multiple" size="small" :color="config.enable_custom_suffix ? 'info' : 'grey'" class="mr-3"></v-icon>
+                  <div>
+                    <div class="text-subtitle-2">刮削文件</div>
+                    <div class="text-caption text-grey">额外复制字幕、元数据、封面图文件</div>
+                  </div>
+                  <v-switch v-model="config.enable_custom_suffix" color="info" inset density="compact" hide-details class="small-switch ml-auto"></v-switch>
+                </div>
+              </v-col>
+            </v-row>
 
-        <v-divider class="my-3"></v-divider>
+            <v-divider class="my-2"></v-divider>
 
-        <v-row>
-          <v-col cols="12" sm="4">
-            <v-switch
-              v-model="config.enable_wechat_notify"
-              label="发送通知"
-              color="primary"
-              hint="当有复制任务时发送企业微信卡片通知"
-              persistent-hint
-            ></v-switch>
-          </v-col>
-          <v-col cols="12" sm="4">
-            <v-switch
-              v-model="config.use_moviepilot_config"
-              label="使用MoviePilot的内置OpenList"
-              color="primary"
-              hint="使用MoviePilot中已配置的OpenList实例"
-              persistent-hint
-              :disabled="!openlistAvailable"
-            ></v-switch>
-          </v-col>
-          <v-col cols="12" sm="4">
+            <v-row>
+              <v-col cols="12" md="6">
+                <div class="d-flex align-center">
+                  <v-icon icon="mdi-bell" size="small" :color="config.enable_wechat_notify ? 'warning' : 'grey'" class="mr-3"></v-icon>
+                  <div>
+                    <div class="text-subtitle-2">发送通知</div>
+                    <div class="text-caption text-grey">当有复制任务时发送企业微信通知</div>
+                  </div>
+                  <v-switch v-model="config.enable_wechat_notify" color="warning" inset density="compact" hide-details class="small-switch ml-auto"></v-switch>
+                </div>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div class="d-flex align-center">
+                  <v-icon icon="mdi-link" size="small" :color="config.use_moviepilot_config ? 'success' : 'grey'" class="mr-3"></v-icon>
+                  <div>
+                    <div class="text-subtitle-2">使用MoviePilot配置</div>
+                    <div class="text-caption text-grey">使用MoviePilot中已配置的OpenList实例</div>
+                  </div>
+                  <v-switch v-model="config.use_moviepilot_config" color="success" inset density="compact" hide-details :disabled="!openlistAvailable" class="small-switch ml-auto"></v-switch>
+                </div>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+
+        <v-card flat class="rounded mb-3 border config-card">
+          <v-card-title class="text-caption d-flex align-center px-3 py-2 bg-primary-lighten-5">
+            <v-icon icon="mdi-clock-time-five" class="mr-2" color="primary" size="small"></v-icon>
+            <span>定时任务设置</span>
+          </v-card-title>
+          <v-card-text class="px-3 py-2">
             <v-text-field
               v-model="config.cron"
-              label="执行周期"
+              label="CRON表达式"
               placeholder="0 2 * * *"
-              hint="Cron表达式，默认每天凌晨2点执行复制任务"
+              hint="设置文件复制的执行周期，如：0 2 * * * (每天凌晨2点)"
               persistent-hint
-              prepend-icon="mdi-clock-outline"
+              prepend-inner-icon="mdi-clock-outline"
+              variant="outlined"
+              density="compact"
+              class="text-caption"
             ></v-text-field>
-          </v-col>
-        </v-row>
+            <div class="text-caption mb-1">常用预设：</div>
+            <div class="d-flex flex-wrap">
+              <v-chip v-for="preset in cronPresets" :key="preset.value" class="ma-1" variant="flat" size="x-small" color="primary" @click="config.cron = preset.value">
+                {{ preset.title }}
+              </v-chip>
+            </div>
+          </v-card-text>
+        </v-card>
 
-        <v-divider class="my-3"></v-divider>
-
-        <v-row>
-          <v-col cols="12" sm="6">
+        <v-card flat class="rounded mb-3 border config-card">
+          <v-card-title class="text-caption d-flex align-center px-3 py-2 bg-primary-lighten-5">
+            <v-icon icon="mdi-server-network" class="mr-2" color="primary" size="small"></v-icon>
+            <span>OpenList配置</span>
+          </v-card-title>
+          <v-card-text class="px-3 py-2">
             <v-text-field
               v-model="config.openlist_url"
               label="OpenList地址"
               placeholder="http://localhost:5244"
-              hint="请输入完整的OpenList服务地址，如果使用MoviePilot配置则此项可留空"
+              hint="请输入完整的OpenList服务地址"
               persistent-hint
-              prepend-icon="mdi-link"
+              prepend-inner-icon="mdi-link"
+              variant="outlined"
+              density="compact"
+              class="text-caption"
               :disabled="config.use_moviepilot_config && openlistAvailable"
             ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6">
             <v-text-field
               v-model="config.openlist_token"
               label="OpenList令牌"
               type="password"
               placeholder="在OpenList后台获取"
-              hint="在OpenList管理后台的'设置'-'全局'中获取令牌，如果使用MoviePilot配置则此项可留空"
+              hint="在OpenList管理后台的'设置'-'全局'中获取令牌"
               persistent-hint
-              prepend-icon="mdi-key"
+              prepend-inner-icon="mdi-key"
+              variant="outlined"
+              density="compact"
+              class="text-caption"
               :disabled="config.use_moviepilot_config && openlistAvailable"
             ></v-text-field>
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
+          </v-card-text>
+        </v-card>
 
-    <v-card variant="outlined" class="mb-3" style="border-radius: 8px;">
-      <v-card-text class="pa-3">
-        <div class="d-flex align-center mb-3">
-          <v-avatar color="primary" size="32" class="mr-2">
-            <v-icon icon="mdi-folder-multiple" size="20"></v-icon>
-          </v-avatar>
-          <div>
-            <div class="text-subtitle-1 font-weight-bold">目录配对设置</div>
-            <div class="text-caption text-grey-darken-1">配置源目录和目标目录的映射关系</div>
-          </div>
-        </div>
-
-        <v-row>
-          <v-col cols="12">
+        <v-card flat class="rounded mb-3 border config-card">
+          <v-card-title class="text-caption d-flex align-center px-3 py-2 bg-primary-lighten-5">
+            <v-icon icon="mdi-folder-network" class="mr-2" color="primary" size="small"></v-icon>
+            <span>目录配对设置</span>
+          </v-card-title>
+          <v-card-text class="px-3 py-2">
             <v-textarea
               v-model="config.directory_pairs"
               label="目录配对"
@@ -133,74 +142,55 @@
               rows="3"
               hint="每行一组配对，使用#分隔源目录和目标目录"
               persistent-hint
-              prepend-icon="mdi-folder-network"
+              prepend-inner-icon="mdi-folder-network"
+              variant="outlined"
+              density="compact"
+              class="text-caption"
             ></v-textarea>
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
+          </v-card-text>
+        </v-card>
 
-    <v-card variant="outlined" class="mt-3" style="border-radius: 8px;">
-      <v-card-text class="pa-3">
-        <div class="d-flex align-center mb-3">
-          <v-avatar color="info" size="32" class="mr-2">
-            <v-icon icon="mdi-information" size="20"></v-icon>
-          </v-avatar>
-          <div>
-            <div class="text-subtitle-1 font-weight-bold">使用说明</div>
-            <div class="text-caption text-grey-darken-1">插件功能介绍和注意事项</div>
-          </div>
-        </div>
+        <v-card flat class="rounded mb-3 border config-card">
+          <v-card-title class="text-caption d-flex align-center px-3 py-2 bg-primary-lighten-5">
+            <v-icon icon="mdi-play-circle" class="mr-2" color="primary" size="small"></v-icon>
+            <span>手动操作</span>
+          </v-card-title>
+          <v-card-text class="px-3 py-2">
+            <v-row>
+              <v-col cols="12" md="6">
+                <div class="d-flex align-center">
+                  <v-icon icon="mdi-play" size="small" :color="config.onlyonce ? 'success' : 'grey'" class="mr-3"></v-icon>
+                  <div>
+                    <div class="text-subtitle-2">立即运行</div>
+                    <div class="text-caption text-grey">立即执行一次文件复制任务</div>
+                  </div>
+                  <v-switch v-model="config.onlyonce" color="success" inset density="compact" hide-details class="small-switch ml-auto"></v-switch>
+                </div>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div class="d-flex align-center">
+                  <v-icon icon="mdi-delete-sweep" size="small" :color="config.clear_cache ? 'error' : 'grey'" class="mr-3"></v-icon>
+                  <div>
+                    <div class="text-subtitle-2">清理统计</div>
+                    <div class="text-caption text-grey">清空所有已复制文件的记录</div>
+                  </div>
+                  <v-switch v-model="config.clear_cache" color="error" inset density="compact" hide-details class="small-switch ml-auto"></v-switch>
+                </div>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
 
-        <v-row>
-          <v-col cols="12">
-            <div class="text-body-2 mb-2">
-              <strong>功能特点：</strong>
-            </div>
-            <ul class="text-body-2 mb-3" style="padding-left: 20px;">
-              <li>支持多目录配对，自动将源目录的媒体文件复制到目标目录</li>
-              <li>智能检测，只复制目标目录中不存在的文件，避免重复</li>
-              <li>支持定时任务和手动触发两种执行方式</li>
-              <li>支持刮削文件（字幕、元数据、封面图）的复制</li>
-              <li>支持企业微信通知，及时了解复制任务执行情况</li>
-              <li>支持使用MoviePilot内置的OpenList配置</li>
-            </ul>
-
-            <div class="text-body-2 mb-2">
-              <strong>注意事项：</strong>
-            </div>
-            <ul class="text-body-2 mb-3" style="padding-left: 20px;">
-              <li>确保OpenList服务正常运行，地址和令牌配置正确</li>
-              <li>源目录和目标目录必须在OpenList中正确配置</li>
-              <li>复制操作不会删除源目录中的文件</li>
-              <li>清理统计功能会清空所有已复制文件的记录，请谨慎使用</li>
-              <li>建议在非高峰期执行定时任务，避免影响系统性能</li>
-            </ul>
-
-            <div class="text-body-2 mb-2">
-              <strong>目录配对格式：</strong>
-            </div>
-            <div class="text-body-2 mb-2" style="padding-left: 20px;">
-              每行一组配对，使用#分隔源目录和目标目录，例如：
-            </div>
-            <div class="text-body-2 mb-3" style="padding-left: 20px; background: #f5f5f5; padding: 10px; border-radius: 4px;">
-              /电影/源目录#/电影/目标目录<br>
-              /电视剧/源目录#/电视剧/目标目录
-            </div>
-
-            <div class="text-body-2 mb-2">
-              <strong>Cron表达式示例：</strong>
-            </div>
-            <ul class="text-body-2" style="padding-left: 20px;">
-              <li>0 2 * * * - 每天凌晨2点执行</li>
-              <li>0 */6 * * * - 每6小时执行一次</li>
-              <li>0 0 * * 0 - 每周日午夜执行</li>
-            </ul>
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
-  </v-form>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="elevated" size="small" :loading="saving" :disabled="!isFormValid" type="submit">
+            <v-icon start icon="mdi-content-save"></v-icon>
+            保存配置
+          </v-btn>
+        </v-card-actions>
+      </v-form>
+    </v-card-text>
+  </v-card>
 </template>
 
 <script setup>
@@ -220,6 +210,10 @@ const props = defineProps({
 const emit = defineEmits(['update:config'])
 
 const formRef = ref(null)
+const isFormValid = ref(false)
+const saving = ref(false)
+const error = ref('')
+const successMessage = ref('')
 
 const config = reactive({
   enabled: false,
@@ -234,6 +228,14 @@ const config = reactive({
   directory_pairs: ''
 })
 
+const cronPresets = [
+  { title: '每天凌晨2点', value: '0 2 * * *' },
+  { title: '每天凌晨3点', value: '0 3 * * *' },
+  { title: '每6小时', value: '0 */6 * * *' },
+  { title: '每天午夜', value: '0 0 * * *' },
+  { title: '每周日午夜', value: '0 0 * * 0' }
+]
+
 onMounted(() => {
   if (props.initialConfig) {
     Object.assign(config, props.initialConfig)
@@ -244,6 +246,28 @@ watch(config, (newConfig) => {
   emit('update:config', newConfig)
 }, { deep: true })
 
+const saveFullConfig = async () => {
+  saving.value = true
+  error.value = ''
+  successMessage.value = ''
+  
+  try {
+    const result = await props.api.config.post(config)
+    if (result.success) {
+      successMessage.value = result.message || '配置保存成功'
+      setTimeout(() => {
+        successMessage.value = ''
+      }, 3000)
+    } else {
+      error.value = result.message || '配置保存失败'
+    }
+  } catch (err) {
+    error.value = '保存配置时发生错误: ' + err.message
+  } finally {
+    saving.value = false
+  }
+}
+
 defineExpose({
   config,
   formRef
@@ -251,11 +275,12 @@ defineExpose({
 </script>
 
 <style scoped>
-.v-card {
-  transition: all 0.3s ease;
+.config-card {
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.v-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.small-switch {
+  transform: scale(0.8);
+  transform-origin: right center;
 }
 </style>
