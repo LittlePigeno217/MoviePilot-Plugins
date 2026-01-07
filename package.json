@@ -10,7 +10,8 @@
     "v2": true,
     "release": true,
     "history": {
-      "v1.0": "OpenList多元化的管理插件 。"
+      "v1.0": "OpenList多元化的管理插件 。",
+      "v1.1": "优化界面显示及日志参数输出"
     }
   }
 }

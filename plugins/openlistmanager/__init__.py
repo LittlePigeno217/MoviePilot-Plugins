@@ -59,7 +59,7 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0"
+    plugin_version = "1.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlistmanager_"
@@ -713,7 +713,7 @@ class OpenListManager(_PluginBase):
         return [
             {
                 "component": "VCard",
-                "props": {"variant": "outlined", "class": "status-card", "style": "height: 100vh; max-height: 100vh; overflow-y: auto;"},
+                "props": {"variant": "outlined", "class": "status-card"},
                 "content": [
                     {
                         "component": "VCardText",
@@ -1105,7 +1105,7 @@ class OpenListManager(_PluginBase):
             logger.info(f"已更新 {updated_count} 个媒体文件的状态")
         
         # 更新目标目录媒体文件数
-        self._update_target_files_count(directory_pairs)
+        self._update_target_files_count(directory_pairs, silent=True)
     
     def _normalize_path(self, path: str) -> str:
         """标准化路径"""
@@ -1439,13 +1439,13 @@ class OpenListManager(_PluginBase):
         if not self._validate_config():
             directory_pairs = self._parse_directory_pairs()
             if directory_pairs:
-                self._update_target_files_count(directory_pairs)
+                self._update_target_files_count(directory_pairs, silent=True)
             return
             
         directory_pairs = self._parse_directory_pairs()
         if not directory_pairs:
             self._complete_task("failed", "未配置有效的目录配对")
-            self._update_target_files_count(directory_pairs)
+            self._update_target_files_count(directory_pairs, silent=True)
             return
         
         _, old_completed_count = self._get_file_status_counts()
@@ -1454,7 +1454,7 @@ class OpenListManager(_PluginBase):
         
         if not self._should_execute_copy_task(directory_pairs):
             logger.info("无需执行复制任务")
-            self._update_target_files_count(directory_pairs)
+            self._update_target_files_count(directory_pairs, silent=True)
             
             # 检查是否有文件状态发生变化（从复制中变为已完成）
             self._update_file_status_and_counts(silent=True)
@@ -1544,13 +1544,16 @@ class OpenListManager(_PluginBase):
             logger.error(f"复制任务执行失败: {str(e)}")
             self._complete_task("failed", f"任务执行失败: {str(e)}")
         finally:
+            self._task_lock = False
+            logger.info("任务执行锁已释放")
+            
             if self._onlyonce:
                 self._onlyonce = False
                 self._update_config()
                 logger.info("立即运行任务已完成")
             
             # 无论任务是否成功，都更新目标目录媒体文件数
-            self._update_target_files_count(directory_pairs)
+            self._update_target_files_count(directory_pairs, silent=True)
 
     def _get_completed_files_list(self) -> List[str]:
         """获取当前所有已完成文件的列表"""
@@ -1617,7 +1620,9 @@ class OpenListManager(_PluginBase):
             return True
             
         # 检查源目录是否有新媒体文件需要复制
-        logger.info("检查源目录是否有新媒体文件...")
+        logger.debug("检查源目录是否有新媒体文件...")
+        
+        found_new_files = False
         
         for pair in directory_pairs:
             source_dir = pair["source"]
@@ -1647,7 +1652,11 @@ class OpenListManager(_PluginBase):
                     
                     # 检查媒体文件是否已经在目标目录中存在 - 使用完整文件名判断
                     if filename not in target_index:
-                        logger.info(f"发现新媒体文件需要复制: {filename}")
+                        if not found_new_files:
+                            logger.info(f"发现新媒体文件需要复制: {filename}")
+                            found_new_files = True
+                        else:
+                            logger.debug(f"发现新媒体文件需要复制: {filename}")
                         return True
                         
             except Exception as e:
@@ -1655,10 +1664,10 @@ class OpenListManager(_PluginBase):
                 # 如果检查过程中出错，保守起见执行复制任务
                 return True
         
-        logger.info("所有源目录媒体文件已在目标目录中存在，无需执行复制任务")
+        logger.debug("所有源目录媒体文件已在目标目录中存在，无需执行复制任务")
         return False
 
-    def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
+    def _update_target_files_count(self, directory_pairs: List[Dict[str, str]], silent: bool = False):
         """更新目标目录媒体文件数统计"""
         if not directory_pairs:
             self._target_files_count = 0
@@ -1674,7 +1683,8 @@ class OpenListManager(_PluginBase):
             target_dir = self._normalize_path(pair["target"])
             target_dirs.add(target_dir)
         
-        logger.info(f"统计 {len(target_dirs)} 个目标目录的媒体文件数")
+        if not silent:
+            logger.info(f"统计 {len(target_dirs)} 个目标目录的媒体文件数")
         
         # 创建一个字典来缓存已经扫描过的目录结果
         scanned_dirs = {}
@@ -1700,7 +1710,8 @@ class OpenListManager(_PluginBase):
             except Exception as e:
                 logger.error(f"统计目标目录 {target_dir} 媒体文件数失败: {str(e)}")
         
-        logger.info(f"总计目标目录媒体文件数: {total_target_files}")
+        if not silent:
+            logger.info(f"总计目标目录媒体文件数: {total_target_files}")
         self._target_files_count = total_target_files
         self.save_data("openlistmanager_target_files_count", self._target_files_count)
 
@@ -2060,7 +2071,7 @@ class OpenListManager(_PluginBase):
         """获取任务状态API"""
         # 只在空闲状态下更新媒体文件状态，避免重复执行
         if self._task_status.get("status") == "idle":
-            self._update_file_status_and_counts()
+            self._update_file_status_and_counts(silent=True)
         
         current_suffixes = self._get_current_suffixes()
         directory_pairs = self._parse_directory_pairs()
