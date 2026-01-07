@@ -59,7 +59,7 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.1"
+    plugin_version = "1.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlistmanager_"
@@ -245,6 +245,59 @@ class OpenListManager(_PluginBase):
             "enable_wechat_notify": self._notify
         })
 
+    def _get_config(self):
+        """获取当前配置，用于Vue组件初始化"""
+        return {
+            "enabled": self._enable,
+            "onlyonce": self._onlyonce,
+            "clear_cache": self._clearcache,
+            "openlist_url": self._openlist_url,
+            "openlist_token": self._openlist_token,
+            "directory_pairs": self._directory_pairs,
+            "enable_custom_suffix": self._enablecustomsuffix,
+            "use_moviepilot_config": self._usemoviepilotconfig,
+            "enable_wechat_notify": self._notify,
+            "cron": self._cron or "0 2 * * *",
+            "openlist_available": ALIST_AVAILABLE
+        }
+
+    def _save_config(self, data: dict):
+        """保存配置，从Vue组件接收"""
+        if not data:
+            return {"success": False, "message": "配置数据不能为空"}
+        
+        try:
+            self._enable = data.get("enabled", False)
+            self._onlyonce = data.get("onlyonce", False)
+            self._clearcache = data.get("clear_cache", False)
+            self._cron = data.get("cron", "0 2 * * *")
+            self._openlist_url = data.get("openlist_url", "").rstrip('/')
+            self._openlist_token = data.get("openlist_token", "")
+            self._directory_pairs = data.get("directory_pairs", "")
+            self._enablecustomsuffix = data.get("enable_custom_suffix", False)
+            self._usemoviepilotconfig = data.get("use_moviepilot_config", True)
+            self._notify = data.get("enable_wechat_notify", False)
+            
+            self._update_config()
+            
+            if self._clearcache:
+                logger.info("正在清空插件数据...")
+                self._clear_all_data()
+                self._clearcache = False
+                self._update_config()
+            
+            if self._onlyonce:
+                logger.info("开始执行OpenList管理任务")
+                import threading
+                threading.Thread(target=self.execute_copy_task, daemon=True).start()
+                self._onlyonce = False
+                self._update_config()
+            
+            return {"success": True, "message": "配置保存成功"}
+        except Exception as e:
+            logger.error(f"保存配置失败: {str(e)}")
+            return {"success": False, "message": f"保存配置失败: {str(e)}"}
+
     def _clear_all_data(self):
         self._task_status = self._get_default_task_status()
         self._copied_files = {}
@@ -259,20 +312,42 @@ class OpenListManager(_PluginBase):
         logger.info("插件数据已全部清空")
 
     def get_api(self) -> List[Dict[str, Any]]:
+        """Defines API endpoints accessible via props.api in Vue components."""
         return [
+            {
+                "path": "/config",
+                "endpoint": self._get_config,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "获取当前配置"
+            },
+            {
+                "path": "/config",
+                "endpoint": self._save_config,
+                "methods": ["POST"],
+                "auth": "bear",
+                "summary": "保存配置"
+            },
             {
                 "path": "/status",
                 "endpoint": self.get_status,
                 "methods": ["GET"],
+                "auth": "bear",
                 "summary": "获取任务状态"
             },
             {
                 "path": "/run",
                 "endpoint": self.run_task,
                 "methods": ["POST"],
+                "auth": "bear",
                 "summary": "执行复制任务"
             }
         ]
+
+    @staticmethod
+    def get_render_mode() -> Tuple[str, Optional[str]]:
+        """Declare Vue rendering mode and assets path."""
+        return "vue", "dist/assets"
 
     def get_service(self) -> List[Dict[str, Any]]:
         if self._enable and self._cron:
@@ -287,760 +362,13 @@ class OpenListManager(_PluginBase):
             ]
         return []
 
-    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        openlist_available = ALIST_AVAILABLE
-        
-        return [
-            {
-                "component": "VForm",
-                "content": [
-                    {
-                        "component": "VCard",
-                        "props": {"variant": "outlined", "class": "mb-3", "style": "border-radius: 8px;"},
-                        "content": [
-                            {
-                                "component": "VCardText",
-                                "props": {"class": "pa-3"},
-                                "content": [
-                                    {
-                                        "component": "div",
-                                        "props": {"class": "d-flex align-center mb-3"},
-                                        "content": [
-                                            {
-                                                "component": "VAvatar",
-                                                "props": {"color": "primary", "size": "32", "class": "mr-2"},
-                                                "content": [
-                                                    {
-                                                        "component": "VIcon",
-                                                        "props": {"icon": "mdi-cog", "size": "20"},
-                                                        "text": ""
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "div",
-                                                "content": [
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-subtitle-1 font-weight-bold"},
-                                                        "text": "基本设置"
-                                                    },
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-caption text-grey-darken-1"},
-                                                        "text": "配置插件的基本运行参数"
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 6, "md": 3},
-                                                "content": [
-                                                    {
-                                                        "component": "VSwitch",
-                                                        "props": {
-                                                            "model": "enabled",
-                                                            "label": "启动插件",
-                                                            "color": "primary",
-                                                            "hideDetails": "auto"
-                                                        }
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 6, "md": 3},
-                                                "content": [
-                                                    {
-                                                        "component": "VSwitch",
-                                                        "props": {
-                                                            "model": "enable_custom_suffix",
-                                                            "label": "刮削文件",
-                                                            "color": "primary",
-                                                            "hint": "额外复制字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)文件",
-                                                            "persistentHint": True
-                                                        }
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 6, "md": 3},
-                                                "content": [
-                                                    {
-                                                        "component": "VSwitch",
-                                                        "props": {
-                                                            "model": "onlyonce",
-                                                            "label": "立即运行复制任务",
-                                                            "color": "success",
-                                                            "hideDetails": "auto"
-                                                        }
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 6, "md": 3},
-                                                "content": [
-                                                    {
-                                                        "component": "VSwitch",
-                                                        "props": {
-                                                            "model": "clear_cache",
-                                                            "label": "清理统计",
-                                                            "color": "warning",
-                                                            "hideDetails": "auto"
-                                                        }
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "component": "VDivider",
-                                        "props": {"class": "my-3"}
-                                    },
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 4},
-                                                "content": [
-                                                    {
-                                                        "component": "VSwitch",
-                                                        "props": {
-                                                            "model": "enable_wechat_notify",
-                                                            "label": "发送通知",
-                                                            "color": "primary",
-                                                            "hint": "当有复制任务时发送企业微信卡片通知",
-                                                            "persistentHint": True
-                                                        }
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 4},
-                                                "content": [
-                                                    {
-                                                        "component": "VSwitch",
-                                                        "props": {
-                                                            "model": "use_moviepilot_config",
-                                                            "label": "使用MoviePilot的内置OpenList",
-                                                            "color": "primary",
-                                                            "hint": "使用MoviePilot中已配置的OpenList实例",
-                                                            "persistentHint": True,
-                                                            "disabled": not openlist_available
-                                                        }
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 4},
-                                                "content": [
-                                                    {
-                                                        "component": "VTextField",
-                                                        "props": {
-                                                            "model": "cron",
-                                                            "label": "执行周期",
-                                                            "placeholder": "0 2 * * *",
-                                                            "hint": "Cron表达式，默认每天凌晨2点执行复制任务",
-                                                            "persistentHint": True,
-                                                            "prependIcon": "mdi-clock-outline"
-                                                        }
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "component": "VDivider",
-                                        "props": {"class": "my-3"}
-                                    },
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 6},
-                                                "content": [
-                                                    {
-                                                        "component": "VTextField",
-                                                        "props": {
-                                                            "model": "openlist_url",
-                                                            "label": "OpenList地址",
-                                                            "placeholder": "http://localhost:5244",
-                                                            "hint": "请输入完整的OpenList服务地址，如果使用MoviePilot配置则此项可留空",
-                                                            "persistentHint": True,
-                                                            "prependIcon": "mdi-link",
-                                                            "disabled": self._usemoviepilotconfig and openlist_available
-                                                        }
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "sm": 6},
-                                                "content": [
-                                                    {
-                                                        "component": "VTextField",
-                                                        "props": {
-                                                            "model": "openlist_token",
-                                                            "label": "OpenList令牌",
-                                                            "type": "password",
-                                                            "placeholder": "在OpenList后台获取",
-                                                            "hint": "在OpenList管理后台的'设置'-'全局'中获取令牌，如果使用MoviePilot配置则此项可留空",
-                                                            "persistentHint": True,
-                                                            "prependIcon": "mdi-key",
-                                                            "disabled": self._usemoviepilotconfig and openlist_available
-                                                        }
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VCard",
-                        "props": {"variant": "outlined", "class": "mb-3", "style": "border-radius: 8px;"},
-                        "content": [
-                            {
-                                "component": "VCardText",
-                                "props": {"class": "pa-3"},
-                                "content": [
-                                    {
-                                        "component": "div",
-                                        "props": {"class": "d-flex align-center mb-3"},
-                                        "content": [
-                                            {
-                                                "component": "VAvatar",
-                                                "props": {"color": "primary", "size": "32", "class": "mr-2"},
-                                                "content": [
-                                                    {
-                                                        "component": "VIcon",
-                                                        "props": {"icon": "mdi-folder-multiple", "size": "20"},
-                                                        "text": ""
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "div",
-                                                "content": [
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-subtitle-1 font-weight-bold"},
-                                                        "text": "目录配对设置"
-                                                    },
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-caption text-grey-darken-1"},
-                                                        "text": "配置源目录和目标目录的映射关系"
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12},
-                                                "content": [
-                                                    {
-                                                        "component": "VTextarea",
-                                                        "props": {
-                                                            "model": "directory_pairs",
-                                                            "label": "目录配对",
-                                                            "placeholder": "源目录1#目标目录1\n源目录2#目标目录2",
-                                                            "rows": 3,
-                                                            "hint": "每行一组配对，使用#分隔源目录和目标目录",
-                                                            "persistentHint": True,
-                                                            "prependIcon": "mdi-folder-network"
-                                                        }
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VCard",
-                        "props": {"variant": "outlined", "class": "mt-3", "style": "border-radius: 8px;"},
-                        "content": [
-                            {
-                                "component": "VCardText",
-                                "props": {"class": "pa-3"},
-                                "content": [
-                                    {
-                                        "component": "div",
-                                        "props": {"class": "d-flex align-center mb-3"},
-                                        "content": [
-                                            {
-                                                "component": "VAvatar",
-                                                "props": {"color": "info", "size": "32", "class": "mr-2"},
-                                                "content": [
-                                                    {
-                                                        "component": "VIcon",
-                                                        "props": {"icon": "mdi-information", "size": "20"},
-                                                        "text": ""
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "div",
-                                                "content": [
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-subtitle-1 font-weight-bold"},
-                                                        "text": "说明信息"
-                                                    },
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-caption text-grey-darken-1"},
-                                                        "text": "插件使用说明和注意事项"
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 6},
-                                                "content": [
-                                                    {
-                                                        "component": "VAlert",
-                                                        "props": {
-                                                            "type": "info",
-                                                            "text": True,
-                                                            "variant": "tonal",
-                                                            "class": "mb-0",
-                                                            "density": "compact"
-                                                        },
-                                                        "content": [
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "font-weight-bold mb-1"},
-                                                                "text": "文件尾缀说明："
-                                                            },
-                                                            {
-                                                                "component": "div", 
-                                                                "text": "• 默认：自动匹配常用视频格式（mp4, mkv, avi, mov等）"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "text": "• 勾选复制字幕/元数据/封面图：额外匹配字幕(.srt,.ass)、元数据(.nfo)、封面图(.jpg,.png)"
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 6},
-                                                "content": [
-                                                    {
-                                                        "component": "VAlert",
-                                                        "props": {
-                                                            "type": "warning",
-                                                            "text": True,
-                                                            "variant": "tonal",
-                                                            "class": "mb-0",
-                                                            "density": "compact"
-                                                        },
-                                                        "content": [
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "font-weight-bold mb-1"},
-                                                                "text": "清除缓存说明："
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "text": "• 勾选此选项后保存，将清空所有复制记录和任务状态"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "text": "• 插件将重新开始记录复制历史"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "text": "• 此操作不可逆，请谨慎使用"
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ], {
-            "enabled": self._enable,
-            "onlyonce": self._onlyonce,
-            "clear_cache": self._clearcache,
-            "openlist_url": self._openlist_url,
-            "openlist_token": self._openlist_token,
-            "directory_pairs": self._directory_pairs,
-            "enable_custom_suffix": self._enablecustomsuffix,
-            "use_moviepilot_config": self._usemoviepilotconfig,
-            "enable_wechat_notify": self._notify,
-            "cron": self._cron or "0 2 * * *"
-        }
+    def get_form(self) -> Tuple[Optional[List[dict]], Dict[str, Any]]:
+        """Returns None for Vue form, but provides initial config data."""
+        return None, self._get_config()
 
-    def get_page(self) -> List[dict]:
-        copying_media_files = self._get_copying_media_files(12)
-        completed_media_files = self._get_recent_media_files(12)
-        
-        return [
-            {
-                "component": "VCard",
-                "props": {"variant": "outlined", "class": "status-card"},
-                "content": [
-                    {
-                        "component": "VCardText",
-                        "props": {"class": "pa-3"},
-                        "content": [
-                            # 页面标题
-                            {
-                                "component": "div",
-                                "props": {"class": "d-flex align-center justify-space-between mb-3"},
-                                "content": [
-                                    {
-                                        "component": "div",
-                                        "props": {"class": "d-flex align-center"},
-                                        "content": [
-                                            {
-                                                "component": "VIcon",
-                                                "props": {"icon": "mdi-view-dashboard", "color": "primary", "size": "medium", "class": "mr-2"},
-                                                "text": ""
-                                            },
-                                            {
-                                                "component": "div",
-                                                "content": [
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-h6 font-weight-bold"},
-                                                        "text": "OpenList管理器"
-                                                    },
-                                                    {
-                                                        "component": "div",
-                                                        "props": {"class": "text-caption text-grey-darken-1"},
-                                                        "text": "文件复制与管理状态监控"
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            },
-                            
-                            # 第一行：三个状态框
-                            {
-                                "component": "VRow",
-                                "props": {"class": "mb-3"},
-                                "content": [
-                                    # 状态框1：目标目录媒体文件数
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12, "sm": 4},
-                                        "content": [
-                                            {
-                                                "component": "VCard",
-                                                "props": {
-                                                    "color": "primary", 
-                                                    "variant": "tonal", 
-                                                    "class": "status-card-item",
-                                                    "style": "min-height: 80px; height: 100%; border-radius: 8px; transition: all 0.3s ease;"
-                                                },
-                                                "content": [
-                                                    {
-                                                        "component": "VCardText",
-                                                        "props": {"class": "text-center pa-2"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VAvatar",
-                                                                "props": {
-                                                                    "color": "primary",
-                                                                    "size": "36",
-                                                                    "class": "mb-1"
-                                                                },
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VIcon",
-                                                                        "props": {"icon": "mdi-folder-open", "size": "20"},
-                                                                        "text": ""
-                                                                    }
-                                                                ]
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-caption font-weight-medium text-primary-darken-1 mb-1"},
-                                                                "text": "目标目录媒体文件数"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-h5 font-weight-bold text-primary-darken-2"},
-                                                                "text": str(self._target_files_count)
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    # 状态框2：当前复制媒体文件数量
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12, "sm": 4},
-                                        "content": [
-                                            {
-                                                "component": "VCard",
-                                                "props": {
-                                                    "color": "warning", 
-                                                    "variant": "tonal", 
-                                                    "class": "status-card-item",
-                                                    "style": "min-height: 80px; height: 100%; border-radius: 8px; transition: all 0.3s ease;"
-                                                },
-                                                "content": [
-                                                    {
-                                                        "component": "VCardText",
-                                                        "props": {"class": "text-center pa-2"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VAvatar",
-                                                                "props": {
-                                                                    "color": "warning",
-                                                                    "size": "36",
-                                                                    "class": "mb-1"
-                                                                },
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VIcon",
-                                                                        "props": {"icon": "mdi-progress-clock", "size": "20"},
-                                                                        "text": ""
-                                                                    }
-                                                                ]
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-caption font-weight-medium text-warning-darken-1 mb-1"},
-                                                                "text": "正在复制媒体文件"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-h5 font-weight-bold text-warning-darken-2"},
-                                                                "text": str(len(copying_media_files))
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    # 状态框3：累计复制媒体文件数量
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12, "sm": 4},
-                                        "content": [
-                                            {
-                                                "component": "VCard",
-                                                "props": {
-                                                    "color": "success", 
-                                                    "variant": "tonal", 
-                                                    "class": "status-card-item",
-                                                    "style": "min-height: 80px; height: 100%; border-radius: 8px; transition: all 0.3s ease;"
-                                                },
-                                                "content": [
-                                                    {
-                                                        "component": "VCardText",
-                                                        "props": {"class": "text-center pa-2"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VAvatar",
-                                                                "props": {
-                                                                    "color": "success",
-                                                                    "size": "36",
-                                                                    "class": "mb-1"
-                                                                },
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VIcon",
-                                                                        "props": {"icon": "mdi-check-circle-outline", "size": "20"},
-                                                                        "text": ""
-                                                                    }
-                                                                ]
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-caption font-weight-medium text-success-darken-1 mb-1"},
-                                                                "text": "累计复制媒体文件"
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "props": {"class": "text-h5 font-weight-bold text-success-darken-2"},
-                                                                "text": str(len(completed_media_files))
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            },
-                            
-                            # 第二行：正在复制的媒体文件列表
-                            {
-                                "component": "VRow",
-                                "props": {"class": "mb-3"},
-                                "content": [
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12},
-                                        "content": [
-                                            {
-                                                "component": "VCard",
-                                                "props": {
-                                                    "variant": "outlined", 
-                                                    "class": "file-list-card",
-                                                    "style": "border-radius: 8px;"
-                                                },
-                                                "content": [
-                                                    {
-                                                        "component": "VCardTitle",
-                                                        "props": {"class": "d-flex align-center pa-2 bg-orange-lighten-5"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VAvatar",
-                                                                "props": {
-                                                                    "color": "orange",
-                                                                    "size": "28",
-                                                                    "class": "mr-2"
-                                                                },
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VIcon",
-                                                                        "props": {"icon": "mdi-progress-upload", "size": "16"},
-                                                                        "text": ""
-                                                                    }
-                                                                ]
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "content": [
-                                                                    {
-                                                                        "component": "div",
-                                                                        "props": {"class": "text-subtitle-2 font-weight-bold text-orange-darken-2"},
-                                                                        "text": "正在复制的媒体文件"
-                                                                    },
-                                                                    {
-                                                                        "component": "div",
-                                                                        "props": {"class": "text-caption text-grey-darken-1"},
-                                                                        "text": f"共 {len(copying_media_files)} 个文件"
-                                                                    }
-                                                                ]
-                                                            }
-                                                        ]
-                                                    },
-                                                    {
-                                                        "component": "VCardText",
-                                                        "props": {"class": "pa-2"},
-                                                        "content": self._render_copying_media_files(copying_media_files)
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            },
-                            
-                            # 第三行：最近完成的媒体文件列表
-                            {
-                                "component": "VRow",
-                                "content": [
-                                    {
-                                        "component": "VCol",
-                                        "props": {"cols": 12},
-                                        "content": [
-                                            {
-                                                "component": "VCard",
-                                                "props": {
-                                                    "variant": "outlined", 
-                                                    "class": "file-list-card",
-                                                    "style": "border-radius: 8px;"
-                                                },
-                                                "content": [
-                                                    {
-                                                        "component": "VCardTitle",
-                                                        "props": {"class": "d-flex align-center pa-2 bg-green-lighten-5"},
-                                                        "content": [
-                                                            {
-                                                                "component": "VAvatar",
-                                                                "props": {
-                                                                    "color": "success",
-                                                                    "size": "28",
-                                                                    "class": "mr-2"
-                                                                },
-                                                                "content": [
-                                                                    {
-                                                                        "component": "VIcon",
-                                                                        "props": {"icon": "mdi-check-circle", "size": "16"},
-                                                                        "text": ""
-                                                                    }
-                                                                ]
-                                                            },
-                                                            {
-                                                                "component": "div",
-                                                                "content": [
-                                                                    {
-                                                                        "component": "div",
-                                                                        "props": {"class": "text-subtitle-2 font-weight-bold text-green-darken-2"},
-                                                                        "text": "最近完成的媒体文件"
-                                                                    },
-                                                                    {
-                                                                        "component": "div",
-                                                                        "props": {"class": "text-caption text-grey-darken-1"},
-                                                                        "text": f"共 {len(completed_media_files)} 个文件"
-                                                                    }
-                                                                ]
-                                                            }
-                                                        ]
-                                                    },
-                                                    {
-                                                        "component": "VCardText",
-                                                        "props": {"class": "pa-2"},
-                                                        "content": self._render_recent_media_files(completed_media_files)
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
+    def get_page(self) -> Optional[List[dict]]:
+        """Vue mode doesn't use Vuetify page definitions."""
+        return None
 
     # 以下是原有的复制任务相关方法
     def _update_file_status_and_counts(self, silent: bool = False):
@@ -1099,6 +427,8 @@ class OpenListManager(_PluginBase):
                 if current_status != "completed":
                     self._copied_files[file_key]["status"] = "completed"
                     self._copied_files[file_key]["completed_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    if "file_key" not in self._copied_files[file_key]:
+                        self._copied_files[file_key]["file_key"] = file_key
                     updated_count += 1
         
         if updated_count > 0 and not silent:
@@ -1919,6 +1249,7 @@ class OpenListManager(_PluginBase):
                     
                     # 记录成功复制的媒体文件，默认状态为复制中
                     self._copied_files[file_key] = {
+                        "file_key": file_key,
                         "source_path": source_path,
                         "target_path": target_path,
                         "filename": filename,
@@ -2068,35 +1399,46 @@ class OpenListManager(_PluginBase):
         self.save_data("openlistmanager_copied_files", self._copied_files)
 
     def get_status(self):
-        """获取任务状态API"""
+        """获取任务状态API - 返回Vue组件期望的格式"""
         # 只在空闲状态下更新媒体文件状态，避免重复执行
         if self._task_status.get("status") == "idle":
             self._update_file_status_and_counts(silent=True)
         
-        current_suffixes = self._get_current_suffixes()
-        directory_pairs = self._parse_directory_pairs()
         copying_count, completed_count = self._get_file_status_counts()
+        copying_files = self._get_copying_media_files(50)
+        completed_files = self._get_recent_media_files(50)
+        
+        # 转换为Vue组件期望的格式
+        copying_files_vue = []
+        for record in copying_files:
+            copying_files_vue.append({
+                "id": record.get("file_key", ""),
+                "filename": record.get("filename", ""),
+                "sourceDir": record.get("source_path", ""),
+                "targetDir": record.get("target_path", "")
+            })
+        
+        completed_files_vue = []
+        for record in completed_files:
+            completed_files_vue.append({
+                "id": record.get("file_key", ""),
+                "filename": record.get("filename", ""),
+                "targetDir": record.get("target_path", ""),
+                "completedAt": record.get("completed_time", "")
+            })
         
         return {
             "success": True,
             "data": {
-                **self._task_status,
-                "config": {
-                    "enabled": self._enable,
-                    "openlist_url": self._openlist_url,
-                    "openlist_token": self._openlist_token,
-                    "directory_pairs": self._directory_pairs,
-                    "enable_custom_suffix": self._enablecustomsuffix,
-                    "cron": self._cron,
-                    "use_moviepilot_config": self._usemoviepilotconfig,
-                    "enable_wechat_notify": self._notify,
-                    "current_suffixes": current_suffixes,
-                    "parsed_pairs": directory_pairs
-                },
-                "copied_files_count": len(self._copied_files),
-                "copying_count": copying_count,
-                "completed_count": completed_count,
-                "target_files_count": self._target_files_count
+                "targetFilesCount": self._target_files_count,
+                "copyingFilesCount": copying_count,
+                "completedFilesCount": completed_count,
+                "copyingFiles": copying_files_vue,
+                "completedFiles": completed_files_vue,
+                "taskStatus": self._task_status.get("status", "idle"),
+                "taskProgress": self._task_status.get("progress", 0),
+                "taskMessage": self._task_status.get("message", ""),
+                "lastRun": self._task_status.get("last_run", None)
             }
         }
 
