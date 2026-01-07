@@ -183,18 +183,18 @@ const formatTime = (timestamp) => {
 }
 
 const refreshStatus = async () => {
-  loading.value = true
-  try {
-    const response = await props.api.status.get()
-    if (response && response.data) {
-      Object.assign(status, response.data)
-    }
-  } catch (error) {
-    console.error('获取状态失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
+          loading.value = true
+          try {
+            const response = await props.api.status.get()
+            if (response && response.data && response.data.data) {
+              Object.assign(status, response.data.data)
+            }
+          } catch (error) {
+            console.error('获取状态失败:', error)
+          } finally {
+            loading.value = false
+          }
+        }
 
 onMounted(() => {
   refreshStatus()
