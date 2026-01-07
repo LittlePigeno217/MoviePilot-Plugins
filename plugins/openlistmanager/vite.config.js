@@ -1,9 +1,21 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import federation from '@originjs/vite-plugin-federation'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    federation({
+      name: 'openlistmanager',
+      filename: 'remoteEntry.js',
+      exposes: {
+        './Config': './src/Config.vue',
+        './Status': './src/Status.vue'
+      },
+      shared: ['vue']
+    })
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -12,16 +24,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    target: 'esnext',
+    minify: 'terser',
+    cssCodeSplit: false,
     rollupOptions: {
       output: {
-        manualChunks: undefined,
-        entryFileNames: 'assets/[name]-[hash].js',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
+        minifyInternalExports: false
       }
     },
-    target: 'es2015',
-    minify: 'terser',
     terserOptions: {
       compress: {
         drop_console: true,
