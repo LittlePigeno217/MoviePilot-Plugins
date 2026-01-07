@@ -1,7 +1,7 @@
 {
   "OpenListManager": {
     "name": "OpenList管理器",
-    "description": "OpenList多元化的管理插件，支持文件复制和媒体文件管理。",
+    "description": "OpenList多元化的管理插件。",
     "labels": "OpenList",
     "version": "1.0",
     "icon": "Alist_B.png",
@@ -10,7 +10,7 @@
     "v2": true,
     "release": true,
     "history": {
-      "v1.0": "OpenList多元化的管理插件，支持文件复制和媒体文件管理 。"
+      "v1.0": "OpenList多元化的管理插件 。"
     }
   }
 }

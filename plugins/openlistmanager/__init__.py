@@ -57,7 +57,7 @@ class OpenListManager(_PluginBase):
     """
     # 插件基本信息
     plugin_name = "OpenList管理器"
-    plugin_desc = "OpenList多元化的管理插件，支持文件复制和媒体文件管理"
+    plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
     plugin_version = "1.0"
     plugin_author = "LittlePigeno"
