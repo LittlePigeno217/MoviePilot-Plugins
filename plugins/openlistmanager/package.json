@@ -9,7 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.3.0"
+    "vue": "^3.3.0",
+    "vuetify": "^3.11.6"
   },
   "devDependencies": {
     "@originjs/vite-plugin-federation": "^1.4.1",

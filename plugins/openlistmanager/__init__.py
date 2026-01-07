@@ -59,7 +59,7 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.3"
+    plugin_version = "1.4"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlistmanager_"

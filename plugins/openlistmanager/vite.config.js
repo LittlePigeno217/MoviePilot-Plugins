@@ -13,7 +13,7 @@ export default defineConfig({
         './Config': './src/Config.vue',
         './Status': './src/Status.vue'
       },
-      shared: ['vue']
+      shared: ['vue', 'vuetify']
     })
   ],
   resolve: {
