@@ -16,11 +16,6 @@ export default defineConfig({
       shared: ['vue', 'vuetify']
     })
   ],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
-  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
@@ -28,7 +23,14 @@ export default defineConfig({
     minify: 'terser',
     cssCodeSplit: false,
     rollupOptions: {
+      input: {
+        main: './index.html',
+        app: './src/main.js'
+      },
       output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
         minifyInternalExports: false
       }
     },
