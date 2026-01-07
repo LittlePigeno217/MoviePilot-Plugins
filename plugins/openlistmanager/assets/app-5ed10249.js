@@ -1,0 +1,1 @@
+import{importShared as t}from"./__federation_fn_import-d3ef5293.js";const{createApp:e}=await t("vue"),{createVuetify:i}=await t("vuetify"),a=i(),p=e({template:"<div>OpenList管理器插件</div>"});p.use(a),p.mount("#app");

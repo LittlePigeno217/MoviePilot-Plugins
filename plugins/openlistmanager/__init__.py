@@ -59,7 +59,7 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.6"
+    plugin_version = "1.7"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlistmanager_"
@@ -347,7 +347,7 @@ class OpenListManager(_PluginBase):
     @staticmethod
     def get_render_mode() -> Tuple[str, Optional[str]]:
         """Declare Vue rendering mode and assets path."""
-        return "vue", "dist/assets"
+        return "vue", "assets"
 
     def get_service(self) -> List[Dict[str, Any]]:
         if self._enable and self._cron:
