@@ -13,5 +13,19 @@
       "v1.0": "OpenList多元化的管理插件 。",
       "v1.1": "优化界面显示及日志参数输出。"
     }
+  },
+    "OpenListManagerVue": {
+    "name": "OpenList管理器(Vue版)",
+    "description": "OpenList多元化的管理插件（VUE版）。",
+    "labels": "OpenList",
+    "version": "1.0",
+    "icon": "Alist_B.png",
+    "author": "LittlePigeno",
+    "level": 1,
+    "v2": true,
+    "release": true,
+    "history": {
+      "v1.0": "基于Vue3的OpenList管理器。"
+    }
   }
 }
