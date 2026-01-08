@@ -56,8 +56,8 @@ class OpenListManagerVue(_PluginBase):
     OpenList管理器插件 - 实现OpenList多目录间文件复制与管理
     """
     # 插件基本信息
-    plugin_name = "OpenList管理器"
-    plugin_desc = "OpenList多元化的管理插件。"
+    plugin_name = "OpenList管理器(Vue)"
+    plugin_desc = "OpenList管理插件Vue版本。"
     plugin_icon = "Alist_B.png"
     plugin_version = "1.1"
     plugin_author = "LittlePigeno"
@@ -273,6 +273,13 @@ class OpenListManagerVue(_PluginBase):
                 "methods": ["POST"],
                 "auth": "bear",
                 "summary": "执行复制任务"
+            },
+            {
+                "path": "/config",
+                "endpoint": self.save_config,
+                "methods": ["PUT"],
+                "auth": "bear",
+                "summary": "保存配置"
             }
         ]
 
@@ -2121,3 +2128,41 @@ class OpenListManagerVue(_PluginBase):
         import threading
         threading.Thread(target=self.execute_copy_task, daemon=True).start()
         return {"success": True, "message": "复制任务已开始执行"}
+    
+    def save_config(self, data: dict = None):
+        """保存配置API"""
+        if not data:
+            return {"success": False, "message": "配置数据不能为空"}
+
+        try:
+            self._enable = data.get("enabled", False)
+            self._cron = data.get("cron", "30 3 * * *")
+            self._onlyonce = data.get("onlyonce", False)
+            self._clearcache = data.get("clear_cache", False)
+            self._openlist_url = data.get("openlist_url", "").rstrip('/')
+            self._openlist_token = data.get("openlist_token", "")
+            self._directory_pairs = data.get("directory_pairs", "")
+            self._enablecustomsuffix = data.get("enable_custom_suffix", False)
+            self._usemoviepilotconfig = data.get("use_moviepilot_config", True)
+            self._notify = data.get("enable_wechat_notify", False)
+
+            self._update_config()
+
+            if self._clearcache:
+                logger.info("正在清空插件数据...")
+                self._clear_all_data()
+                self._clearcache = False
+                self._update_config()
+
+            if self._onlyonce:
+                logger.info("开始执行OpenList管理任务")
+                import threading
+                threading.Thread(target=self.execute_copy_task, daemon=True).start()
+                self._onlyonce = False
+                self._update_config()
+
+            return {"success": True, "message": "配置保存成功"}
+        except Exception as e:
+            logger.error(f"保存配置失败: {str(e)}")
+            return {"success": False, "message": f"保存配置失败: {str(e)}"}
+    
