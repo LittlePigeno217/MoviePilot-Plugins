@@ -62,7 +62,7 @@ class OpenListManager(_PluginBase):
     plugin_version = "1.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
-    plugin_config_prefix = "openlistmanager_"
+    plugin_config_prefix = "openlist_"
     plugin_order = 1
     auth_level = 1
 
