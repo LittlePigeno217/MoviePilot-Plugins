@@ -14,18 +14,19 @@
       "v1.1": "优化界面显示及日志参数输出。"
     }
   },
-  "OpenListManagerExtension": {
-    "name": "OpenList管理器扩展",
-    "description": "OpenList多元化的管理插件扩展，包含原插件所有功能。",
-    "labels": "OpenList,扩展,管理",
-    "version": "0.1",
+  "OpenListManagerNew": {
+    "name": "OpenList管理器新",
+    "description": "OpenList多元化的管理插件，支持实时进度显示和递归目录创建。",
+    "labels": "OpenList",
+    "version": "1.1",
     "icon": "Alist_B.png",
-    "author": "Your Name",
+    "author": "LittlePigeno",
     "level": 1,
     "v2": true,
-    "release": false,
+    "release": true,
     "history": {
-      "v0.1": "重构版本，包含原OpenListManager插件所有功能，支持OpenList多目录间文件复制与管理、定时任务、微信通知等特性。"
+      "v1.0": "OpenList管理器新插件。",
+      "v1.1": "支持实时任务进度显示，修复递归目录创建问题。"
     }
   }
 }
