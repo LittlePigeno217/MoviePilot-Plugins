@@ -23,7 +23,7 @@
     "author": "LittlePigeno",
     "level": 1,
     "v2": true,
-    "release": true,
+    "release": false,
     "history": {
       "v0.1": "初始版本，增强OpenList管理功能。"
     }
