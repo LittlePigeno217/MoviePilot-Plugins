@@ -16,16 +16,16 @@
   },
   "OpenListManagerExtension": {
     "name": "OpenList管理器扩展",
-    "description": "增强OpenList管理功能。",
-    "labels": "OpenList,扩展",
+    "description": "OpenList多元化的管理插件扩展，包含原插件所有功能。",
+    "labels": "OpenList,扩展,管理",
     "version": "0.1",
     "icon": "Alist_B.png",
-    "author": "LittlePigeno",
+    "author": "Your Name",
     "level": 1,
     "v2": true,
-    "release": true,
+    "release": false,
     "history": {
-      "v0.1": "初始版本，增强OpenList管理功能。"
+      "v0.1": "重构版本，包含原OpenListManager插件所有功能，支持OpenList多目录间文件复制与管理、定时任务、微信通知等特性。"
     }
   }
 }
