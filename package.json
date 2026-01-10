@@ -1,7 +1,7 @@
 {
   "OpenListManager": {
-    "name": "OpenList管理器",
-    "description": "OpenList多元化的管理插件。",
+    "name": "OpenList管理",
+    "description": "OpenList管理插件。",
     "labels": "OpenList",
     "version": "1.1",
     "icon": "Alist_B.png",
@@ -10,8 +10,22 @@
     "v2": true,
     "release": true,
     "history": {
-      "v1.0": "OpenList多元化的管理插件 。",
+      "v1.0": "OpenList管理插件。",
       "v1.1": "优化界面显示及日志参数输出。"
+    }
+  },
+  "OpenListManagerExtension": {
+    "name": "OpenList管理器扩展",
+    "description": "增强OpenList管理功能。",
+    "labels": "OpenList,扩展",
+    "version": "0.1",
+    "icon": "Alist_B.png",
+    "author": "LittlePigeno",
+    "level": 1,
+    "v2": true,
+    "release": true,
+    "history": {
+      "v0.1": "初始版本，增强OpenList管理功能。"
     }
   }
 }
