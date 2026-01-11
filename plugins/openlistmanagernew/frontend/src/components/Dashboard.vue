@@ -1,120 +1,298 @@
 <template>
   <div class="dashboard-widget">
-    <v-hover>
-      <!-- 仪表板内容 -->
-      <template #default="{ isHovering, props: hoverProps }">
-        <v-card v-bind="hoverProps" variant="outlined" style="border-radius: 8px;">
-          <v-card-title class="d-flex justify-space-between align-center">
-            <span>OpenList管理器新</span>
-            <!-- 只在悬停时显示拖拽图标 -->
-            <v-icon v-show="isHovering" class="cursor-move">mdi-drag</v-icon>
-          </v-card-title>
-          <v-card-text>
-            <!-- 任务状态 -->
-            <div class="mb-3">
-              <div class="text-caption text-secondary mb-1">任务状态</div>
-              <v-chip :color="statusColor" size="small">{{ taskStatus.status }}</v-chip>
+    <v-card v-if="!config?.attrs?.border" flat>
+      <v-card-text class="pa-0">
+        <div class="dashboard-content">
+          <!-- 加载中状态 -->
+          <div v-if="loading" class="d-flex justify-center align-center py-4">
+            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+          </div>
+
+          <!-- 数据内容 -->
+          <div v-else>
+            <!-- 数据图表 -->
+            <div v-if="chartData" class="chart-container">
+              <v-chart class="chart" :option="chartOptions" autoresize />
             </div>
 
-            <!-- 复制进度 -->
-            <div class="mb-3">
-              <div class="text-caption text-secondary mb-1">复制进度</div>
-              <v-progress-linear
-                :value="taskStatus.progress"
-                height="6"
-                :color="statusColor"
-                class="mb-1"
-              ></v-progress-linear>
-              <div class="text-caption">
-                {{ taskStatus.copied_files }}/{{ taskStatus.total_files }} 文件
-              </div>
-            </div>
+            <!-- 数据列表 -->
+            <v-list v-if="items.length" density="compact" class="py-0">
+              <v-list-item v-for="(item, index) in items" :key="index" :title="item.title" :subtitle="item.subtitle">
+                <template v-slot:prepend>
+                  <v-avatar :color="getStatusColor(item.status)" size="small">
+                    <v-icon size="small" color="white">{{ getStatusIcon(item.status) }}</v-icon>
+                  </v-avatar>
+                </template>
+                <template v-slot:append v-if="item.value">
+                  <span class="text-caption">{{ item.value }}</span>
+                </template>
+              </v-list-item>
+            </v-list>
+          </div>
+        </div>
+      </v-card-text>
+    </v-card>
 
-            <!-- 目录对进度 -->
-            <div>
-              <div class="text-caption text-secondary mb-1">目录对进度</div>
-              <div class="text-caption">
-                {{ taskStatus.completed_pairs }}/{{ taskStatus.total_pairs }} 目录对
-              </div>
-            </div>
-          </v-card-text>
-          <!-- 操作按钮 -->
-          <v-card-actions class="justify-end pb-3 pr-3">
-            <v-btn size="small" color="primary" @click="runTask" :disabled="taskStatus.status === 'running'">
-              <template v-if="taskStatus.status === 'running'">
-                <v-icon size="small" class="mr-1">mdi-loading</v-icon>
-                运行中
+    <!-- 带边框的卡片 -->
+    <v-card v-else>
+      <v-card-item>
+        <v-card-title>{{ config?.attrs?.title || '仪表板组件' }}</v-card-title>
+        <v-card-subtitle v-if="config?.attrs?.subtitle">{{ config.attrs.subtitle }}</v-card-subtitle>
+      </v-card-item>
+
+      <v-card-text>
+        <!-- 加载中状态 -->
+        <div v-if="loading" class="d-flex justify-center align-center py-4">
+          <v-progress-circular indeterminate color="primary"></v-progress-circular>
+        </div>
+
+        <!-- 数据内容 -->
+        <div v-else>
+          <!-- 数据图表 -->
+          <div v-if="chartData" class="chart-container">
+            <v-chart class="chart" :option="chartOptions" autoresize />
+          </div>
+
+          <!-- 数据列表 -->
+          <v-list v-if="items.length" density="compact" class="rounded pa-0">
+            <v-list-item v-for="(item, index) in items" :key="index" :title="item.title" :subtitle="item.subtitle">
+              <template v-slot:prepend>
+                <v-avatar :color="getStatusColor(item.status)" size="small">
+                  <v-icon size="small" color="white">{{ getStatusIcon(item.status) }}</v-icon>
+                </v-avatar>
               </template>
-              <template v-else>
-                <v-icon size="small" class="mr-1">mdi-play</v-icon>
-                运行任务
+              <template v-slot:append v-if="item.value">
+                <span class="text-caption">{{ item.value }}</span>
               </template>
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </template>
-    </v-hover>
+            </v-list-item>
+          </v-list>
+        </div>
+      </v-card-text>
+    </v-card>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart, PieChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components'
 
-// 接收配置和刷新控制
+// 注册ECharts组件
+try {
+  use([CanvasRenderer, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent])
+} catch (e) {
+  console.warn('ECharts components registration failed', e)
+}
+
+// 接收仪表板配置
 const props = defineProps({
   config: {
     type: Object,
-    default: () => ({})
+    default: () => ({}),
   },
   allowRefresh: {
     type: Boolean,
-    default: true
+    default: true,
+  },
+})
+
+// 组件状态
+const loading = ref(true)
+const items = ref([])
+const chartData = ref(null)
+let refreshTimer = null
+
+// 获取状态图标
+function getStatusIcon(status) {
+  const icons = {
+    'success': 'mdi-check-circle',
+    'warning': 'mdi-alert',
+    'error': 'mdi-alert-circle',
+    'info': 'mdi-information',
+    'running': 'mdi-play-circle',
+    'pending': 'mdi-clock-outline',
+    'completed': 'mdi-check-circle-outline',
   }
-})
-
-// 任务状态数据
-const taskStatus = ref({
-  status: 'idle',
-  progress: 0,
-  copied_files: 0,
-  total_files: 0,
-  completed_pairs: 0,
-  total_pairs: 0
-})
-
-// 状态颜色映射
-const statusColor = computed(() => {
-  const status = taskStatus.value.status
-  switch (status) {
-    case 'running':
-      return 'primary'
-    case 'completed':
-      return 'success'
-    case 'error':
-      return 'error'
-    default:
-      return 'grey'
-  }
-})
-
-// 获取任务状态
-async function getStatus() {
-  // 这里应该调用API获取任务状态，但在仪表板组件中可能不需要实时刷新
-  // 或者通过props接收状态数据
+  return icons[status] || 'mdi-help-circle'
 }
 
-// 执行复制任务
-function runTask() {
-  // 这里应该发送事件通知主应用执行任务
+// 获取状态颜色
+function getStatusColor(status) {
+  const colors = {
+    'success': 'success',
+    'warning': 'warning',
+    'error': 'error',
+    'info': 'info',
+    'running': 'primary',
+    'pending': 'secondary',
+    'completed': 'success',
+  }
+  return colors[status] || 'grey'
 }
 
-// 组件挂载时获取初始状态
+// 图表选项
+const chartOptions = computed(() => {
+  if (!chartData.value) return {}
+
+  const { type, data } = chartData.value
+
+  if (type === 'line') {
+    return {
+      tooltip: {
+        trigger: 'axis',
+      },
+      xAxis: {
+        type: 'category',
+        data: data.xAxis,
+        axisLabel: {
+          color: '#888',
+        },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: '#888',
+        },
+      },
+      series: data.series.map(series => ({
+        name: series.name,
+        type: 'line',
+        smooth: true,
+        data: series.data,
+        areaStyle: { opacity: 0.1 },
+      })),
+    }
+  }
+
+  if (type === 'pie') {
+    return {
+      tooltip: {
+        trigger: 'item',
+        formatter: '{a} <br/>{b}: {c} ({d}%)',
+      },
+      series: [
+        {
+          name: data.name,
+          type: 'pie',
+          radius: ['40%', '70%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 10,
+            borderColor: '#fff',
+            borderWidth: 2,
+          },
+          label: {
+            show: false,
+            position: 'center',
+          },
+          emphasis: {
+            label: {
+              show: true,
+              fontSize: '12',
+              fontWeight: 'bold',
+            },
+          },
+          labelLine: {
+            show: false,
+          },
+          data: data.items,
+        },
+      ],
+    }
+  }
+
+  return {}
+})
+
+// 获取仪表板数据
+async function fetchDashboardData() {
+  if (!props.allowRefresh) return
+
+  loading.value = true
+
+  try {
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // 随机决定显示饼图或折线图
+    const showPie = Math.random() > 0.5
+
+    if (showPie) {
+      // 饼图数据
+      chartData.value = {
+        type: 'pie',
+        data: {
+          name: '文件分布',
+          items: [
+            { value: Math.floor(Math.random() * 50) + 30, name: '电影' },
+            { value: Math.floor(Math.random() * 40) + 20, name: '电视剧' },
+            { value: Math.floor(Math.random() * 30) + 10, name: '动漫' },
+            { value: Math.floor(Math.random() * 20) + 5, name: '纪录片' },
+          ],
+        },
+      }
+    } else {
+      // 折线图数据
+      const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+      chartData.value = {
+        type: 'line',
+        data: {
+          xAxis: days,
+          series: [
+            {
+              name: '下载量',
+              data: days.map(() => Math.floor(Math.random() * 10) + 1),
+            },
+            {
+              name: '完成量',
+              data: days.map(() => Math.floor(Math.random() * 8) + 1),
+            },
+          ],
+        },
+      }
+    }
+
+    // 生成列表数据
+    const statuses = ['success', 'warning', 'error', 'info', 'running', 'pending', 'completed']
+    items.value = Array.from({ length: 5 }, (_, i) => {
+      const status = statuses[Math.floor(Math.random() * statuses.length)]
+      return {
+        title: `项目 ${i + 1}`,
+        subtitle: `上次更新: ${new Date().toLocaleTimeString()}`,
+        status,
+        value: Math.floor(Math.random() * 100) + '%',
+      }
+    })
+  } catch (error) {
+    console.error('获取仪表板数据失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 设置定时刷新
+function setupRefreshTimer() {
+  if (props.allowRefresh) {
+    // 每30秒刷新一次
+    refreshTimer = setInterval(() => {
+      fetchDashboardData()
+    }, 30000)
+  }
+}
+
+// 初始化
 onMounted(() => {
-  getStatus()
+  fetchDashboardData()
+  setupRefreshTimer()
 })
 
-// 组件卸载时清理资源
+// 清理
 onUnmounted(() => {
-  // 清理资源
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+  }
 })
 </script>

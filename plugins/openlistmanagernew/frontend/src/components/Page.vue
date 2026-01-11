@@ -1,216 +1,155 @@
 <template>
-  <div class="plugin-page" style="padding: 16px;">
-    <!-- 页面标题和操作按钮 -->
-    <div class="d-flex justify-space-between align-center mb-4">
-      <h2>OpenList管理器新</h2>
-      <div>
-        <v-btn color="primary" @click="runTask" :disabled="taskStatus.status === 'running'" class="mr-2">
-          <template v-if="taskStatus.status === 'running'">
-            <v-icon class="mr-1">mdi-loading</v-icon>
-            任务运行中
-          </template>
-          <template v-else>
-            <v-icon class="mr-1">mdi-play</v-icon>
-            执行复制任务
-          </template>
-        </v-btn>
-        <v-btn color="secondary" @click="notifySwitch">
-          <v-icon class="mr-1">mdi-cog</v-icon>
-          配置
-        </v-btn>
-      </div>
-    </div>
-
-    <!-- 任务状态卡片 -->
-    <v-card variant="outlined" class="mb-4">
-      <v-card-title>任务状态</v-card-title>
+  <div class="plugin-page">
+    <v-card>
+      <v-card-item>
+        <v-card-title>{{ title }}</v-card-title>
+        <template #append>
+          <v-btn icon color="primary" variant="text" @click="notifyClose">
+            <v-icon left>mdi-close</v-icon>
+          </v-btn>
+        </template>
+      </v-card-item>
       <v-card-text>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- 状态信息 -->
-          <div>
-            <v-row class="mb-2">
-              <v-col cols="4">状态:</v-col>
-              <v-col cols="8">
-                <v-chip :color="statusColor" size="small">{{ taskStatus.status }}</v-chip>
-              </v-col>
-            </v-row>
-            <v-row class="mb-2">
-              <v-col cols="4">进度:</v-col>
-              <v-col cols="8">
-                <v-progress-linear :value="taskStatus.progress" height="8" :color="statusColor" class="mb-1"></v-progress-linear>
-                <span>{{ taskStatus.progress }}%</span>
-              </v-col>
-            </v-row>
-            <v-row class="mb-2">
-              <v-col cols="4">消息:</v-col>
-              <v-col cols="8">{{ taskStatus.message || '无' }}</v-col>
-            </v-row>
+        <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <v-skeleton-loader v-if="loading" type="card"></v-skeleton-loader>
+        <div v-else>
+          <!-- 数据统计展示 -->
+          <v-row v-if="stats">
+            <v-col v-for="(value, key) in stats" :key="key" cols="12" sm="6" md="4">
+              <v-card variant="outlined" class="text-center">
+                <v-card-text>
+                  <div class="text-h4 font-weight-bold">{{ value }}</div>
+                  <div class="text-subtitle-1">{{ key }}</div>
+                </v-card-text>
+              </v-card>
+            </v-col>
+          </v-row>
+
+          <!-- 最近记录展示 -->
+          <div v-if="recentItems && recentItems.length" class="mt-4">
+            <div class="text-h6 mb-2">最近记录</div>
+            <v-timeline density="compact">
+              <v-timeline-item
+                v-for="(item, index) in recentItems"
+                :key="index"
+                :dot-color="getItemColor(item.type)"
+                size="small"
+              >
+                <div class="d-flex align-center">
+                  <v-icon :color="getItemColor(item.type)" size="small" class="mr-2">
+                    {{ getItemIcon(item.type) }}
+                  </v-icon>
+                  <span class="font-weight-medium">{{ item.title }}</span>
+                </div>
+                <div class="text-caption text-secondary">{{ item.time }}</div>
+              </v-timeline-item>
+            </v-timeline>
           </div>
 
-          <!-- 统计信息 -->
-          <div>
-            <v-row class="mb-2">
-              <v-col cols="4">总文件数:</v-col>
-              <v-col cols="8">{{ taskStatus.total_files }}</v-col>
-            </v-row>
-            <v-row class="mb-2">
-              <v-col cols="4">已复制:</v-col>
-              <v-col cols="8">{{ taskStatus.copied_files }}</v-col>
-            </v-row>
-            <v-row class="mb-2">
-              <v-col cols="4">已跳过:</v-col>
-              <v-col cols="8">{{ taskStatus.skipped_files }}</v-col>
-            </v-row>
-            <v-row class="mb-2">
-              <v-col cols="4">目录对:</v-col>
-              <v-col cols="8">{{ taskStatus.completed_pairs }}/{{ taskStatus.total_pairs }}</v-col>
-            </v-row>
+          <!-- 当前状态 -->
+          <div class="mt-4 text-subtitle-2">
+            <div>
+              <strong>状态:</strong>
+              <v-chip size="small" :color="status === 'running' ? 'success' : 'warning'">{{ status }}</v-chip>
+            </div>
+            <div><strong>最后更新:</strong> {{ lastUpdated }}</div>
           </div>
         </div>
-
-        <!-- 当前处理目录对 -->
-        <v-row class="mt-4" v-if="taskStatus.current_pair">
-          <v-col cols="4">当前处理:</v-col>
-          <v-col cols="8">
-            <v-chip color="info" size="small">{{ taskStatus.current_pair }}</v-chip>
-          </v-col>
-        </v-row>
       </v-card-text>
-    </v-card>
-
-    <!-- 目标目录媒体文件数 -->
-    <v-card variant="outlined" class="mb-4">
-      <v-card-title>目标目录媒体文件数</v-card-title>
-      <v-card-text class="text-h4 font-weight-bold">{{ targetFilesCount }}</v-card-text>
-    </v-card>
-
-    <!-- 最近复制的文件 -->
-    <v-card variant="outlined">
-      <v-card-title>最近复制的文件</v-card-title>
-      <v-card-text>
-        <v-data-table
-          :headers="[
-            { title: '文件名', value: 'filename' },
-            { title: '源目录', value: 'source_path' },
-            { title: '目标目录', value: 'target_path' },
-            { title: '复制时间', value: 'copy_time' }
-          ]"
-          :items="copiedFiles"
-          :items-per-page="10"
-          hide-default-footer
-        >
-          <template #empty>
-            <div class="text-center py-4">暂无复制记录</div>
-          </template>
-        </v-data-table>
-      </v-card-text>
+      <v-card-actions>
+        <v-btn color="primary" @click="refreshData" :loading="loading">
+          <v-icon left>mdi-refresh</v-icon>
+          刷新数据
+        </v-btn>
+        <v-spacer></v-spacer>
+        <v-btn color="primary" @click="notifySwitch">
+          <v-icon left>mdi-cog</v-icon>
+          配置
+        </v-btn>
+      </v-card-actions>
     </v-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
+
+// 接收初始配置
+const props = defineProps({
+  model: {
+    type: Object,
+    default: () => {},
+  },
+  api: {
+    type: Object,
+    default: () => {},
+  },
+})
+
+// 组件状态
+const title = ref('插件详情页面')
+const loading = ref(true)
+const error = ref(null)
+const stats = ref(null)
+const recentItems = ref([])
+const status = ref('running')
+const lastUpdated = ref('')
 
 // 自定义事件，用于通知主应用刷新数据
 const emit = defineEmits(['action', 'switch', 'close'])
 
-// 接收API对象
-const props = defineProps({
-  api: {
-    type: Object,
-    default: () => {}
+// 获取状态图标
+function getItemIcon(type) {
+  const icons = {
+    'movie': 'mdi-movie',
+    'tv': 'mdi-television-classic',
+    'download': 'mdi-download',
+    'error': 'mdi-alert-circle',
+    'success': 'mdi-check-circle',
   }
-})
+  return icons[type] || 'mdi-information'
+}
 
-// 任务状态数据
-const taskStatus = ref({
-  status: 'idle',
-  progress: 0,
-  message: '',
-  last_run: null,
-  start_time: null,
-  end_time: null,
-  total_files: 0,
-  copied_files: 0,
-  skipped_files: 0,
-  current_pair: '',
-  total_pairs: 0,
-  completed_pairs: 0
-})
-
-// 复制文件记录
-const copiedFiles = ref([])
-
-// 目标文件数量
-const targetFilesCount = ref(0)
-
-// 状态颜色映射
-const statusColor = computed(() => {
-  const status = taskStatus.value.status
-  switch (status) {
-    case 'running':
-      return 'primary'
-    case 'completed':
-      return 'success'
-    case 'error':
-      return 'error'
-    default:
-      return 'grey'
+// 获取状态颜色
+function getItemColor(type) {
+  const colors = {
+    'movie': 'blue',
+    'tv': 'green',
+    'download': 'purple',
+    'error': 'red',
+    'success': 'success',
   }
-})
+  return colors[type] || 'grey'
+}
 
-// 获取任务状态
-async function getStatus() {
-  if (!props.api) return
+// 获取和刷新数据
+async function refreshData() {
+  loading.value = true
+  error.value = null
+
   try {
-    const response = await props.api.get('plugin/OpenListManagerNew/status')
-    if (response && response.success) {
-      taskStatus.value = response.data
+    // 模拟数据
+    stats.value = {
+      '电影': Math.floor(Math.random() * 100) + 50,
+      '电视剧': Math.floor(Math.random() * 100) + 30,
+      '动漫': Math.floor(Math.random() * 100) + 20,
+      '纪录片': Math.floor(Math.random() * 100) + 10,
+      '综艺': Math.floor(Math.random() * 100) + 5,
     }
-  } catch (error) {
-    console.error('获取任务状态失败:', error)
+
+    // 演示使用api模块调用插件接口
+    recentItems.value = await props.api.get(`plugin/MyPlugin/history`)
+
+    status.value = Math.random() > 0.2 ? 'running' : 'paused'
+    lastUpdated.value = new Date().toLocaleString()
+  } catch (err) {
+    console.error('获取数据失败:', err)
+    error.value = err.message || '获取数据失败'
+  } finally {
+    loading.value = false
+    // 通知主应用组件已更新
+    emit('action')
   }
-}
-
-// 执行复制任务
-async function runTask() {
-  if (!props.api) return
-  try {
-    await props.api.post('plugin/OpenListManagerNew/run')
-    // 立即刷新状态
-    await getStatus()
-  } catch (error) {
-    console.error('执行复制任务失败:', error)
-  }
-}
-
-// 定时刷新任务状态
-let refreshTimer = null
-function startRefreshTimer() {
-  refreshTimer = setInterval(getStatus, 2000)
-}
-
-function stopRefreshTimer() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
-}
-
-// 页面挂载时获取初始状态并开始定时刷新
-onMounted(() => {
-  getStatus()
-  startRefreshTimer()
-})
-
-// 页面卸载时停止定时刷新
-onUnmounted(() => {
-  stopRefreshTimer()
-})
-
-// 通知主应用刷新数据
-function notifyRefresh() {
-  emit('action')
 }
 
 // 通知主应用切换到配置页面
@@ -218,8 +157,13 @@ function notifySwitch() {
   emit('switch')
 }
 
-// 通知主应用关闭当前页面
+// 通知主应用关闭组件
 function notifyClose() {
   emit('close')
 }
+
+// 组件挂载时加载数据
+onMounted(() => {
+  refreshData()
+})
 </script>

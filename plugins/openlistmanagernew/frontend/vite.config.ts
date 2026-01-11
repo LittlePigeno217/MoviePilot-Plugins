@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     vue(),
     federation({
-      name: 'OpenListManagerNew',
+      name: 'MyPlugin',
       filename: 'remoteEntry.js',
       exposes: {
         './Page': './src/components/Page.vue',
@@ -36,6 +36,7 @@ export default defineConfig({
     target: 'esnext',   // 必须设置为esnext以支持顶层await
     minify: false,      // 开发阶段建议关闭混淆
     cssCodeSplit: true, // 改为true以便能分离样式文件
+    outDir: '../dist/assets', // 输出到插件根目录的dist/assets目录
   },
   css: {
     preprocessorOptions: {
