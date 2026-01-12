@@ -12,7 +12,6 @@
     "history": {
       "v1.0": "OpenList多元化的管理插件 。",
       "v1.1": "优化界面显示及日志参数输出"
-<<<<<<< HEAD
     }
   },
   "OpenListManagerVue": {
@@ -26,9 +25,7 @@
     "v2": true,
     "release": true,
     "history": {
-      "v1.5": "初始版本，使用Vue技术栈重构OpenList管理器"
-=======
->>>>>>> 967266cd1d5b89c55775670ca5f821c5fc4be90a
+      "v1.0": "初始版本，使用Vue技术栈重构OpenList管理器"
     }
   }
 }
