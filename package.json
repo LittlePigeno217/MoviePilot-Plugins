@@ -14,7 +14,7 @@
       "v1.1": "优化界面显示及日志参数输出"
     }
   },
-  "OpenListManagerVue": {
+  "openlistmanagervue": {
     "name": "OpenList管理Vue",
     "description": "OpenList多元化的管理插件（Vue版本）。",
     "labels": "OpenList",
