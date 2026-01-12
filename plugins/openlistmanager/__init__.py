@@ -59,7 +59,7 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.2"
+    plugin_version = "1.3"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlist_"
@@ -219,8 +219,8 @@ class OpenListManager(_PluginBase):
                     self._openlist_url = base_url.rstrip('/')
                     logger.info(f"从MoviePilot OpenList实例获取地址: {self._openlist_url}")
             
-            if hasattr(self._openlist_instance, '_Alist__get_valuable_toke'):
-                token = self._openlist_instance._Alist__get_valuable_toke
+            if hasattr(self._openlist_instance, '_Alist__get_valuable_token'):
+                token = self._openlist_instance._Alist__get_valuable_token
                 if token:
                     self._openlist_token = token
                     logger.info("从MoviePilot OpenList实例获取Token成功")
@@ -1777,7 +1777,7 @@ class OpenListManager(_PluginBase):
         try:
             url = f"{self._openlist_url}/api/me"
             headers = {
-                "Authorization": self._openlist_token,
+                "Authorization": f"Bearer {self._openlist_token}",
                 "Content-Type": "application/json"
             }
             
@@ -1795,8 +1795,8 @@ class OpenListManager(_PluginBase):
         try:
             url = f"{self._openlist_url}/api/fs/list"
             headers = {
-                "authorization": self._openlist_token,
-                "content-type": "application/json"
+                "Authorization": f"Bearer {self._openlist_token}",
+                "Content-Type": "application/json"
             }
             data = {"path": path, "password": ""}
             
@@ -1977,8 +1977,8 @@ class OpenListManager(_PluginBase):
             
             url = f"{self._openlist_url}/api/fs/copy"
             headers = {
-                "authorization": self._openlist_token,
-                "content-type": "application/json"
+                "Authorization": f"Bearer {self._openlist_token}",
+                "Content-Type": "application/json"
             }
             
             # 根据OpenList官方API文档，复制API需要以下参数
@@ -2013,8 +2013,8 @@ class OpenListManager(_PluginBase):
         try:
             url = f"{self._openlist_url}/api/fs/get"
             headers = {
-                "authorization": self._openlist_token,
-                "content-type": "application/json"
+                "Authorization": f"Bearer {self._openlist_token}",
+                "Content-Type": "application/json"
             }
             params = {"path": path}
             
@@ -2037,6 +2037,11 @@ class OpenListManager(_PluginBase):
             url = f"{self._openlist_url}/api/fs/mkdir"
             data = {"path": path}
             
+            # 确保Authorization头格式正确，添加Bearer前缀
+            headers = {
+                "Authorization": f"Bearer {self._openlist_token}",
+                "Content-Type": "application/json"
+            }
             response = requests.post(url, headers=headers, json=data, timeout=10)
             if response.status_code == 200:
                 result = response.json()
