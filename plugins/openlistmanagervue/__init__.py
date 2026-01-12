@@ -37,7 +37,7 @@ except ImportError:
     logger.warning("MoviePilot OpenList模块不可用，将使用手动配置")
 
 
-class OpenListManagerVueConfig(BaseModel):
+class OpenListManagerConfig(BaseModel):
     enabled: bool = False
     openlist_url: str = ""
     openlist_token: str = ""
@@ -51,18 +51,18 @@ class OpenListManagerVueConfig(BaseModel):
     clear_cache: bool = False
 
 
-class OpenListManagerVue(_PluginBase):
+class OpenListManager(_PluginBase):
     """
-    OpenList管理器Vue插件 - 实现OpenList多目录间文件复制与管理
+    OpenList管理Vue插件 - 实现OpenList多目录间文件复制与管理
     """
     # 插件基本信息
-    plugin_name = "OpenList管理器Vue"
-    plugin_desc = "OpenList多元化的管理插件。"
+    plugin_name = "OpenList管理Vue"
+    plugin_desc = "OpenList多元化的管理插件（Vue版本）。"
     plugin_icon = "Alist_B.png"
     plugin_version = "1.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
-    plugin_config_prefix = "openlistvue_"
+    plugin_config_prefix = "openlist_"
     plugin_order = 1
     auth_level = 1
 
@@ -141,7 +141,7 @@ class OpenListManagerVue(_PluginBase):
         self.stop_service()
 
         if config:
-            self._config = OpenListManagerVueConfig(**config)
+            self._config = OpenListManagerConfig(**config)
             self._enable = self._config.enabled
             self._cron = self._config.cron
             self._onlyonce = self._config.onlyonce
@@ -164,11 +164,11 @@ class OpenListManagerVue(_PluginBase):
             self._update_config()
 
         logger.info("正在恢复插件状态数据...")
-        self._task_status = self.get_data("openlistmanagervue_task_status") or self._get_default_task_status()
-        self._copied_files = self.get_data("openlistmanagervue_copied_files") or {}
-        self._target_files_count = self.get_data("openlistmanagervue_target_files_count") or 0
+        self._task_status = self.get_data("openlistmanager_task_status") or self._get_default_task_status()
+        self._copied_files = self.get_data("openlistmanager_copied_files") or {}
+        self._target_files_count = self.get_data("openlistmanager_target_files_count") or 0
 
-        logger.info(f"恢复数据完成: 任务状态={self._task_status.get('status')}, " \
+        logger.info(f"恢复数据完成: 任务状态={self._task_status.get('status')}, " 
                    f"复制文件记录={len(self._copied_files)}个, "
                    f"目标文件数={self._target_files_count}")
 
@@ -205,7 +205,7 @@ class OpenListManagerVue(_PluginBase):
             if self._usemoviepilotconfig:
                 self._update_openlist_config_from_instance()
                 
-except Exception as e:
+        except Exception as e:
             logger.error(f"初始化MoviePilot OpenList实例失败: {str(e)}")
 
     def _update_openlist_config_from_instance(self):
@@ -225,7 +225,7 @@ except Exception as e:
                     self._openlist_token = token
                     logger.info("从MoviePilot OpenList实例获取Token成功")
                     
-except Exception as e:
+        except Exception as e:
             logger.error(f"从MoviePilot OpenList实例获取配置失败: {str(e)}")
 
     def get_state(self) -> bool:
@@ -252,9 +252,9 @@ except Exception as e:
         self._previous_completed_count = 0
         self._previous_completed_files = []
         
-        self.save_data("openlistmanagervue_task_status", self._task_status)
-        self.save_data("openlistmanagervue_copied_files", self._copied_files)
-        self.save_data("openlistmanagervue_target_files_count", self._target_files_count)
+        self.save_data("openlistmanager_task_status", self._task_status)
+        self.save_data("openlistmanager_copied_files", self._copied_files)
+        self.save_data("openlistmanager_target_files_count", self._target_files_count)
         
         logger.info("插件数据已全部清空")
 
@@ -264,28 +264,17 @@ except Exception as e:
                 "path": "/status",
                 "endpoint": self.get_status,
                 "methods": ["GET"],
+                "auth": "bear",
                 "summary": "获取任务状态"
             },
             {
                 "path": "/run",
                 "endpoint": self.run_task,
                 "methods": ["POST"],
+                "auth": "bear",
                 "summary": "执行复制任务"
             }
         ]
-
-    def get_service(self) -> List[Dict[str, Any]]:
-        if self._enable and self._cron:
-            return [
-                {
-                    "id": "OpenListManagerVueTask",
-                    "name": "OpenList管理任务Vue",
-                    "trigger": CronTrigger.from_crontab(self._cron),
-                    "func": self.execute_copy_task,
-                    "kwargs": {}
-                }
-            ]
-        return []
 
     def get_render_mode(self) -> Tuple[str, str]:
         """
@@ -294,6 +283,19 @@ except Exception as e:
         :return: 2、组件路径，默认 dist/assets
         """
         return "vue", "dist/assets"
+
+    def get_service(self) -> List[Dict[str, Any]]:
+        if self._enable and self._cron:
+            return [
+                {
+                    "id": "OpenListManagerTask",
+                    "name": "OpenList管理任务",
+                    "trigger": CronTrigger.from_crontab(self._cron),
+                    "func": self.execute_copy_task,
+                    "kwargs": {}
+                }
+            ]
+        return []
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         openlist_available = ALIST_AVAILABLE
@@ -747,7 +749,7 @@ except Exception as e:
                                                     {
                                                         "component": "div",
                                                         "props": {"class": "text-h6 font-weight-bold"},
-                                                        "text": "OpenList管理器Vue"
+                                                        "text": "OpenList管理器"
                                                     },
                                                     {
                                                         "component": "div",
@@ -823,6 +825,55 @@ except Exception as e:
                                             {
                                                 "component": "VCard",
                                                 "props": {
+                                                    "color": "warning", 
+                                                    "variant": "tonal", 
+                                                    "class": "status-card-item",
+                                                    "style": "min-height: 80px; height: 100%; border-radius: 8px; transition: all 0.3s ease;"
+                                                },
+                                                "content": [
+                                                    {
+                                                        "component": "VCardText",
+                                                        "props": {"class": "text-center pa-2"},
+                                                        "content": [
+                                                            {
+                                                                "component": "VAvatar",
+                                                                "props": {
+                                                                    "color": "warning",
+                                                                    "size": "36",
+                                                                    "class": "mb-1"
+                                                                },
+                                                                "content": [
+                                                                    {
+                                                                        "component": "VIcon",
+                                                                        "props": {"icon": "mdi-progress-clock", "size": "20"},
+                                                                        "text": ""
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "props": {"class": "text-caption font-weight-medium text-warning-darken-1 mb-1"},
+                                                                "text": "正在复制媒体文件"
+                                                            },
+                                                            {
+                                                                "component": "div",
+                                                                "props": {"class": "text-h5 font-weight-bold text-warning-darken-2"},
+                                                                "text": str(len(copying_media_files))
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    # 状态框3：累计复制媒体文件数量
+                                    {
+                                        "component": "VCol",
+                                        "props": {"cols": 12, "sm": 4},
+                                        "content": [
+                                            {
+                                                "component": "VCard",
+                                                "props": {
                                                     "color": "success", 
                                                     "variant": "tonal", 
                                                     "class": "status-card-item",
@@ -843,7 +894,7 @@ except Exception as e:
                                                                 "content": [
                                                                     {
                                                                         "component": "VIcon",
-                                                                        "props": {"icon": "mdi-file-multiple", "size": "20"},
+                                                                        "props": {"icon": "mdi-check-circle-outline", "size": "20"},
                                                                         "text": ""
                                                                     }
                                                                 ]
@@ -851,71 +902,143 @@ except Exception as e:
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-caption font-weight-medium text-success-darken-1 mb-1"},
-                                                                "text": "已复制媒体文件数"
+                                                                "text": "累计复制媒体文件"
                                                             },
                                                             {
                                                                 "component": "div",
                                                                 "props": {"class": "text-h5 font-weight-bold text-success-darken-2"},
-                                                                "text": str(len(self._copied_files))
+                                                                "text": str(len(completed_media_files))
                                                             }
                                                         ]
                                                     }
                                                 ]
                                             }
                                         ]
-                                    },
-                                    # 状态框3：最近完成任务
+                                    }
+                                ]
+                            },
+                            
+                            # 第二行：正在复制的媒体文件列表
+                            {
+                                "component": "VRow",
+                                "props": {"class": "mb-3"},
+                                "content": [
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 12, "sm": 4},
+                                        "props": {"cols": 12},
                                         "content": [
                                             {
                                                 "component": "VCard",
                                                 "props": {
-                                                    "color": "info", 
-                                                    "variant": "tonal", 
-                                                    "class": "status-card-item",
-                                                    "style": "min-height: 80px; height: 100%; border-radius: 8px; transition: all 0.3s ease;"
+                                                    "variant": "outlined", 
+                                                    "class": "file-list-card",
+                                                    "style": "border-radius: 8px;"
                                                 },
                                                 "content": [
                                                     {
-                                                        "component": "VCardText",
-                                                        "props": {"class": "text-center pa-2"},
+                                                        "component": "VCardTitle",
+                                                        "props": {"class": "d-flex align-center pa-2 bg-orange-lighten-5"},
                                                         "content": [
                                                             {
                                                                 "component": "VAvatar",
                                                                 "props": {
-                                                                    "color": "info",
-                                                                    "size": "36",
-                                                                    "class": "mb-1"
+                                                                    "color": "orange",
+                                                                    "size": "28",
+                                                                    "class": "mr-2"
                                                                 },
                                                                 "content": [
                                                                     {
                                                                         "component": "VIcon",
-                                                                        "props": {"icon": "mdi-timer-check", "size": "20"},
+                                                                        "props": {"icon": "mdi-progress-upload", "size": "16"},
                                                                         "text": ""
                                                                     }
                                                                 ]
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {"class": "text-caption font-weight-medium text-info-darken-1 mb-1"},
-                                                                "text": "最近任务状态"
+                                                                "content": [
+                                                                    {
+                                                                        "component": "div",
+                                                                        "props": {"class": "text-subtitle-2 font-weight-bold text-orange-darken-2"},
+                                                                        "text": "正在复制的媒体文件"
+                                                                    },
+                                                                    {
+                                                                        "component": "div",
+                                                                        "props": {"class": "text-caption text-grey-darken-1"},
+                                                                        "text": f"共 {len(copying_media_files)} 个文件"
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "component": "VCardText",
+                                                        "props": {"class": "pa-2"},
+                                                        "content": self._render_copying_media_files(copying_media_files)
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            
+                            # 第三行：最近完成的媒体文件列表
+                            {
+                                "component": "VRow",
+                                "content": [
+                                    {
+                                        "component": "VCol",
+                                        "props": {"cols": 12},
+                                        "content": [
+                                            {
+                                                "component": "VCard",
+                                                "props": {
+                                                    "variant": "outlined", 
+                                                    "class": "file-list-card",
+                                                    "style": "border-radius: 8px;"
+                                                },
+                                                "content": [
+                                                    {
+                                                        "component": "VCardTitle",
+                                                        "props": {"class": "d-flex align-center pa-2 bg-green-lighten-5"},
+                                                        "content": [
+                                                            {
+                                                                "component": "VAvatar",
+                                                                "props": {
+                                                                    "color": "success",
+                                                                    "size": "28",
+                                                                    "class": "mr-2"
+                                                                },
+                                                                "content": [
+                                                                    {
+                                                                        "component": "VIcon",
+                                                                        "props": {"icon": "mdi-check-circle", "size": "16"},
+                                                                        "text": ""
+                                                                    }
+                                                                ]
                                                             },
                                                             {
                                                                 "component": "div",
-                                                                "props": {
-                                                                    "class": "text-h5 font-weight-bold",
-                                                                    "class": self._task_status.get('status') == 'running' ? 'text-info-darken-2' : 'text-info-darken-2'
-                                                                },
-                                                                "text": {
-                                                                    'running': '运行中',
-                                                                    'completed': '已完成',
-                                                                    'failed': '失败',
-                                                                    'idle': '空闲'
-                                                                }[self._task_status.get('status', 'idle')]
+                                                                "content": [
+                                                                    {
+                                                                        "component": "div",
+                                                                        "props": {"class": "text-subtitle-2 font-weight-bold text-green-darken-2"},
+                                                                        "text": "最近完成的媒体文件"
+                                                                    },
+                                                                    {
+                                                                        "component": "div",
+                                                                        "props": {"class": "text-caption text-grey-darken-1"},
+                                                                        "text": f"共 {len(completed_media_files)} 个文件"
+                                                                    }
+                                                                ]
                                                             }
                                                         ]
+                                                    },
+                                                    {
+                                                        "component": "VCardText",
+                                                        "props": {"class": "pa-2"},
+                                                        "content": self._render_recent_media_files(completed_media_files)
                                                     }
                                                 ]
                                             }
@@ -1045,6 +1168,228 @@ except Exception as e:
         
         # 返回指定数量的文件
         return copying_files[:count]
+    
+    def _render_recent_media_files(self, media_files: List[Dict]) -> List[Dict]:
+        """渲染最近完成的媒体文件列表 - 更紧凑的样式"""
+        if not media_files:
+            return [
+                {
+                    "component": "div",
+                    "props": {"class": "text-center text-grey py-8"},
+                    "content": [
+                        {
+                            "component": "VIcon",
+                            "props": {"icon": "mdi-file-question", "size": "48", "color": "grey-lighten-1", "class": "mb-2"},
+                            "text": ""
+                        },
+                        {
+                            "component": "div",
+                            "props": {"class": "text-body-2 text-grey-darken-1"},
+                            "text": "暂无完成的媒体文件记录"
+                        }
+                    ]
+                }
+            ]
+        
+        content = []
+        
+        # 将文件列表按每行6个分组
+        rows = []
+        for i in range(0, len(media_files), 6):
+            rows.append(media_files[i:i+6])
+        
+        # 渲染每一行
+        for row in rows:
+            row_content = []
+            for media_file in row:
+                filename = media_file.get("filename", "未知文件")
+                completed_time = media_file.get("completed_time", "")
+                
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 2, "md": 2, "lg": 2, "class": "pa-1"},
+                    "content": [
+                        {
+                            "component": "VCard",
+                            "props": {
+                                "color": "green-lighten-5", 
+                                "variant": "flat", 
+                                "class": "text-center compact-file-card",
+                                "style": "min-height: 50px; height: 100%; border-radius: 6px; transition: all 0.2s ease;"
+                            },
+                            "content": [
+                                {
+                                    "component": "VCardText",
+                                    "props": {
+                                        "class": "pa-1 d-flex flex-column align-center justify-center", 
+                                        "style": "min-height: 50px;"
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "div",
+                                            "props": {"class": "d-flex align-center justify-center w-100 mb-1"},
+                                            "content": [
+                                                {
+                                                    "component": "VIcon",
+                                                    "props": {
+                                                        "icon": "mdi-check-circle", 
+                                                        "size": "x-small", 
+                                                        "class": "text-success mr-1",
+                                                        "style": "min-width: 14px;"
+                                                    },
+                                                    "text": ""
+                                                },
+                                                {
+                                                    "component": "span",
+                                                    "props": {
+                                                        "class": "text-caption text-left compact-filename", 
+                                                        "style": "word-break: break-all; line-height: 1.1; max-height: 2.2em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 0.7rem; flex: 1;"
+                                                    },
+                                                    "text": filename
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "component": "div",
+                                            "props": {
+                                                "class": "text-caption text-grey-darken-1 mt-1",
+                                                "style": "font-size: 0.6rem;"
+                                            },
+                                            "text": completed_time
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                })
+            
+            # 如果一行不足4个，用空列填充以保持对称
+            while len(row_content) < 4:
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 3, "md": 3, "lg": 3, "class": "pa-1"},
+                    "content": []
+                })
+            
+            content.append({
+                "component": "VRow",
+                "props": {"class": "mb-1", "dense": True, "align": "stretch"},
+                "content": row_content
+            })
+        
+        return content
+    
+    def _render_copying_media_files(self, media_files: List[Dict]) -> List[Dict]:
+        """渲染正在复制的媒体文件列表 - 更紧凑的样式"""
+        if not media_files:
+            return [
+                {
+                    "component": "div",
+                    "props": {"class": "text-center text-grey py-8"},
+                    "content": [
+                        {
+                            "component": "VIcon",
+                            "props": {"icon": "mdi-file-sync-outline", "size": "48", "color": "grey-lighten-1", "class": "mb-2"},
+                            "text": ""
+                        },
+                        {
+                            "component": "div",
+                            "props": {"class": "text-body-2 text-grey-darken-1"},
+                            "text": "暂无正在复制的媒体文件"
+                        }
+                    ]
+                }
+            ]
+        
+        content = []
+        
+        # 将文件列表按每行4个分组
+        rows = []
+        for i in range(0, len(media_files), 4):
+            rows.append(media_files[i:i+4])
+        
+        # 渲染每一行
+        for row in rows:
+            row_content = []
+            for media_file in row:
+                filename = media_file.get("filename", "未知文件")
+                copied_time = media_file.get("copied_time", "")
+                
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 3, "md": 3, "lg": 3, "class": "pa-1"},
+                    "content": [
+                        {
+                            "component": "VCard",
+                            "props": {
+                                "color": "orange-lighten-5", 
+                                "variant": "flat", 
+                                "class": "text-center compact-file-card",
+                                "style": "min-height: 60px; height: 100%; border-radius: 8px; transition: all 0.2s ease;"
+                            },
+                            "content": [
+                                {
+                                    "component": "VCardText",
+                                    "props": {
+                                        "class": "pa-2 d-flex flex-column align-center justify-center", 
+                                        "style": "min-height: 60px;"
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "div",
+                                            "props": {"class": "d-flex align-center justify-center w-100 mb-1"},
+                                            "content": [
+                                                {
+                                                    "component": "VIcon",
+                                                    "props": {
+                                                        "icon": "mdi-progress-upload", 
+                                                        "size": "small", 
+                                                        "class": "text-orange mr-1",
+                                                        "style": "min-width: 18px;"
+                                                    },
+                                                    "text": ""
+                                                },
+                                                {
+                                                    "component": "span",
+                                                    "props": {
+                                                        "class": "text-caption text-left compact-filename", 
+                                                        "style": "word-break: break-all; line-height: 1.2; max-height: 2.4em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 0.75rem; flex: 1;"
+                                                    },
+                                                    "text": filename
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "component": "div",
+                                            "props": {
+                                                "class": "text-caption text-grey-darken-1 mt-1",
+                                                "style": "font-size: 0.65rem;"
+                                            },
+                                            "text": copied_time
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                })
+            
+            # 如果一行不足4个，用空列填充以保持对称
+            while len(row_content) < 4:
+                row_content.append({
+                    "component": "VCol",
+                    "props": {"cols": 12, "sm": 3, "md": 3, "lg": 3, "class": "pa-1"},
+                    "content": []
+                })
+            
+            content.append({
+                "component": "VRow",
+                "props": {"class": "mb-1", "dense": True, "align": "stretch"},
+                "content": row_content
+            })
+        
+        return content
 
     def _parse_directory_pairs(self) -> List[Dict[str, str]]:
         """解析目录配对字符串"""
@@ -1199,20 +1544,26 @@ except Exception as e:
                                        successfully_copied_files, newly_completed_files)
             
             self._complete_task("success", 
-                               f"复制完成！共处理 {len(directory_pairs)} 组目录配对，" \
-                               f"总计 {total_files} 个媒体文件，" \
-                               f"复制 {total_copied} 个，" \
-                               f"跳过 {total_skipped} 个，" \
+                               f"复制完成！共处理 {len(directory_pairs)} 组目录配对，" 
+                               f"总计 {total_files} 个媒体文件，" 
+                               f"复制 {total_copied} 个，" 
+                               f"跳过 {total_skipped} 个，" 
                                f"新增完成 {increased_completed_count} 个")
-                                
+                               
         except Exception as e:
             logger.error(f"复制任务执行失败: {str(e)}")
             self._complete_task("failed", f"任务执行失败: {str(e)}")
         finally:
+            self._task_lock = False
+            logger.info("任务执行锁已释放")
+            
+            if self._onlyonce:
+                self._onlyonce = False
+                self._update_config()
+                logger.info("立即运行任务已完成")
+            
             # 无论任务是否成功，都更新目标目录媒体文件数
-            directory_pairs = self._parse_directory_pairs()
-            if directory_pairs:
-                self._update_target_files_count(directory_pairs, silent=True)
+            self._update_target_files_count(directory_pairs, silent=True)
 
     def _get_completed_files_list(self) -> List[str]:
         """获取当前所有已完成文件的列表"""
@@ -1330,7 +1681,7 @@ except Exception as e:
         """更新目标目录媒体文件数统计"""
         if not directory_pairs:
             self._target_files_count = 0
-            self.save_data("openlistmanagervue_target_files_count", self._target_files_count)
+            self.save_data("openlistmanager_target_files_count", self._target_files_count)
             return
             
         total_target_files = 0
@@ -1372,7 +1723,7 @@ except Exception as e:
         if not silent:
             logger.info(f"总计目标目录媒体文件数: {total_target_files}")
         self._target_files_count = total_target_files
-        self.save_data("openlistmanagervue_target_files_count", self._target_files_count)
+        self.save_data("openlistmanager_target_files_count", self._target_files_count)
 
     def _execute_single_copy(self, source_dir: str, target_dir: str, pair_index: int, total_pairs: int, successfully_copied_files: List[str], global_processed_files: set) -> Optional[Dict[str, int]]:
         """执行单个目录配对复制"""
@@ -1398,6 +1749,157 @@ except Exception as e:
         except Exception as e:
             logger.error(f"处理目录配对 {source_dir} → {target_dir} 时出错: {str(e)}")
             return {"copied": 0, "skipped": 0, "total": 0}
+
+    def _build_target_index(self, target_files: List[dict]) -> set:
+        """构建目标索引 - 使用完整媒体文件名"""
+        index = set()
+        
+        if not target_files:
+            return index
+            
+        current_suffixes = self._get_current_suffixes()
+            
+        for file in target_files:
+            filename = file.get("name")
+            if not filename:
+                continue
+                
+            if any(filename.endswith(suffix) for suffix in current_suffixes):
+                index.add(filename)  # 使用完整文件名
+                
+        return index
+
+    def _validate_config(self) -> bool:
+        """验证配置是否有效"""
+        if not self._openlist_url or not self._openlist_token:
+            self._complete_task("failed", "OpenList地址或令牌未配置")
+            return False
+            
+        directory_pairs = self._parse_directory_pairs()
+        if not directory_pairs:
+            self._complete_task("failed", "未配置有效的目录配对")
+            return False
+            
+        return True
+
+    def _verify_openlist_connection(self) -> bool:
+        """验证OpenList连接"""
+        try:
+            url = f"{self._openlist_url}/api/me"
+            headers = {
+                "Authorization": f"Bearer {self._openlist_token}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("code") == 200:
+                logger.info(f"OpenList连接验证成功: {self._openlist_url}")
+                return True
+            else:
+                logger.error(f"OpenList连接验证失败: {data.get('message', '未知错误')}")
+                return False
+        except requests.exceptions.ConnectionError:
+            logger.error(f"OpenList连接失败: 无法连接到 {self._openlist_url}")
+            return False
+        except requests.exceptions.Timeout:
+            logger.error(f"OpenList连接失败: 请求超时")
+            return False
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"OpenList连接失败: HTTP错误 {e.response.status_code}")
+            return False
+        except Exception as e:
+            logger.error(f"OpenList连接验证失败: {str(e)}")
+            return False
+
+    def _get_openlist_files(self, path: str) -> List[dict]:
+        """获取OpenList目录文件列表"""
+        try:
+            url = f"{self._openlist_url}/api/fs/list"
+            headers = {
+                "Authorization": f"Bearer {self._openlist_token}",
+                "Content-Type": "application/json"
+            }
+            
+            # 根据OpenList API文档，list接口需要的参数
+            data = {
+                "path": path,
+                "password": "",
+                "page": 1,
+                "per_page": 100,
+                "refresh": False
+            }
+            
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get("code") != 200:
+                error_msg = result.get("message", "").lower()
+                # 对于目标目录为空的情况，不记录错误日志
+                if "path not found" in error_msg or "not exist" in error_msg:
+                    return []
+                
+                # 处理token失效情况
+                if "token" in error_msg and ("invalid" in error_msg or "expired" in error_msg):
+                    logger.error(f"OpenList Token失效: {result.get('message')}")
+                    # 如果使用MoviePilot配置，尝试重新获取token
+                    if self._usemoviepilotconfig and ALIST_AVAILABLE:
+                        logger.info("尝试重新从MoviePilot OpenList实例获取Token...")
+                        self._init_moviepilot_openlist()
+                        # 重新执行当前操作
+                        return self._get_openlist_files(path)
+                    else:
+                        logger.error("请检查OpenList Token配置是否正确")
+                        return []
+                
+                logger.error(f"获取目录 {path} 文件失败: {result.get('message')}")
+                return []
+                
+            data_content = result.get("data", {})
+            content = data_content.get("content") if data_content else None
+            
+            if content is None:
+                return []
+                
+            if not isinstance(content, list):
+                logger.error(f"目录 {path} 返回的content不是列表类型: {type(content)}")
+                return []
+                
+            files = []
+            
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                    
+                if item.get("is_dir"):
+                    sub_path = f"{path.rstrip('/')}/{item.get('name')}"
+                    sub_files = self._get_openlist_files(sub_path)
+                    files.extend(sub_files)
+                else:
+                    files.append({
+                        "name": item.get("name"),
+                        "path": f"{path.rstrip('/')}/{item.get('name')}",
+                        "size": item.get("size"),
+                        "modified": item.get("modified")
+                    })
+                    
+            return files
+            
+        except requests.exceptions.ConnectionError:
+            logger.error(f"获取文件列表失败: 无法连接到 {self._openlist_url}")
+            return []
+        except requests.exceptions.Timeout:
+            logger.error(f"获取文件列表失败: 请求超时")
+            return []
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"获取文件列表失败: HTTP错误 {e.response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"获取文件列表失败: {str(e)}")
+            return []
 
     def _copy_files(self, source_files: List[dict], target_index: set, source_dir: str, target_dir: str, 
                    base_progress: int, progress_range: int, successfully_copied_files: List[str], global_processed_files: set) -> Dict[str, int]:
@@ -1636,3 +2138,103 @@ except Exception as e:
             if response.status_code == 200:
                 result = response.json()
                 if result.get("code") == 200:
+                    logger.info(f"目录创建成功: {path}")
+                    return True
+                else:
+                    # 检查token是否失效
+                    error_msg = result.get("message", "").lower()
+                    if "token" in error_msg and ("invalid" in error_msg or "expired" in error_msg):
+                        logger.error(f"OpenList Token失效: {result.get('message')}")
+                        if self._usemoviepilotconfig and ALIST_AVAILABLE:
+                            logger.info("尝试重新从MoviePilot OpenList实例获取Token...")
+                            self._init_moviepilot_openlist()
+                            return self._ensure_directory_exists(path)
+                        else:
+                            logger.error("请检查OpenList Token配置是否正确")
+                            return False
+                    logger.warning(f"创建目录失败: {result.get('message')}")
+            
+            return False
+            
+        except requests.exceptions.ConnectionError:
+            logger.error(f"确保目录存在失败: 无法连接到 {self._openlist_url}")
+            return False
+        except requests.exceptions.Timeout:
+            logger.error(f"确保目录存在失败: 请求超时")
+            return False
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"确保目录存在失败: HTTP错误 {e.response.status_code}")
+            return False
+        except Exception as e:
+            logger.error(f"确保目录存在失败: {path}, 错误: {str(e)}")
+            return False
+
+    def _update_status(self, message: str, progress: int = None):
+        """更新任务状态"""
+        self._task_status["message"] = message
+        if progress is not None:
+            self._task_status["progress"] = progress
+        self._save_task_status()
+        
+    def _complete_task(self, status: str, message: str):
+        """完成任务状态更新"""
+        self._task_status.update({
+            "status": status,
+            "message": message,
+            "progress": 100,
+            "end_time": time.strftime("%Y-%m-%d %H:%M:%S")
+        })
+        self._save_task_status()
+
+    def _save_task_status(self):
+        """保存任务状态"""
+        self.save_data("openlistmanager_task_status", self._task_status)
+        
+    def _save_copied_files(self):
+        """保存已复制文件记录"""
+        self.save_data("openlistmanager_copied_files", self._copied_files)
+
+    def get_status(self):
+        """获取任务状态API"""
+        # 只在空闲状态下更新媒体文件状态，避免重复执行
+        if self._task_status.get("status") == "idle":
+            self._update_file_status_and_counts(silent=True)
+        
+        current_suffixes = self._get_current_suffixes()
+        directory_pairs = self._parse_directory_pairs()
+        copying_count, completed_count = self._get_file_status_counts()
+        
+        return {
+            "success": True,
+            "data": {
+                **self._task_status,
+                "config": {
+                    "enabled": self._enable,
+                    "openlist_url": self._openlist_url,
+                    "openlist_token": self._openlist_token,
+                    "directory_pairs": self._directory_pairs,
+                    "enable_custom_suffix": self._enablecustomsuffix,
+                    "cron": self._cron,
+                    "use_moviepilot_config": self._usemoviepilotconfig,
+                    "enable_wechat_notify": self._notify,
+                    "current_suffixes": current_suffixes,
+                    "parsed_pairs": directory_pairs
+                },
+                "copied_files_count": len(self._copied_files),
+                "copying_count": copying_count,
+                "completed_count": completed_count,
+                "target_files_count": self._target_files_count
+            }
+        }
+
+    def run_task(self):
+        """手动运行任务API"""
+        if self._task_status.get("status") == "running":
+            return {"success": False, "message": "任务正在运行中，请等待完成"}
+        
+        self._onlyonce = True
+        self._update_config()
+        
+        import threading
+        threading.Thread(target=self.execute_copy_task, daemon=True).start()
+        return {"success": True, "message": "复制任务已开始执行"}
