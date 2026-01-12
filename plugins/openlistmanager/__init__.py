@@ -59,7 +59,7 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.1"
+    plugin_version = "1.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlist_"
@@ -2009,7 +2009,7 @@ class OpenListManager(_PluginBase):
             return False
 
     def _ensure_directory_exists(self, path: str) -> bool:
-        """确保目录存在"""
+        """确保目录存在，递归创建父目录"""
         try:
             url = f"{self._openlist_url}/api/fs/get"
             headers = {
@@ -2024,7 +2024,16 @@ class OpenListManager(_PluginBase):
                 if result.get("code") == 200:
                     return True
             
-            # 目录不存在，创建它
+            # 目录不存在，递归创建父目录
+            parent_path = os.path.dirname(path)
+            
+            # 递归创建父目录，直到根目录
+            if parent_path and parent_path != "/" and parent_path != path:
+                if not self._ensure_directory_exists(parent_path):
+                    logger.error(f"无法创建父目录: {parent_path}")
+                    return False
+            
+            # 创建当前目录
             url = f"{self._openlist_url}/api/fs/mkdir"
             data = {"path": path}
             
@@ -2032,6 +2041,7 @@ class OpenListManager(_PluginBase):
             if response.status_code == 200:
                 result = response.json()
                 if result.get("code") == 200:
+                    logger.info(f"目录创建成功: {path}")
                     return True
                 else:
                     logger.warning(f"创建目录失败: {result.get('message')}")

@@ -1,9 +1,9 @@
 {
   "OpenListManager": {
     "name": "OpenList管理",
-    "description": "OpenList管理插件。",
+    "description": "OpenList多元化的管理插件。",
     "labels": "OpenList",
-    "version": "1.1",
+    "version": "1.2",
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
@@ -11,7 +11,8 @@
     "release": true,
     "history": {
       "v1.0": "OpenList管理插件。",
-      "v1.1": "优化界面显示及日志参数输出。"
+      "v1.1": "优化界面显示及日志参数输出。",
+      "v1.2": "修复目录创建失败问题，支持递归创建父目录。"
     }
   }
 }
