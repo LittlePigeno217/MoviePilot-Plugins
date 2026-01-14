@@ -59,10 +59,10 @@ class OpenListVue(_PluginBase):
     plugin_name = "OpenList管理Vue"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.0"
+    plugin_version = "1.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
-    plugin_config_prefix = "openlistvue_"
+    plugin_config_prefix = "openlistmanagervue_"
     plugin_order = 1
     auth_level = 1
 
@@ -164,9 +164,9 @@ class OpenListVue(_PluginBase):
             self._update_config()
 
         logger.info("正在恢复插件状态数据...")
-        self._task_status = self.get_data("OpenListVue_task_status") or self._get_default_task_status()
-        self._copied_files = self.get_data("OpenListVue_copied_files") or {}
-        self._target_files_count = self.get_data("OpenListVue_target_files_count") or 0
+        self._task_status = self.get_data("openlistmanagervue_task_status") or self._get_default_task_status()
+        self._copied_files = self.get_data("openlistmanagervue_copied_files") or {}
+        self._target_files_count = self.get_data("openlistmanagervue_target_files_count") or 0
 
         logger.info(f"恢复数据完成: 任务状态={self._task_status.get('status')}, " \
                    f"复制文件记录={len(self._copied_files)}个, "
@@ -252,9 +252,9 @@ class OpenListVue(_PluginBase):
         self._previous_completed_count = 0
         self._previous_completed_files = []
         
-        self.save_data("OpenListVue_task_status", self._task_status)
-        self.save_data("OpenListVue_copied_files", self._copied_files)
-        self.save_data("OpenListVue_target_files_count", self._target_files_count)
+        self.save_data("openlistmanagervue_task_status", self._task_status)
+        self.save_data("openlistmanagervue_copied_files", self._copied_files)
+        self.save_data("openlistmanagervue_target_files_count", self._target_files_count)
         
         logger.info("插件数据已全部清空")
 
@@ -331,7 +331,7 @@ class OpenListVue(_PluginBase):
 
     def _save_task_status(self):
         """保存任务状态"""
-        self.save_data("OpenListVue_task_status", self._task_status)
+        self.save_data("openlistmanagervue_task_status", self._task_status)
 
     def _complete_task(self, status: str, message: str):
         """完成任务并更新状态"""
