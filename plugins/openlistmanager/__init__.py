@@ -59,10 +59,10 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.5"
+    plugin_version = "1.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
-    plugin_config_prefix = "openlist_"
+    plugin_config_prefix = "openlistmanager_"
     plugin_order = 1
     auth_level = 1
 
@@ -219,8 +219,8 @@ class OpenListManager(_PluginBase):
                     self._openlist_url = base_url.rstrip('/')
                     logger.info(f"从MoviePilot OpenList实例获取地址: {self._openlist_url}")
             
-            if hasattr(self._openlist_instance, '_Alist__get_valuable_token'):
-                token = self._openlist_instance._Alist__get_valuable_token
+            if hasattr(self._openlist_instance, '_Alist__get_valuable_toke'):
+                token = self._openlist_instance._Alist__get_valuable_toke
                 if token:
                     self._openlist_token = token
                     logger.info("从MoviePilot OpenList实例获取Token成功")
@@ -1777,7 +1777,7 @@ class OpenListManager(_PluginBase):
         try:
             url = f"{self._openlist_url}/api/me"
             headers = {
-                "Authorization": f"Bearer {self._openlist_token}",
+                "Authorization": self._openlist_token,
                 "Content-Type": "application/json"
             }
             
@@ -1785,21 +1785,7 @@ class OpenListManager(_PluginBase):
             response.raise_for_status()
             data = response.json()
             
-            if data.get("code") == 200:
-                logger.info(f"OpenList连接验证成功: {self._openlist_url}")
-                return True
-            else:
-                logger.error(f"OpenList连接验证失败: {data.get('message', '未知错误')}")
-                return False
-        except requests.exceptions.ConnectionError:
-            logger.error(f"OpenList连接失败: 无法连接到 {self._openlist_url}")
-            return False
-        except requests.exceptions.Timeout:
-            logger.error(f"OpenList连接失败: 请求超时")
-            return False
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"OpenList连接失败: HTTP错误 {e.response.status_code}")
-            return False
+            return data.get("code") == 200
         except Exception as e:
             logger.error(f"OpenList连接验证失败: {str(e)}")
             return False
@@ -1809,42 +1795,19 @@ class OpenListManager(_PluginBase):
         try:
             url = f"{self._openlist_url}/api/fs/list"
             headers = {
-                "Authorization": f"Bearer {self._openlist_token}",
-                "Content-Type": "application/json"
+                "authorization": self._openlist_token,
+                "content-type": "application/json"
             }
-            
-            # 根据OpenList API文档，list接口需要的参数
-            data = {
-                "path": path,
-                "password": "",
-                "page": 1,
-                "per_page": 100,
-                "refresh": False
-            }
+            data = {"path": path, "password": ""}
             
             response = requests.post(url, headers=headers, json=data, timeout=30)
             response.raise_for_status()
             result = response.json()
             
             if result.get("code") != 200:
-                error_msg = result.get("message", "").lower()
                 # 对于目标目录为空的情况，不记录错误日志
-                if "path not found" in error_msg or "not exist" in error_msg:
+                if "path not found" in result.get("message", "").lower() or "not exist" in result.get("message", "").lower():
                     return []
-                
-                # 处理token失效情况
-                if "token" in error_msg and ("invalid" in error_msg or "expired" in error_msg):
-                    logger.error(f"OpenList Token失效: {result.get('message')}")
-                    # 如果使用MoviePilot配置，尝试重新获取token
-                    if self._usemoviepilotconfig and ALIST_AVAILABLE:
-                        logger.info("尝试重新从MoviePilot OpenList实例获取Token...")
-                        self._init_moviepilot_openlist()
-                        # 重新执行当前操作
-                        return self._get_openlist_files(path)
-                    else:
-                        logger.error("请检查OpenList Token配置是否正确")
-                        return []
-                
                 logger.error(f"获取目录 {path} 文件失败: {result.get('message')}")
                 return []
                 
@@ -1878,15 +1841,6 @@ class OpenListManager(_PluginBase):
                     
             return files
             
-        except requests.exceptions.ConnectionError:
-            logger.error(f"获取文件列表失败: 无法连接到 {self._openlist_url}")
-            return []
-        except requests.exceptions.Timeout:
-            logger.error(f"获取文件列表失败: 请求超时")
-            return []
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"获取文件列表失败: HTTP错误 {e.response.status_code}")
-            return []
         except Exception as e:
             logger.error(f"获取文件列表失败: {str(e)}")
             return []
@@ -2023,11 +1977,11 @@ class OpenListManager(_PluginBase):
             
             url = f"{self._openlist_url}/api/fs/copy"
             headers = {
-                "Authorization": f"Bearer {self._openlist_token}",
-                "Content-Type": "application/json"
+                "authorization": self._openlist_token,
+                "content-type": "application/json"
             }
             
-            # 根据OpenList API文档，copy接口需要的参数
+            # 根据OpenList官方API文档，复制API需要以下参数
             data = {
                 "src_dir": os.path.dirname(source_path),
                 "dst_dir": target_dir,
@@ -2047,114 +2001,43 @@ class OpenListManager(_PluginBase):
                 return True
             else:
                 error_msg = result.get('message', '未知错误')
-                # 检查token是否失效
-                if "token" in error_msg.lower() and ("invalid" in error_msg.lower() or "expired" in error_msg.lower()):
-                    logger.error(f"OpenList Token失效: {error_msg}")
-                    if self._usemoviepilotconfig and ALIST_AVAILABLE:
-                        logger.info("尝试重新从MoviePilot OpenList实例获取Token...")
-                        self._init_moviepilot_openlist()
-                        return self._execute_openlist_copy_standard(source_path, target_path, filename)
-                    else:
-                        logger.error("请检查OpenList Token配置是否正确")
                 logger.error(f"复制失败: {error_msg}")
                 return False
                 
-        except requests.exceptions.ConnectionError:
-            logger.error(f"复制文件失败: 无法连接到 {self._openlist_url}")
-            return False
-        except requests.exceptions.Timeout:
-            logger.error(f"复制文件失败: 请求超时")
-            return False
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"复制文件失败: HTTP错误 {e.response.status_code}")
-            return False
         except Exception as e:
             logger.error(f"复制媒体文件异常: {filename}, 错误: {str(e)}")
             return False
 
     def _ensure_directory_exists(self, path: str) -> bool:
-        """确保目录存在，递归创建父目录"""
+        """确保目录存在"""
         try:
-            # 检查目录是否存在
             url = f"{self._openlist_url}/api/fs/get"
             headers = {
-                "Authorization": f"Bearer {self._openlist_token}",
-                "Content-Type": "application/json"
+                "authorization": self._openlist_token,
+                "content-type": "application/json"
             }
-            
-            # 根据OpenList API文档，get接口需要的参数
-            params = {
-                "path": path,
-                "password": ""
-            }
+            params = {"path": path}
             
             response = requests.post(url, headers=headers, json=params, timeout=10)
             if response.status_code == 200:
                 result = response.json()
                 if result.get("code") == 200:
                     return True
-                else:
-                    # 检查token是否失效
-                    error_msg = result.get("message", "").lower()
-                    if "token" in error_msg and ("invalid" in error_msg or "expired" in error_msg):
-                        logger.error(f"OpenList Token失效: {result.get('message')}")
-                        if self._usemoviepilotconfig and ALIST_AVAILABLE:
-                            logger.info("尝试重新从MoviePilot OpenList实例获取Token...")
-                            self._init_moviepilot_openlist()
-                            return self._ensure_directory_exists(path)
-                        else:
-                            logger.error("请检查OpenList Token配置是否正确")
-                            return False
             
-            # 目录不存在，递归创建父目录
-            parent_path = os.path.dirname(path)
-            
-            # 递归创建父目录，直到根目录
-            if parent_path and parent_path != "/" and parent_path != path:
-                if not self._ensure_directory_exists(parent_path):
-                    logger.error(f"无法创建父目录: {parent_path}")
-                    return False
-            
-            # 创建当前目录
+            # 目录不存在，创建它
             url = f"{self._openlist_url}/api/fs/mkdir"
-            
-            # 根据OpenList API文档，mkdir接口需要的参数
-            data = {
-                "path": path,
-                "password": ""
-            }
+            data = {"path": path}
             
             response = requests.post(url, headers=headers, json=data, timeout=10)
             if response.status_code == 200:
                 result = response.json()
                 if result.get("code") == 200:
-                    logger.info(f"目录创建成功: {path}")
                     return True
                 else:
-                    # 检查token是否失效
-                    error_msg = result.get("message", "").lower()
-                    if "token" in error_msg and ("invalid" in error_msg or "expired" in error_msg):
-                        logger.error(f"OpenList Token失效: {result.get('message')}")
-                        if self._usemoviepilotconfig and ALIST_AVAILABLE:
-                            logger.info("尝试重新从MoviePilot OpenList实例获取Token...")
-                            self._init_moviepilot_openlist()
-                            return self._ensure_directory_exists(path)
-                        else:
-                            logger.error("请检查OpenList Token配置是否正确")
-                            return False
                     logger.warning(f"创建目录失败: {result.get('message')}")
             
             return False
             
-        except requests.exceptions.ConnectionError:
-            logger.error(f"确保目录存在失败: 无法连接到 {self._openlist_url}")
-            return False
-        except requests.exceptions.Timeout:
-            logger.error(f"确保目录存在失败: 请求超时")
-            return False
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"确保目录存在失败: HTTP错误 {e.response.status_code}")
-            return False
         except Exception as e:
             logger.error(f"确保目录存在失败: {path}, 错误: {str(e)}")
             return False
