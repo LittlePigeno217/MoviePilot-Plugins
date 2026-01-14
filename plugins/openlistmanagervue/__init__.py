@@ -37,7 +37,7 @@ except ImportError:
     logger.warning("MoviePilot OpenList模块不可用，将使用手动配置")
 
 
-class OpenListManagerConfig(BaseModel):
+class OpenListManagerVueConfig(BaseModel):
     enabled: bool = False
     openlist_url: str = ""
     openlist_token: str = ""
@@ -51,7 +51,7 @@ class OpenListManagerConfig(BaseModel):
     clear_cache: bool = False
 
 
-class OpenListManager(_PluginBase):
+class OpenListManagerVue(_PluginBase):
     """
     OpenList管理器插件 - 实现OpenList多目录间文件复制与管理
     """
@@ -141,7 +141,7 @@ class OpenListManager(_PluginBase):
         self.stop_service()
 
         if config:
-            self._config = OpenListManagerConfig(**config)
+            self._config = OpenListManagerVueConfig(**config)
             self._enable = self._config.enabled
             self._cron = self._config.cron
             self._onlyonce = self._config.onlyonce
@@ -294,7 +294,7 @@ class OpenListManager(_PluginBase):
         if self._enable and self._cron:
             return [
                 {
-                    "id": "OpenListManagerTask",
+                    "id": "OpenListManagerVueTask",
                     "name": "OpenList管理任务",
                     "trigger": CronTrigger.from_crontab(self._cron),
                     "func": self.execute_copy_task,
