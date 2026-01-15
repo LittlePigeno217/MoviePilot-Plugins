@@ -3,7 +3,7 @@
     "name": "OpenList管理",
     "description": "OpenList多元化的管理插件。",
     "labels": "OpenList",
-    "version": "1.1",
+    "version": "1.2",
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
@@ -11,22 +11,8 @@
     "release": true,
     "history": {
       "v1.0": "OpenList多元化的管理插件 。",
-      "v1.1": "优化界面显示及日志参数输出"
-    }
-  },
-  "openlistmanagervue": {
-    "name": "OpenList管理Vue",
-    "description": "OpenList多元化的管理插件（Vue版本）。",
-    "labels": "OpenList",
-    "version": "1.1",
-    "icon": "Alist_B.png",
-    "author": "LittlePigeno",
-    "level": 1,
-    "v2": true,
-    "release": true,
-    "history": {
-      "v1.0": "OpenList多元化的管理插件（Vue版本）。",
-      "v1.1": "优化界面显示及日志参数输出"
+      "v1.1": "优化界面显示及日志参数输出",
+      "v1.2": "优化复制逻辑，修复已完成文件不在目标目录的问题，精简代码结构"
     }
   }
 }
