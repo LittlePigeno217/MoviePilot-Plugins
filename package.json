@@ -18,13 +18,15 @@
     "name": "OpenList管理Vue",
     "description": "OpenList多元化的管理插件（Vue版本）。",
     "labels": "OpenList",
-    "version": "1.0",
+    "version": "1.1",
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
-    "v2": true, 
+    "v2": true,
+    "release": true,
     "history": {
-      "v1.0": "OpenList多元化的管理插件（Vue版本）。"
+      "v1.0": "OpenList多元化的管理插件（Vue版本）。",
+      "v1.1": "优化界面显示及日志参数输出"
     }
   }
 }
