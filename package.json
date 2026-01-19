@@ -14,5 +14,16 @@
       "v1.1": "优化界面显示及日志参数输出",
       "v1.2": "优化复制逻辑，修复已完成文件不在目标目录的问题，精简代码结构"
     }
+  },
+  "OpenListVue": {
+    "name": "OpenList管理Vue",
+    "description": "OpenList多元化的管理插件。",
+    "labels": "openlist,管理",
+    "version": "1.0",
+    "icon": "https://raw.githubusercontent.com/LittlePigeno217/MoviePilot-Plugins/main/icons/Alist_B.png",
+    "author": "LittlePigeno",
+    "level": 1,
+    "v2": true,
+    "release": false
   }
 }
