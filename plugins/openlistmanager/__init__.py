@@ -59,7 +59,7 @@ class OpenListManager(_PluginBase):
     plugin_name = "OpenList管理器"
     plugin_desc = "OpenList多元化的管理插件。"
     plugin_icon = "Alist_B.png"
-    plugin_version = "1.1"
+    plugin_version = "1.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217/MoviePilot-Plugins"
     plugin_config_prefix = "openlistmanager_"
@@ -1100,9 +1100,21 @@ class OpenListManager(_PluginBase):
                     self._copied_files[file_key]["status"] = "completed"
                     self._copied_files[file_key]["completed_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
                     updated_count += 1
+            else:
+                # 文件不在目标目录中，更新状态为复制中，以便后续任务可以重新复制
+                if current_status == "completed":
+                    logger.info(f"已完成文件 {filename} 不在目标目录中，状态更新为复制中")
+                    self._copied_files[file_key]["status"] = "copying"
+                    # 移除完成时间
+                    if "completed_time" in self._copied_files[file_key]:
+                        del self._copied_files[file_key]["completed_time"]
+                    updated_count += 1
         
         if updated_count > 0 and not silent:
             logger.info(f"已更新 {updated_count} 个媒体文件的状态")
+        
+        # 保存更新后的复制文件记录
+        self._save_copied_files()
         
         # 更新目标目录媒体文件数
         self._update_target_files_count(directory_pairs, silent=True)
@@ -1612,17 +1624,28 @@ class OpenListManager(_PluginBase):
             logger.error(f"发送通知失败: {str(e)}")
         
     def _should_execute_copy_task(self, directory_pairs: List[Dict[str, str]]) -> bool:
-        """判断是否需要执行复制任务 - 优化版本"""
+        """判断是否需要执行复制任务"""
         # 检查是否有复制中的媒体文件
-        copying_count, _ = self._get_file_status_counts()
+        copying_count, completed_count = self._get_file_status_counts()
         if copying_count > 0:
             logger.info(f"检测到 {copying_count} 个复制中的媒体文件，需要继续执行")
             return True
-            
+        
+        # 检查是否有已完成但不存在于目标目录的文件
+        if completed_count > 0:
+            # 快速检查：如果有已完成文件，执行状态更新检查
+            # 这会在状态更新时自动将不存在的文件标记为复制中
+            self._update_file_status_and_counts(silent=True)
+            # 重新获取状态，查看是否有新的复制中文件
+            new_copying_count, _ = self._get_file_status_counts()
+            if new_copying_count > 0:
+                logger.info(f"检测到 {new_copying_count} 个需要重新复制的文件")
+                return True
+        
         # 检查源目录是否有新媒体文件需要复制
         logger.debug("检查源目录是否有新媒体文件...")
         
-        found_new_files = False
+        current_suffixes = self._get_current_suffixes()
         
         for pair in directory_pairs:
             source_dir = pair["source"]
@@ -1639,8 +1662,6 @@ class OpenListManager(_PluginBase):
                 target_index = self._build_target_index(target_files)
                 
                 # 检查源目录中是否有新媒体文件
-                current_suffixes = self._get_current_suffixes()
-                
                 for source_file in source_files:
                     filename = source_file.get("name")
                     if not filename:
@@ -1650,13 +1671,9 @@ class OpenListManager(_PluginBase):
                     if not any(filename.endswith(suffix) for suffix in current_suffixes):
                         continue
                     
-                    # 检查媒体文件是否已经在目标目录中存在 - 使用完整文件名判断
+                    # 检查媒体文件是否已经在目标目录中存在
                     if filename not in target_index:
-                        if not found_new_files:
-                            logger.info(f"发现新媒体文件需要复制: {filename}")
-                            found_new_files = True
-                        else:
-                            logger.debug(f"发现新媒体文件需要复制: {filename}")
+                        logger.info(f"发现新媒体文件需要复制: {filename}")
                         return True
                         
             except Exception as e:
@@ -1892,26 +1909,48 @@ class OpenListManager(_PluginBase):
                     skipped += 1
                     continue
                 
-                # 检查2: 媒体文件是否在历史记录中已经复制过
-                if file_key in self._copied_files:
+                # 检查2: 目标目录是否已存在相同媒体文件（基于完整文件名比对）
+                file_exists_in_target = filename in target_index
+                
+                # 检查3: 媒体文件是否在历史记录中已经复制过
+                file_in_cache = file_key in self._copied_files
+                
+                if file_in_cache:
                     # 检查文件记录状态
                     record_info = self._copied_files[file_key]
                     record_status = record_info.get("status", "copying")
                     
                     if record_status == "completed":
-                        # 媒体文件已完成复制，跳过
-                        skipped += 1
-                        continue
+                        if file_exists_in_target:
+                            # 文件已完成且存在于目标目录，跳过
+                            skipped += 1
+                            continue
+                        else:
+                            # 文件标记为已完成但不存在于目标目录，需要重新复制
+                            logger.info(f"文件 {filename} 标记为已完成但不存在于目标目录，重新复制")
                     else:
-                        # 媒体文件状态为复制中，跳过复制但保留记录
-                        skipped += 1
-                        continue
-                
-                # 检查3: 目标目录是否已存在相同媒体文件（基于完整文件名比对）
-                if filename in target_index:
+                        # 文件状态为复制中，检查是否真的在目标目录中
+                        if file_exists_in_target:
+                            # 文件已在目标目录中，更新状态为已完成
+                            self._copied_files[file_key]["status"] = "completed"
+                            self._copied_files[file_key]["completed_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                            self._save_copied_files()
+                            skipped += 1
+                            continue
+                        # 否则继续复制
+                elif file_exists_in_target:
+                    # 文件不在缓存中但已存在于目标目录，添加到缓存并标记为已完成
+                    self._copied_files[file_key] = {
+                        "source_path": source_path,
+                        "target_path": target_path,
+                        "filename": filename,
+                        "copied_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "status": "completed"
+                    }
+                    self._save_copied_files()
                     skipped += 1
                     continue
-                    
+                
                 # 执行复制操作
                 if self._execute_openlist_copy_standard(source_path, target_path, filename):
                     copied += 1
@@ -1944,7 +1983,7 @@ class OpenListManager(_PluginBase):
         self._task_status["skipped_files"] += skipped
         self._task_status["total_files"] += total
         self._save_task_status()
-                
+        
         return {"copied": copied, "skipped": skipped, "total": total}
 
     def _get_relative_path(self, file_path: str, base_dir: str) -> str:
