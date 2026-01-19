@@ -6,6 +6,7 @@
     "version": "1.0",
     "icon": "https://raw.githubusercontent.com/LittlePigeno217/MoviePilot-Plugins/main/icons/Alist_B.png",
     "author": "LittlePigeno",
-    "level": 1
+    "level": 1,
+    "release": true
   }
 }
