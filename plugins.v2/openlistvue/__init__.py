@@ -68,6 +68,7 @@ class OpenListVue(_PluginBase):
     plugin_config_prefix = "openlistvue_"
     plugin_order = 1
     auth_level = 1
+    id = "openlistvue"
 
     # 文件后缀配置
     DEFAULT_VIDEO_SUFFIXES = [
