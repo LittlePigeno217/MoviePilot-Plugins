@@ -1,9 +1,9 @@
 {
   "OpenListManager": {
     "name": "OpenList管理",
-    "description": "OpenList多元化的管理插件。",
-    "labels": "OpenList",
-    "version": "1.2",
+    "description": "OpenList多元化的管理插件，支持文件复制和Strm生成。",
+    "labels": "OpenList,Strm",
+    "version": "1.3",
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
@@ -12,7 +12,8 @@
     "history": {
       "v1.0": "OpenList多元化的管理插件 。",
       "v1.1": "优化界面显示及日志参数输出",
-      "v1.2": "优化复制逻辑，修复已完成文件不在目标目录的问题，精简代码结构"
+      "v1.2": "优化复制逻辑，修复已完成文件不在目标目录的问题，精简代码结构",
+      "v1.3": "添加Strm生成功能，支持全量生成和增量生成两种模式"
     }
   }
 }
