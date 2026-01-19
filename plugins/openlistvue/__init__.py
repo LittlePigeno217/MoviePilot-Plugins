@@ -19,9 +19,11 @@ from apscheduler.triggers.cron import CronTrigger
 
 # 导入通知相关模块
 try:
-    from app.schemas import Notification, NotificationType, MessageChannel
+    from app.schemas import Notification, NotificationType, MessageChannel, ServiceInfo
     from app.helper.notification import NotificationHelper
+    from app.helper.service import ServiceBaseHelper
     from app.utils.http import RequestUtils
+    from app.schemas.types import SystemConfigKey, ModuleType
     NOTIFICATION_AVAILABLE = True
 except ImportError:
     NOTIFICATION_AVAILABLE = False
@@ -205,6 +207,12 @@ class OpenListVue(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.stop_service()
+
+        # 版本兼容处理
+        if hasattr(settings, 'VERSION_FLAG'):
+            self.version = settings.VERSION_FLAG  # V2
+        else:
+            self.version = "v1"
 
         if config:
             self._enable = config.get('enable', False)
