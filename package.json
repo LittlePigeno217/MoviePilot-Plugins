@@ -25,5 +25,19 @@
     "level": 1,
     "v2": true,
     "release": false
+  },
+  "cachemonitor": {
+    "name": "缓存监控",
+    "description": "实时监控和管理系统缓存数据",
+    "labels": "cache,monitor",
+    "version": "1.0",
+    "icon": "refresh.png",
+    "author": "MoviePilot",
+    "level": 1,
+    "v2": true,
+    "release": true,
+    "history": {
+      "v1.0": "初始版本，实现缓存监控、实时刷新和缓存管理功能"
+    }
   }
 }
