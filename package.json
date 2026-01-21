@@ -15,18 +15,18 @@
       "v1.2": "优化复制逻辑，修复已完成文件不在目标目录的问题，精简代码结构"
     }
   },
-  "cachemonitor": {
-    "name": "缓存监控",
-    "description": "实时监控和管理系统缓存数据",
-    "labels": "cache,monitor",
+  "openlistmanagervue": {
+    "name": "OpenList管理器",
+    "description": "OpenList多元化的管理插件。",
+    "labels": "OpenList",
     "version": "1.0",
-    "icon": "refresh.png",
-    "author": "MoviePilot",
+    "icon": "Alist_B.png",
+    "author": "LittlePigeno",
     "level": 1,
     "v2": true,
     "release": true,
     "history": {
-      "v1.0": "初始版本，实现缓存监控、实时刷新和缓存管理功能"
+      "v1.0": "OpenList多元化的管理插件 。"
     }
   }
 }
