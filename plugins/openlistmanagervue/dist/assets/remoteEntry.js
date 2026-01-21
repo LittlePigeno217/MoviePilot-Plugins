@@ -63,8 +63,8 @@ const currentImports = {};
       dynamicLoadingCss(["Page-670ceabd.css"], false, './Page');
       return __federation_import('./__federation_expose_Page-50decfc0.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Config":()=>{
-      dynamicLoadingCss(["Config-7f8acffd.css"], false, './Config');
-      return __federation_import('./__federation_expose_Config-65cc936b.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["Config-6f0eeee5.css"], false, './Config');
+      return __federation_import('./__federation_expose_Config-0b55fe03.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Dashboard":()=>{
       dynamicLoadingCss(["Dashboard-18019480.css"], false, './Dashboard');
       return __federation_import('./__federation_expose_Dashboard-551922f8.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
