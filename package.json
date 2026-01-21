@@ -15,8 +15,8 @@
       "v1.2": "优化复制逻辑，修复已完成文件不在目标目录的问题，精简代码结构"
     }
   },
-  "openlistmanagervue": {
-    "name": "OpenList管理器",
+  "OpenListManagerVue": {
+    "name": "OpenList管理器Vue",
     "description": "OpenList多元化的管理插件。",
     "labels": "OpenList",
     "version": "1.0",
