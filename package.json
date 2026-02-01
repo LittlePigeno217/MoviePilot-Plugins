@@ -7,6 +7,7 @@
     "icon": "Alist_B.png",
     "author": "LittlePigeno",
     "level": 1,
+    "v2": true,
     "history": {
       "v1.0": "基于Vue框架的OpenList多元化管理插件。"
     }
