@@ -1,0 +1,100 @@
+
+.dashboard-widget[data-v-b39a0cf9] {
+  width: 100%;
+}
+.widget-card[data-v-b39a0cf9] {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+.widget-card[data-v-b39a0cf9]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+.widget-header[data-v-b39a0cf9] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.widget-header h3[data-v-b39a0cf9] {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+.widget-actions[data-v-b39a0cf9] {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+.widget-actions[data-v-b39a0cf9]:hover {
+  opacity: 1;
+}
+.cursor-move[data-v-b39a0cf9] {
+  cursor: move;
+  color: #666;
+}
+.widget-content[data-v-b39a0cf9] {
+  margin-bottom: 16px;
+}
+.status-item[data-v-b39a0cf9] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.status-item[data-v-b39a0cf9]:last-child {
+  border-bottom: none;
+}
+.status-label[data-v-b39a0cf9] {
+  font-size: 13px;
+  color: #666;
+  font-weight: 400;
+}
+.status-value[data-v-b39a0cf9] {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+}
+.status-enabled[data-v-b39a0cf9] {
+  color: #42b883;
+}
+.status-disabled[data-v-b39a0cf9] {
+  color: #999;
+}
+.truncate[data-v-b39a0cf9] {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.widget-footer[data-v-b39a0cf9] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+.widget-version[data-v-b39a0cf9] {
+  font-size: 12px;
+  color: #999;
+}
+.widget-author[data-v-b39a0cf9] {
+  font-size: 12px;
+  color: #999;
+}
+@media (max-width: 768px) {
+.widget-card[data-v-b39a0cf9] {
+    padding: 12px;
+}
+.status-item[data-v-b39a0cf9] {
+    padding: 6px 0;
+}
+.truncate[data-v-b39a0cf9] {
+    max-width: 100px;
+}
+}

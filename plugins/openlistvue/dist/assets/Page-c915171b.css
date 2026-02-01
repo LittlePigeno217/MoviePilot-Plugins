@@ -1,0 +1,263 @@
+
+.page-container[data-v-8d28d9fa] {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.page-header[data-v-8d28d9fa] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.page-header h2[data-v-8d28d9fa] {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+.header-actions[data-v-8d28d9fa] {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.btn[data-v-8d28d9fa] {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-primary[data-v-8d28d9fa] {
+  background: #42b883;
+  color: white;
+}
+.btn-primary[data-v-8d28d9fa]:hover:not(:disabled) {
+  background: #35495e;
+  transform: translateY(-1px);
+}
+.btn-primary[data-v-8d28d9fa]:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+.btn-secondary[data-v-8d28d9fa] {
+  background: #f0f0f0;
+  color: #333;
+}
+.btn-secondary[data-v-8d28d9fa]:hover:not(:disabled) {
+  background: #e0e0e0;
+  transform: translateY(-1px);
+}
+.error-message[data-v-8d28d9fa] {
+  background: #fee;
+  color: #c33;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+/* 任务状态部分 */
+.task-status-section[data-v-8d28d9fa] {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.section-title[data-v-8d28d9fa] {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 20px 0;
+  color: #333;
+}
+
+/* 执行进度容器 */
+.execution-progress[data-v-8d28d9fa] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 状态信息 */
+.status-info[data-v-8d28d9fa] {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 状态徽章 */
+.status-badge[data-v-8d28d9fa] {
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* 状态徽章颜色 */
+.status-idle[data-v-8d28d9fa] {
+  background: #f0f0f0;
+  color: #999;
+}
+.status-running[data-v-8d28d9fa] {
+  background: #e3f2fd;
+  color: #3498db;
+}
+.status-success[data-v-8d28d9fa] {
+  background: #e8f5e8;
+  color: #42b883;
+}
+.status-failed[data-v-8d28d9fa] {
+  background: #ffebee;
+  color: #ff6b6b;
+}
+
+/* 进度百分比 */
+.progress-percentage[data-v-8d28d9fa] {
+  font-size: 16px;
+  font-weight: 600;
+  color: #3498db;
+}
+
+/* 进度条容器 */
+.progress-container[data-v-8d28d9fa] {
+  width: 100%;
+}
+.progress-bar[data-v-8d28d9fa] {
+  width: 100%;
+  height: 10px;
+  background: #f0f0f0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.progress-fill[data-v-8d28d9fa] {
+  height: 100%;
+  background: #42b883;
+  transition: width 0.3s ease;
+}
+
+/* 当前操作 */
+.current-operation[data-v-8d28d9fa] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 6px;
+}
+.operation-label[data-v-8d28d9fa] {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+}
+.operation-value[data-v-8d28d9fa] {
+  font-size: 14px;
+  color: #333;
+  flex: 1;
+}
+
+/* 文件进度 */
+.file-progress[data-v-8d28d9fa] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 6px;
+}
+.progress-label[data-v-8d28d9fa] {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+}
+.progress-value[data-v-8d28d9fa] {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+/* 当前处理的目录配对 */
+.current-pair[data-v-8d28d9fa] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 6px;
+}
+.pair-label[data-v-8d28d9fa] {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+}
+.pair-value[data-v-8d28d9fa] {
+  font-size: 14px;
+  color: #333;
+  flex: 1;
+  word-break: break-all;
+}
+
+/* 文件标识统计信息 */
+.file-identifier-stats[data-v-8d28d9fa] {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border-left: 4px solid #42b883;
+}
+.stats-title[data-v-8d28d9fa] {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 12px 0;
+}
+.stats-grid[data-v-8d28d9fa] {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.stat-item[data-v-8d28d9fa] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.stat-label[data-v-8d28d9fa] {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+.stat-value[data-v-8d28d9fa] {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+@media (max-width: 768px) {
+.page-header[data-v-8d28d9fa] {
+    flex-direction: column;
+    align-items: flex-start;
+}
+.header-actions[data-v-8d28d9fa] {
+    width: 100%;
+}
+.btn[data-v-8d28d9fa] {
+    flex: 1;
+    min-width: 120px;
+}
+.task-status-grid[data-v-8d28d9fa] {
+    grid-template-columns: repeat(2, 1fr);
+}
+.detail-grid[data-v-8d28d9fa] {
+    grid-template-columns: 1fr;
+}
+.stats-grid[data-v-8d28d9fa] {
+    grid-template-columns: repeat(3, 1fr);
+}
+}
