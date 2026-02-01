@@ -58,7 +58,7 @@ const _sfc_main = defineComponent({
       error.value = '';
       
       try {
-        const response = await apiService.get('plugin/OpenListVue/combined', {}, {
+        const response = await apiService.get('plugin/openlistvue/combined', {}, {
           cache: !forceRefresh,
           cacheDuration: 30000 // 30秒缓存
         });
@@ -112,7 +112,7 @@ const _sfc_main = defineComponent({
     const loadFallbackData = async (forceRefresh = false) => {
       try {
         // 加载任务状态
-        const statusResponse = await apiService.get('plugin/OpenListVue/status', {}, {
+        const statusResponse = await apiService.get('plugin/openlistvue/status', {}, {
           cache: !forceRefresh,
           cacheDuration: 60000 // 1分钟缓存
         });
@@ -135,7 +135,7 @@ const _sfc_main = defineComponent({
     const loadAuthStatus = async () => {
       try {
         // 获取配置
-        const configResponse = await apiService.get('plugin/OpenListVue/config', {}, {
+        const configResponse = await apiService.get('plugin/openlistvue/config', {}, {
           cache: true,
           cacheDuration: 60000 // 1分钟缓存
         });
@@ -192,7 +192,7 @@ const _sfc_main = defineComponent({
       error.value = '';
       
       try {
-        await apiService.post('plugin/OpenListVue/run');
+        await apiService.post('plugin/openlistvue/run');
         emit('action');
         // 清除缓存，强制刷新数据
         apiService.clearCache();
