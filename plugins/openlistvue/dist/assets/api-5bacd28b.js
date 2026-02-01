@@ -111,7 +111,7 @@ class ApiService {
   async clearPluginCache() {
     try {
       this.clearCache();
-      const response = await this.post("/plugin/OpenListVue/clear_cache");
+      const response = await this.post("plugin/OpenListVue/clear_cache");
       return response;
     } catch (error) {
       console.error("清除缓存失败:", error);
@@ -124,7 +124,7 @@ class ApiService {
   // 获取配置
   async getConfig() {
     try {
-      const response = await this.get("/plugin/OpenListVue/config");
+      const response = await this.get("plugin/OpenListVue/config");
       return response.data;
     } catch (error) {
       console.error("获取配置失败:", error);
