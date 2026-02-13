@@ -1,7 +1,7 @@
 {
-  "OpenListVue": {
-    "name": "OpenList管理Vue",
-    "description": "基于Vue框架的OpenList多元化管理插件。",
+  "OpenList": {
+    "name": "OpenList管理器",
+    "description": "OpenList多元化的管理插件。",
     "labels": "OpenList",
     "version": "1.0",
     "icon": "Alist_B.png",
@@ -9,7 +9,7 @@
     "level": 1,
     "v2": true,
     "history": {
-      "v1.0": "基于Vue框架的OpenList多元化管理插件。"
+      "v1.0": "OpenList多元化的管理插件。"
     }
   }
 }
