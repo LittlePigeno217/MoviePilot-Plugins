@@ -164,24 +164,23 @@ jobs:
               echo "[Info] 未发现已存在的远程 Git Tag，将直接创建。"
             fi
 
-          # 自动模式：允许覆盖
+          # 自动模式：禁止覆盖
           else
-            echo "[Info] 自动模式：允许覆盖已存在的发布。"
-            # 检查并处理 GitHub Release
+            echo "[Info] 自动模式：检查是否存在冲突的发布。"
+
+            # 检查 Release 是否存在，如果存在则报错退出
             if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-              echo "[Warn] 发现已存在的 Release: $TAG_NAME。将被覆盖，正在删除..."
-              gh release delete "$TAG_NAME" --yes
-            else
-              echo "[Info] 未发现已存在的 Release，将直接创建。"
+              echo "[Fatal] 自动模式失败：Release with tag '$TAG_NAME' 已存在。请手动删除或更新版本号。"
+              exit 1
             fi
 
-            # 检查并处理远程 Git Tag
+            # 检查 Git Tag 是否存在，如果存在则报错退出
             if [ -n "$(git ls-remote --tags origin "$TAG_NAME")" ]; then
-              echo "[Warn] 发现已存在的远程 Git Tag: $TAG_NAME。将被覆盖，正在删除..."
-              git push origin --delete "$TAG_NAME"
-            else
-              echo "[Info] 未发现已存在的远程 Git Tag，将直接创建。"
+              echo "[Fatal] 自动模式失败：Git Tag '$TAG_NAME' 已存在。请手动删除或更新版本号。"
+              exit 1
             fi
+
+            echo "[Info] 检查通过，不存在同名 Release 或 Tag，可以安全发布。"
           fi
 
       # 创建 GitHub Release
