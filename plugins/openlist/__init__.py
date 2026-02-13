@@ -184,10 +184,7 @@ class OpenList(_PluginBase):
         self._target_files_count = self.get_data("openlist_target_files_count") or 0
         self._file_status = self.get_data("openlist_file_status") or {}  # 加载文件状态数据
 
-        logger.info(f"恢复数据完成: 任务状态={self._task_status.get('status')}, " 
-                   f"复制文件记录={len(self._copied_files)}个, "
-                   f"目标文件数={self._target_files_count}, "
-                   f"文件状态记录={len(self._file_status)}条")
+        logger.info(f"恢复数据完成：目标文件数={self._target_files_count}, 复制文件记录={len(self._copied_files)}个")
 
         if self._onlyonce:
             logger.info("开始执行OpenList管理任务")
@@ -1440,10 +1437,16 @@ class OpenList(_PluginBase):
 
     def execute_copy_task(self):
         """执行复制任务 - 优化版本，避免重复执行"""
-        # 检查任务状态，如果正在运行则跳过
-        if self._task_status.get("status") == "running":
-            logger.info("任务正在运行中，跳过执行")
-            return
+        # 使用锁防止并发执行
+        with self._lock:
+            # 检查任务状态，如果正在运行则跳过
+            if self._task_status.get("status") == "running":
+                logger.info("任务正在运行中，跳过执行")
+                return
+            
+            # 立即更新任务状态为运行中
+            self._task_status.update({"status": "running"})
+            self._save_task_status()
         
         logger.info("开始执行OpenList多目录复制任务")
         
@@ -1454,12 +1457,13 @@ class OpenList(_PluginBase):
             directory_pairs = self._parse_directory_pairs()
             if directory_pairs:
                 self._update_target_files_count(directory_pairs)
+            self._complete_task("failed", "OpenList地址或令牌未配置")
             return
-            
+        
         directory_pairs = self._parse_directory_pairs()
         if not directory_pairs:
-            self._complete_task("failed", "未配置有效的目录配对")
             self._update_target_files_count(directory_pairs)
+            self._complete_task("failed", "未配置有效的目录配对")
             return
         
         _, old_completed_count = self._get_file_status_counts()
@@ -1467,7 +1471,7 @@ class OpenList(_PluginBase):
         self._previous_completed_files = self._get_completed_files_list()
         
         if not self._should_execute_copy_task(directory_pairs):
-            logger.info("无需执行复制任务")
+            logger.info("所有源目录媒体文件已在目标目录中存在，无需执行复制任务")
             
             # 检查是否有文件状态发生变化（从复制中变为已完成）
             self._update_file_status_and_counts(silent=True)
@@ -1688,7 +1692,6 @@ class OpenList(_PluginBase):
                 logger.info(f"发现 {len(new_media_files)} 个新媒体文件需要复制，前5个: {', '.join(new_media_files[:5])}...")
             return True
         else:
-            logger.info("所有源目录媒体文件已在目标目录中存在，无需执行复制任务")
             return False
 
     def _update_target_files_count(self, directory_pairs: List[Dict[str, str]]):
