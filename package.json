@@ -1,7 +1,7 @@
 {
   "OpenList": {
     "name": "OpenList管理器",
-    "description": "OpenList多元化的管理插件。",
+    "description": "OpenList自动复制文件插件",
     "labels": "OpenList",
     "version": "1.0",
     "icon": "Alist_B.png",
@@ -9,7 +9,7 @@
     "level": 1,
     "v2": true,
     "history": {
-      "v1.0": "OpenList多元化的管理插件。"
+      "v1.0": "OpenList自动复制文件插件。"
     }
   }
 }
