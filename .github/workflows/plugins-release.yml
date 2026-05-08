@@ -14,9 +14,7 @@ on:
         type: choice
         options:
           - plugins
-          - plugins.v2
-          - plugins.v3
-        default: 'plugins.v2'
+        default: 'plugins'
       # 手动输入要打包的插件ID
       plugin_id:
         description: '请输入 package.json 中的插件 ID (例如: AutoSignIn)'
@@ -35,6 +33,9 @@ on:
       - main
     paths:
       - 'package*.json'
+      - 'plugins/**'
+      - '.github/workflows/plugins-release.yml'
+      - '.github/scripts/get_plugin_meta.py'
 
 jobs:
   # 检测需要发布的插件
