@@ -18,7 +18,7 @@ class FlztCheckin(_PluginBase):
     plugin_name = "Vue-FLZT自动签到"
     plugin_desc = "为 FLZT 提供自动登录、签到、通知与历史记录能力。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "flztcheckin_"
