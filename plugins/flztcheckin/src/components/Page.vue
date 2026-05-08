@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { pluginRequest, statusColor } from '../utils/flzt'
 
 const props = defineProps({
-  api: { type: Object, default: () => ({}) },
+  api: { type: [Function, Object], default: null },
   initialConfig: { type: Object, default: () => ({}) },
 })
 

@@ -8,8 +8,8 @@ const props = defineProps({
     default: () => ({}),
   },
   api: {
-    type: Object,
-    default: () => ({}),
+    type: [Function, Object],
+    default: null,
   },
 })
 
