@@ -1,0 +1,15 @@
+{
+	"FlztCheckin": {
+		"name": "Vue-FLZT自动签到",
+		"description": "为 FLZT 提供自动登录、签到、通知与历史记录能力。",
+		"labels": "站点,签到,工具",
+		"version": "1.0.0",
+		"icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png",
+		"author": "GitHub Copilot",
+		"level": 1,
+		"v2": true,
+		"history": {
+			"v1.0.0": "初始版本，支持 FLZT 登录测试、手动签到、定时签到、通知与历史记录。"
+		}
+	}
+}
