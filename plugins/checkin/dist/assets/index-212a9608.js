@@ -45,7 +45,7 @@ true&&(function polyfill() {
     }
 }());
 
-const App_vue_vue_type_style_index_0_scoped_2db0d1e7_lang = '';
+const App_vue_vue_type_style_index_0_scoped_3a31ee92_lang = '';
 
 const _sfc_main = {};
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,withCtx:_withCtx,createVNode:_createVNode,openBlock:_openBlock,createBlock:_createBlock} = await importShared('vue');
@@ -60,8 +60,8 @@ function _sfc_render(_ctx, _cache) {
       _createVNode(_component_v_main, { class: "dev-shell" }, {
         default: _withCtx(() => [...(_cache[0] || (_cache[0] = [
           _createElementVNode("div", { class: "dev-shell__inner" }, [
-            _createElementVNode("h1", null, "Vue-FLZT自动签到"),
-            _createElementVNode("p", null, "该前端用于 MoviePilot 插件远程组件开发，请在 MoviePilot 中安装并联调。")
+            _createElementVNode("h1", null, "自用签到工具"),
+            _createElementVNode("p", null, "该前端用于 MoviePilot 自用签到插件远程组件开发，后续可逐步扩展更多网站签到能力。")
           ], -1)
         ]))]),
         _: 1
@@ -70,7 +70,7 @@ function _sfc_render(_ctx, _cache) {
     _: 1
   }))
 }
-const App = /*#__PURE__*/_export_sfc(_sfc_main, [['render',_sfc_render],['__scopeId',"data-v-2db0d1e7"]]);
+const App = /*#__PURE__*/_export_sfc(_sfc_main, [['render',_sfc_render],['__scopeId',"data-v-3a31ee92"]]);
 
 const {createApp} = await importShared('vue');
 

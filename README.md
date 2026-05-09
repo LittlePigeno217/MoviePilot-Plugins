@@ -8,7 +8,7 @@ MoviePilot 第三方插件库。
 
 当前仓库保留的实际插件目录为：
 
-- `plugins/flztcheckin/`
+- `plugins/checkin/`
 
 插件元数据请查看：
 

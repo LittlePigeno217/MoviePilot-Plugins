@@ -1,19 +1,19 @@
 
-.dev-shell[data-v-2db0d1e7] {
+.dev-shell[data-v-3a31ee92] {
   min-height: 100vh;
   background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
   color: #e5e7eb;
 }
-.dev-shell__inner[data-v-2db0d1e7] {
+.dev-shell__inner[data-v-3a31ee92] {
   max-width: 720px;
   margin: 0 auto;
   padding: 72px 24px;
 }
-h1[data-v-2db0d1e7] {
+h1[data-v-3a31ee92] {
   margin-bottom: 16px;
   font-size: 32px;
 }
-p[data-v-2db0d1e7] {
+p[data-v-3a31ee92] {
   line-height: 1.7;
   color: #cbd5e1;
 }
@@ -17521,10 +17521,10 @@ html.overflow-y-hidden {
     float: right !important;
   }
 }
-.flzt-page[data-v-a8957eb0] {
+.flzt-page[data-v-1e31cd93] {
   padding: 16px;
 }
-.flzt-page__hero[data-v-a8957eb0] {
+.flzt-page__hero[data-v-1e31cd93] {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -17532,44 +17532,84 @@ html.overflow-y-hidden {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
-.flzt-page__title[data-v-a8957eb0] {
+.flzt-page__title[data-v-1e31cd93] {
   font-size: 24px;
   font-weight: 700;
   color: #0f172a;
 }
-.flzt-page__subtitle[data-v-a8957eb0] {
+.flzt-page__subtitle[data-v-1e31cd93] {
   color: #64748b;
   margin-top: 4px;
 }
-.overview-grid[data-v-a8957eb0] {
+.overview-grid[data-v-1e31cd93] {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
-.overview-item__label[data-v-a8957eb0] {
+.overview-item__label[data-v-1e31cd93] {
   font-size: 13px;
   color: #64748b;
   margin-bottom: 6px;
 }
-.overview-item__value[data-v-a8957eb0] {
+.overview-item__value[data-v-1e31cd93] {
   color: #0f172a;
   word-break: break-all;
 }
-.history-message[data-v-a8957eb0] {
-  max-width: 320px;
+.history-message[data-v-1e31cd93] {
+  max-width: 420px;
   white-space: normal;
   word-break: break-word;
 }
+.history-list[data-v-1e31cd93] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.history-entry[data-v-1e31cd93] {
+  border-radius: 12px;
+}
+.history-entry__header[data-v-1e31cd93] {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.history-entry__time[data-v-1e31cd93] {
+  font-weight: 600;
+  color: #0f172a;
+}
+.history-entry__message[data-v-1e31cd93] {
+  margin-top: 4px;
+  color: #64748b;
+}
+.history-entry__chips[data-v-1e31cd93] {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.history-entry__table[data-v-1e31cd93] {
+  background: transparent;
+}
+.site-item__chips[data-v-1e31cd93] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 @media (max-width: 760px) {
-.overview-grid[data-v-a8957eb0] {
+.overview-grid[data-v-1e31cd93] {
     grid-template-columns: 1fr;
 }
 }
 
-.flzt-config[data-v-903984ec] {
+.flzt-config[data-v-118de66a] {
   padding: 16px;
 }
-.flzt-topbar[data-v-903984ec] {
+.flzt-config__grid[data-v-118de66a] {
+  row-gap: 16px;
+}
+.flzt-topbar[data-v-118de66a] {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -17577,12 +17617,63 @@ html.overflow-y-hidden {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
-.flzt-topbar__title[data-v-903984ec] {
+.flzt-topbar__title[data-v-118de66a] {
   font-size: 20px;
   font-weight: 700;
   color: #0f172a;
 }
-.flzt-topbar__subtitle[data-v-903984ec] {
+.flzt-topbar__subtitle[data-v-118de66a] {
   color: #64748b;
   margin-top: 4px;
 }
+.flzt-config__hint[data-v-118de66a] {
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.flzt-config__section-title[data-v-118de66a] {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 12px;
+}
+.flzt-config__field-row[data-v-118de66a] {
+  margin-top: 0;
+}
+.flzt-config__field-label[data-v-118de66a] {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 4px;
+}
+.flzt-config__switch-item[data-v-118de66a] {
+  height: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+}
+.flzt-config__switch-item--muted[data-v-118de66a] {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.flzt-config__switch-text[data-v-118de66a] {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+.flzt-config__site-card[data-v-118de66a] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flzt-config__site-switches[data-v-118de66a] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.flzt-config__cookie-textarea[data-v-118de66a] textarea {
+  line-height: 1.4;
+}
+

@@ -1,10 +1,10 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { s as statusColor, p as pluginRequest } from './flzt-e78fda74.js';
+import { s as statusColor, g as getSiteDisplayMeta, p as pluginRequest } from './index-7b3b5f0c.js';
 import { _ as _export_sfc } from './_plugin-vue_export-helper-c4c0bc37.js';
 
-const Page_vue_vue_type_style_index_0_scoped_a8957eb0_lang = '';
+const Page_vue_vue_type_style_index_0_scoped_1e31cd93_lang = '';
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,renderList:_renderList,Fragment:_Fragment,openBlock:_openBlock,createElementBlock:_createElementBlock,createBlock:_createBlock,unref:_unref,createCommentVNode:_createCommentVNode} = await importShared('vue');
+const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,renderList:_renderList,Fragment:_Fragment,openBlock:_openBlock,createElementBlock:_createElementBlock,unref:_unref,createBlock:_createBlock,createCommentVNode:_createCommentVNode} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "flzt-page" };
@@ -15,16 +15,28 @@ const _hoisted_5 = { class: "overview-item" };
 const _hoisted_6 = { class: "overview-item" };
 const _hoisted_7 = { class: "overview-item__value" };
 const _hoisted_8 = { class: "overview-item" };
-const _hoisted_9 = { class: "overview-item" };
-const _hoisted_10 = { class: "overview-item__value" };
+const _hoisted_9 = { class: "overview-item__value" };
+const _hoisted_10 = { class: "overview-item" };
 const _hoisted_11 = { class: "overview-item" };
 const _hoisted_12 = { class: "overview-item__value" };
 const _hoisted_13 = { class: "overview-item" };
 const _hoisted_14 = { class: "overview-item__value" };
 const _hoisted_15 = { class: "overview-item" };
 const _hoisted_16 = { class: "overview-item__value" };
-const _hoisted_17 = { class: "history-message" };
-const _hoisted_18 = { key: 0 };
+const _hoisted_17 = { class: "site-item__chips" };
+const _hoisted_18 = {
+  key: 0,
+  class: "history-list"
+};
+const _hoisted_19 = { class: "history-entry__header" };
+const _hoisted_20 = { class: "history-entry__time" };
+const _hoisted_21 = { class: "history-entry__message" };
+const _hoisted_22 = { class: "history-entry__chips" };
+const _hoisted_23 = { class: "history-message" };
+const _hoisted_24 = {
+  key: 1,
+  class: "text-center text-medium-emphasis py-6"
+};
 
 const {computed,onMounted,reactive,ref} = await importShared('vue');
 
@@ -51,9 +63,11 @@ const status = ref({
   enabled: false,
   configured: false,
   cron: '',
-  email: '-',
+  enabled_site_count: 0,
+  configured_site_count: 0,
   last_status: '未执行',
   last_run: '-',
+  sites: [],
   history: [],
   history_count: 0,
   next_run_time: '未配置定时任务',
@@ -134,15 +148,8 @@ async function clearHistory() {
 }
 
 const statusChipColor = computed(() => statusColor(status.value.last_status));
-const resultItems = computed(() => {
-  const result = status.value.last_result || {};
-  return [
-    { label: '最近结果', value: result.status || status.value.last_status || '-' },
-    { label: '返回消息', value: result.message || '-' },
-    { label: '本次奖励', value: result.reward_mb ? `${result.reward_mb} MB` : '-' },
-    { label: '累计流量', value: result.total_traffic || '-' },
-  ]
-});
+const siteSummary = computed(() => (status.value.sites || []).filter(site => site.enabled));
+const historyEntries = computed(() => status.value.history || []);
 
 onMounted(() => {
   loadStatus();
@@ -170,8 +177,8 @@ return (_ctx, _cache) => {
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createElementVNode("div", _hoisted_2, [
       _cache[6] || (_cache[6] = _createElementVNode("div", null, [
-        _createElementVNode("div", { class: "flzt-page__title" }, "FLZT 自动签到"),
-        _createElementVNode("div", { class: "flzt-page__subtitle" }, "查看当前状态、手动签到、测试登录与管理历史记录")
+        _createElementVNode("div", { class: "flzt-page__title" }, "自用签到工具"),
+        _createElementVNode("div", { class: "flzt-page__subtitle" }, "查看状态并执行签到")
       ], -1)),
       _createVNode(_component_v_btn_group, {
         variant: "tonal",
@@ -222,7 +229,7 @@ return (_ctx, _cache) => {
       default: _withCtx(() => [
         _createVNode(_component_v_col, {
           cols: "12",
-          lg: "5"
+          lg: "4"
         }, {
           default: _withCtx(() => [
             _createVNode(_component_v_card, {
@@ -232,7 +239,7 @@ return (_ctx, _cache) => {
               default: _withCtx(() => [
                 _createVNode(_component_v_card_title, null, {
                   default: _withCtx(() => [...(_cache[7] || (_cache[7] = [
-                    _createTextVNode("运行概览", -1)
+                    _createTextVNode("概览", -1)
                   ]))]),
                   _: 1
                 }),
@@ -240,7 +247,7 @@ return (_ctx, _cache) => {
                   default: _withCtx(() => [
                     _createElementVNode("div", _hoisted_3, [
                       _createElementVNode("div", _hoisted_4, [
-                        _cache[8] || (_cache[8] = _createElementVNode("div", { class: "overview-item__label" }, "插件状态", -1)),
+                        _cache[8] || (_cache[8] = _createElementVNode("div", { class: "overview-item__label" }, "状态", -1)),
                         _createVNode(_component_v_chip, {
                           color: status.value.enabled ? 'success' : 'grey',
                           variant: "tonal"
@@ -252,23 +259,27 @@ return (_ctx, _cache) => {
                         }, 8, ["color"])
                       ]),
                       _createElementVNode("div", _hoisted_5, [
-                        _cache[9] || (_cache[9] = _createElementVNode("div", { class: "overview-item__label" }, "账号配置", -1)),
+                        _cache[9] || (_cache[9] = _createElementVNode("div", { class: "overview-item__label" }, "配置", -1)),
                         _createVNode(_component_v_chip, {
                           color: status.value.configured ? 'success' : 'warning',
                           variant: "tonal"
                         }, {
                           default: _withCtx(() => [
-                            _createTextVNode(_toDisplayString(status.value.configured ? '已配置' : '未配置'), 1)
+                            _createTextVNode(_toDisplayString(status.value.configured ? '已完成' : '未完成'), 1)
                           ]),
                           _: 1
                         }, 8, ["color"])
                       ]),
                       _createElementVNode("div", _hoisted_6, [
-                        _cache[10] || (_cache[10] = _createElementVNode("div", { class: "overview-item__label" }, "签到账号", -1)),
-                        _createElementVNode("div", _hoisted_7, _toDisplayString(status.value.email || '-'), 1)
+                        _cache[10] || (_cache[10] = _createElementVNode("div", { class: "overview-item__label" }, "启用站点", -1)),
+                        _createElementVNode("div", _hoisted_7, _toDisplayString(status.value.enabled_site_count || 0) + " 个", 1)
                       ]),
                       _createElementVNode("div", _hoisted_8, [
-                        _cache[11] || (_cache[11] = _createElementVNode("div", { class: "overview-item__label" }, "最近状态", -1)),
+                        _cache[11] || (_cache[11] = _createElementVNode("div", { class: "overview-item__label" }, "已配置站点", -1)),
+                        _createElementVNode("div", _hoisted_9, _toDisplayString(status.value.configured_site_count || 0) + " 个", 1)
+                      ]),
+                      _createElementVNode("div", _hoisted_10, [
+                        _cache[12] || (_cache[12] = _createElementVNode("div", { class: "overview-item__label" }, "最近结果", -1)),
                         _createVNode(_component_v_chip, {
                           color: statusChipColor.value,
                           variant: "tonal"
@@ -279,17 +290,13 @@ return (_ctx, _cache) => {
                           _: 1
                         }, 8, ["color"])
                       ]),
-                      _createElementVNode("div", _hoisted_9, [
-                        _cache[12] || (_cache[12] = _createElementVNode("div", { class: "overview-item__label" }, "最近执行", -1)),
-                        _createElementVNode("div", _hoisted_10, _toDisplayString(status.value.last_run || '-'), 1)
-                      ]),
                       _createElementVNode("div", _hoisted_11, [
-                        _cache[13] || (_cache[13] = _createElementVNode("div", { class: "overview-item__label" }, "下次执行", -1)),
-                        _createElementVNode("div", _hoisted_12, _toDisplayString(status.value.next_run_time || '-'), 1)
+                        _cache[13] || (_cache[13] = _createElementVNode("div", { class: "overview-item__label" }, "最近执行", -1)),
+                        _createElementVNode("div", _hoisted_12, _toDisplayString(status.value.last_run || '-'), 1)
                       ]),
                       _createElementVNode("div", _hoisted_13, [
-                        _cache[14] || (_cache[14] = _createElementVNode("div", { class: "overview-item__label" }, "任务状态", -1)),
-                        _createElementVNode("div", _hoisted_14, _toDisplayString(status.value.task_status || '-'), 1)
+                        _cache[14] || (_cache[14] = _createElementVNode("div", { class: "overview-item__label" }, "下次执行", -1)),
+                        _createElementVNode("div", _hoisted_14, _toDisplayString(status.value.next_run_time || '-'), 1)
                       ]),
                       _createElementVNode("div", _hoisted_15, [
                         _cache[15] || (_cache[15] = _createElementVNode("div", { class: "overview-item__label" }, "Cron", -1)),
@@ -356,7 +363,7 @@ return (_ctx, _cache) => {
               default: _withCtx(() => [
                 _createVNode(_component_v_card_title, null, {
                   default: _withCtx(() => [...(_cache[19] || (_cache[19] = [
-                    _createTextVNode("最近结果", -1)
+                    _createTextVNode("已启用站点", -1)
                   ]))]),
                   _: 1
                 }),
@@ -367,27 +374,75 @@ return (_ctx, _cache) => {
                       density: "comfortable"
                     }, {
                       default: _withCtx(() => [
-                        (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(resultItems.value, (item) => {
+                        (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(siteSummary.value, (site) => {
                           return (_openBlock(), _createBlock(_component_v_list_item, {
-                            key: item.label
+                            key: site.key
                           }, {
+                            prepend: _withCtx(() => [
+                              _createVNode(_component_v_icon, {
+                                icon: _unref(getSiteDisplayMeta)(site.key).icon
+                              }, null, 8, ["icon"])
+                            ]),
+                            append: _withCtx(() => [
+                              _createElementVNode("div", _hoisted_17, [
+                                _createVNode(_component_v_chip, {
+                                  size: "small",
+                                  color: site.use_proxy ? 'info' : 'default',
+                                  variant: "tonal"
+                                }, {
+                                  default: _withCtx(() => [
+                                    _createTextVNode(_toDisplayString(site.use_proxy ? '代理' : '直连'), 1)
+                                  ]),
+                                  _: 2
+                                }, 1032, ["color"]),
+                                _createVNode(_component_v_chip, {
+                                  size: "small",
+                                  color: site.configured ? 'success' : 'warning',
+                                  variant: "tonal"
+                                }, {
+                                  default: _withCtx(() => [
+                                    _createTextVNode(_toDisplayString(site.configured ? '已就绪' : '待配置'), 1)
+                                  ]),
+                                  _: 2
+                                }, 1032, ["color"])
+                              ])
+                            ]),
                             default: _withCtx(() => [
                               _createVNode(_component_v_list_item_title, null, {
                                 default: _withCtx(() => [
-                                  _createTextVNode(_toDisplayString(item.label), 1)
+                                  _createTextVNode(_toDisplayString(site.name), 1)
                                 ]),
                                 _: 2
                               }, 1024),
                               _createVNode(_component_v_list_item_subtitle, null, {
                                 default: _withCtx(() => [
-                                  _createTextVNode(_toDisplayString(item.value), 1)
+                                  _createTextVNode(_toDisplayString(site.account || '-') + " / " + _toDisplayString(site.last_status || '未执行'), 1)
                                 ]),
                                 _: 2
                               }, 1024)
                             ]),
                             _: 2
                           }, 1024))
-                        }), 128))
+                        }), 128)),
+                        (!siteSummary.value.length)
+                          ? (_openBlock(), _createBlock(_component_v_list_item, { key: 0 }, {
+                              default: _withCtx(() => [
+                                _createVNode(_component_v_list_item_title, null, {
+                                  default: _withCtx(() => [...(_cache[20] || (_cache[20] = [
+                                    _createTextVNode("暂无已启用站点", -1)
+                                  ]))]),
+                                  _: 1
+                                }),
+                                _createVNode(_component_v_list_item_subtitle, null, {
+                                  default: _withCtx(() => [...(_cache[21] || (_cache[21] = [
+                                    _createTextVNode("请先到配置页启用站点", -1)
+                                  ]))]),
+                                  _: 1
+                                })
+                              ]),
+                              _: 1
+                            }))
+                          : _createCommentVNode("", true)
                       ]),
                       _: 1
                     })
@@ -402,20 +457,20 @@ return (_ctx, _cache) => {
         }),
         _createVNode(_component_v_col, {
           cols: "12",
-          lg: "7"
+          lg: "8"
         }, {
           default: _withCtx(() => [
             _createVNode(_component_v_card, { variant: "outlined" }, {
               default: _withCtx(() => [
                 _createVNode(_component_v_card_title, { class: "d-flex align-center justify-space-between" }, {
                   default: _withCtx(() => [
-                    _cache[20] || (_cache[20] = _createElementVNode("span", null, "签到历史", -1)),
+                    _cache[22] || (_cache[22] = _createElementVNode("span", null, "签到历史", -1)),
                     _createVNode(_component_v_chip, {
                       color: "primary",
                       variant: "tonal"
                     }, {
                       default: _withCtx(() => [
-                        _createTextVNode(_toDisplayString(status.value.history_count || 0) + " 条", 1)
+                        _createTextVNode(_toDisplayString(status.value.history_count || 0) + " 次", 1)
                       ]),
                       _: 1
                     })
@@ -424,52 +479,103 @@ return (_ctx, _cache) => {
                 }),
                 _createVNode(_component_v_card_text, null, {
                   default: _withCtx(() => [
-                    _createVNode(_component_v_table, { density: "comfortable" }, {
-                      default: _withCtx(() => [
-                        _cache[22] || (_cache[22] = _createElementVNode("thead", null, [
-                          _createElementVNode("tr", null, [
-                            _createElementVNode("th", null, "时间"),
-                            _createElementVNode("th", null, "状态"),
-                            _createElementVNode("th", null, "奖励"),
-                            _createElementVNode("th", null, "累计流量"),
-                            _createElementVNode("th", null, "消息")
-                          ])
-                        ], -1)),
-                        _createElementVNode("tbody", null, [
-                          (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(status.value.history || [], (item, index) => {
-                            return (_openBlock(), _createElementBlock("tr", {
-                              key: `${item.time}-${index}`
-                            }, [
-                              _createElementVNode("td", null, _toDisplayString(item.time), 1),
-                              _createElementVNode("td", null, [
-                                _createVNode(_component_v_chip, {
-                                  size: "small",
-                                  color: _unref(statusColor)(item.status),
-                                  variant: "tonal"
-                                }, {
+                    (historyEntries.value.length)
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_18, [
+                          (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(historyEntries.value, (entry, index) => {
+                            return (_openBlock(), _createBlock(_component_v_card, {
+                              key: `${entry.time}-${index}`,
+                              variant: "tonal",
+                              class: "history-entry"
+                            }, {
+                              default: _withCtx(() => [
+                                _createVNode(_component_v_card_text, null, {
                                   default: _withCtx(() => [
-                                    _createTextVNode(_toDisplayString(item.status), 1)
+                                    _createElementVNode("div", _hoisted_19, [
+                                      _createElementVNode("div", null, [
+                                        _createElementVNode("div", _hoisted_20, _toDisplayString(entry.time || '-'), 1),
+                                        _createElementVNode("div", _hoisted_21, _toDisplayString(entry.message || '-'), 1)
+                                      ]),
+                                      _createElementVNode("div", _hoisted_22, [
+                                        _createVNode(_component_v_chip, {
+                                          size: "small",
+                                          color: _unref(statusColor)(entry.status),
+                                          variant: "tonal"
+                                        }, {
+                                          default: _withCtx(() => [
+                                            _createTextVNode(_toDisplayString(entry.status || '-'), 1)
+                                          ]),
+                                          _: 2
+                                        }, 1032, ["color"]),
+                                        _createVNode(_component_v_chip, {
+                                          size: "small",
+                                          color: "success",
+                                          variant: "tonal"
+                                        }, {
+                                          default: _withCtx(() => [
+                                            _createTextVNode(" 成功 " + _toDisplayString(entry.success_count || 0), 1)
+                                          ]),
+                                          _: 2
+                                        }, 1024),
+                                        _createVNode(_component_v_chip, {
+                                          size: "small",
+                                          color: "error",
+                                          variant: "tonal"
+                                        }, {
+                                          default: _withCtx(() => [
+                                            _createTextVNode(" 失败 " + _toDisplayString(entry.failure_count || 0), 1)
+                                          ]),
+                                          _: 2
+                                        }, 1024)
+                                      ])
+                                    ]),
+                                    _createVNode(_component_v_table, {
+                                      density: "comfortable",
+                                      class: "history-entry__table"
+                                    }, {
+                                      default: _withCtx(() => [
+                                        _cache[23] || (_cache[23] = _createElementVNode("thead", null, [
+                                          _createElementVNode("tr", null, [
+                                            _createElementVNode("th", null, "站点"),
+                                            _createElementVNode("th", null, "状态"),
+                                            _createElementVNode("th", null, "账号"),
+                                            _createElementVNode("th", null, "消息")
+                                          ])
+                                        ], -1)),
+                                        _createElementVNode("tbody", null, [
+                                          (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(entry.details || [], (detail, detailIndex) => {
+                                            return (_openBlock(), _createElementBlock("tr", {
+                                              key: `${entry.time}-${detail.site}-${detailIndex}`
+                                            }, [
+                                              _createElementVNode("td", null, _toDisplayString(detail.site_name || detail.site || '-'), 1),
+                                              _createElementVNode("td", null, [
+                                                _createVNode(_component_v_chip, {
+                                                  size: "small",
+                                                  color: _unref(statusColor)(detail.status),
+                                                  variant: "tonal"
+                                                }, {
+                                                  default: _withCtx(() => [
+                                                    _createTextVNode(_toDisplayString(detail.status || '-'), 1)
+                                                  ]),
+                                                  _: 2
+                                                }, 1032, ["color"])
+                                              ]),
+                                              _createElementVNode("td", null, _toDisplayString(detail.account || '-'), 1),
+                                              _createElementVNode("td", _hoisted_23, _toDisplayString(detail.message || '-'), 1)
+                                            ]))
+                                          }), 128))
+                                        ])
+                                      ]),
+                                      _: 2
+                                    }, 1024)
                                   ]),
                                   _: 2
-                                }, 1032, ["color"])
+                                }, 1024)
                               ]),
-                              _createElementVNode("td", null, _toDisplayString(item.reward_mb ? `${item.reward_mb} MB` : '-'), 1),
-                              _createElementVNode("td", null, _toDisplayString(item.total_traffic || '-'), 1),
-                              _createElementVNode("td", _hoisted_17, _toDisplayString(item.message || '-'), 1)
-                            ]))
-                          }), 128)),
-                          (!(status.value.history || []).length)
-                            ? (_openBlock(), _createElementBlock("tr", _hoisted_18, [...(_cache[21] || (_cache[21] = [
-                                _createElementVNode("td", {
-                                  colspan: "5",
-                                  class: "text-center text-medium-emphasis py-6"
-                                }, "暂无签到历史", -1)
-                              ]))]))
-                            : _createCommentVNode("", true)
-                        ])
-                      ]),
-                      _: 1
-                    })
+                              _: 2
+                            }, 1024))
+                          }), 128))
+                        ]))
+                      : (_openBlock(), _createElementBlock("div", _hoisted_24, "暂无签到历史"))
                   ]),
                   _: 1
                 })
@@ -498,6 +604,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-a8957eb0"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1e31cd93"]]);
 
 export { Page as default };
