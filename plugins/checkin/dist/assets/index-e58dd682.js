@@ -51,9 +51,41 @@ function validateRightForumCookie(cookie = '') {
   return ''
 }
 
+const ypojieSiteMeta = {
+  key: 'ypojie',
+  title: '易破解',
+  subtitle: '当前采用 Cookie 方式签到，通过 WordPress AJAX 接口完成每日签到。',
+  mode: 'Cookie',
+  icon: 'mdi-account-check-outline',
+  color: 'primary',
+};
+
+function normalizeYpojieConfig(config = {}) {
+  return {
+    enabled: Boolean(config.enabled),
+    use_proxy: Boolean(config.use_proxy),
+    cookie: config.cookie || '',
+  }
+}
+
+function validateYpojieCookie(cookie = '') {
+  const value = String(cookie || '').trim();
+  if (!value) {
+    return '启用易破解前，请先填写 Cookie'
+  }
+  if (value.length < 20) {
+    return '易破解 Cookie 长度过短，请粘贴完整浏览器 Cookie'
+  }
+  if (!value.includes('=') || !value.includes(';')) {
+    return '易破解 Cookie 格式异常，应类似 key=value; key2=value2'
+  }
+  return ''
+}
+
 const siteMetaMap = {
   [flztSiteMeta.key]: flztSiteMeta,
   [rightForumSiteMeta.key]: rightForumSiteMeta,
+  [ypojieSiteMeta.key]: ypojieSiteMeta,
 };
 
 function getSiteMeta(siteKey) {
@@ -106,6 +138,7 @@ function normalizeSiteConfig(sites = {}) {
   return {
     flzt: normalizeFlztConfig(sites.flzt || {}),
     right_forum: normalizeRightForumConfig(sites.right_forum || {}),
+    ypojie: normalizeYpojieConfig(sites.ypojie || {}),
   }
 }
 
@@ -120,4 +153,4 @@ function statusColor(status) {
   return 'info'
 }
 
-export { cloneConfig as c, flztSiteMeta as f, getSiteDisplayMeta as g, normalizeSiteConfig as n, pluginRequest as p, rightForumSiteMeta as r, statusColor as s, validateRightForumCookie as v };
+export { validateYpojieCookie as a, cloneConfig as c, flztSiteMeta as f, getSiteDisplayMeta as g, normalizeSiteConfig as n, pluginRequest as p, rightForumSiteMeta as r, statusColor as s, validateRightForumCookie as v, ypojieSiteMeta as y };

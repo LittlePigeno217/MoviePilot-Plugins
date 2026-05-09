@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { s as statusColor, g as getSiteDisplayMeta, p as pluginRequest } from './index-7b3b5f0c.js';
+import { s as statusColor, g as getSiteDisplayMeta, p as pluginRequest } from './index-e58dd682.js';
 import { _ as _export_sfc } from './_plugin-vue_export-helper-c4c0bc37.js';
 
 const Page_vue_vue_type_style_index_0_scoped_1e31cd93_lang = '';

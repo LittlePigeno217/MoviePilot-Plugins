@@ -320,11 +320,125 @@ class RightForumSiteAdapter(BaseSiteAdapter):
         }
 
 
+class YpojieSiteAdapter(BaseSiteAdapter):
+    site_key = "ypojie"
+    site_name = "易破解"
+    mode = "Cookie"
+    base_url = "https://www.ypojie.com"
+    vip_path = "/vip"
+    ajax_path = "/wp-admin/admin-ajax.php"
+
+    def default_config(self) -> Dict[str, Any]:
+        return {
+            "enabled": False,
+            "use_proxy": False,
+            "cookie": "",
+        }
+
+    def is_configured(self, site_config: Dict[str, Any]) -> bool:
+        return bool(site_config.get("cookie"))
+
+    def validate_config(self, site_config: Dict[str, Any]) -> List[str]:
+        errors: List[str] = []
+        if not self.plugin._to_bool(site_config.get("enabled", False)):
+            return errors
+        cookie = (site_config.get("cookie") or "").strip()
+        if not cookie:
+            errors.append("易破解已启用但未填写 Cookie")
+            return errors
+        if len(cookie) < 20:
+            errors.append("易破解 Cookie 长度过短，请粘贴完整浏览器 Cookie")
+        if "=" not in cookie or ";" not in cookie:
+            errors.append("易破解 Cookie 格式异常，应类似 key=value; key2=value2")
+        return errors
+
+    def get_account_label(self, site_config: Dict[str, Any]) -> str:
+        return "已配置 Cookie" if site_config.get("cookie") else "-"
+
+    def _headers(self, cookie: str) -> Dict[str, str]:
+        return {
+            "User-Agent": self.plugin.USER_AGENT,
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": self.base_url,
+            "Referer": f"{self.base_url}{self.vip_path}",
+            "X-Requested-With": "XMLHttpRequest",
+            "Cookie": cookie,
+        }
+
+    def _validate_cookie(self, cookie: str, site_config: Dict[str, Any]) -> None:
+        page = self.plugin._request_text(
+            "GET",
+            self.base_url,
+            self.vip_path,
+            use_proxy=site_config.get("use_proxy", False),
+            headers={
+                "User-Agent": self.plugin.USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Cookie": cookie,
+                "Referer": f"{self.base_url}{self.vip_path}",
+            },
+        )
+        if "Hi," not in page and "今日签到" not in page and "个人中心" not in page:
+            raise RuntimeError("易破解 Cookie 无效或已过期，请重新从浏览器复制")
+
+    def _check_in(self, cookie: str, site_config: Dict[str, Any]) -> Dict[str, Any]:
+        result = self.plugin._request_json(
+            "POST",
+            self.base_url,
+            self.ajax_path,
+            use_proxy=site_config.get("use_proxy", False),
+            headers=self._headers(cookie),
+            data={"action": "epd_checkin"},
+            allow_400_json=True,
+        )
+        return result
+
+    def run_checkin(self, site_config: Dict[str, Any]) -> Dict[str, Any]:
+        cookie = (site_config.get("cookie") or "").strip()
+        if not cookie:
+            raise ValueError("请先配置易破解 Cookie")
+        self._validate_cookie(cookie, site_config)
+        result = self._check_in(cookie, site_config)
+        status_code = result.get("status")
+        message = result.get("msg") or result.get("message") or ""
+        if status_code == 200:
+            status_text = "签到成功"
+            final_message = message or "签到成功"
+        elif message and self.plugin._is_already_checked_in(message):
+            status_text = "今日已签到"
+            final_message = message
+        else:
+            raise RuntimeError(message or f"易破解签到失败（status={status_code}）")
+
+        return {
+            "site": self.site_key,
+            "site_name": self.site_name,
+            "status": status_text,
+            "message": final_message,
+            "reward_mb": "-",
+            "total_traffic": "-",
+            "account": "Cookie 登录态",
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    def test_connection(self, site_config: Dict[str, Any]) -> Dict[str, Any]:
+        cookie = (site_config.get("cookie") or "").strip()
+        if not cookie:
+            raise ValueError("请先配置易破解 Cookie")
+        self._validate_cookie(cookie, site_config)
+        return {
+            "site": self.site_key,
+            "site_name": self.site_name,
+            "message": "Cookie 校验成功，可用于签到",
+        }
+
+
 class Checkin(_PluginBase):
     plugin_name = "自用签到工具"
     plugin_desc = "用于自用站点签到的统一工具，支持自动登录、Cookie 签到、通知与历史记录。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.2.0"
+    plugin_version = "1.3.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "checkin_"
@@ -350,6 +464,7 @@ class Checkin(_PluginBase):
         self._adapters = {
             FlztSiteAdapter.site_key: FlztSiteAdapter(self),
             RightForumSiteAdapter.site_key: RightForumSiteAdapter(self),
+            YpojieSiteAdapter.site_key: YpojieSiteAdapter(self),
         }
 
     @staticmethod
@@ -386,6 +501,10 @@ class Checkin(_PluginBase):
             or "已签到" in text
             or "今日已签" in text
             or "今天已签" in text
+            or "今天已经签过" in text
+            or "今天已经签过到" in text
+            or "签过到" in text
+            or "明儿再来" in text
         )
 
     @staticmethod

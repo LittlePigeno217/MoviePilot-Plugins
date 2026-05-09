@@ -17603,13 +17603,13 @@ html.overflow-y-hidden {
 }
 }
 
-.flzt-config[data-v-118de66a] {
+.flzt-config[data-v-75ffc3fd] {
   padding: 16px;
 }
-.flzt-config__grid[data-v-118de66a] {
+.flzt-config__grid[data-v-75ffc3fd] {
   row-gap: 16px;
 }
-.flzt-topbar[data-v-118de66a] {
+.flzt-topbar[data-v-75ffc3fd] {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -17617,63 +17617,63 @@ html.overflow-y-hidden {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
-.flzt-topbar__title[data-v-118de66a] {
+.flzt-topbar__title[data-v-75ffc3fd] {
   font-size: 20px;
   font-weight: 700;
   color: #0f172a;
 }
-.flzt-topbar__subtitle[data-v-118de66a] {
+.flzt-topbar__subtitle[data-v-75ffc3fd] {
   color: #64748b;
   margin-top: 4px;
 }
-.flzt-config__hint[data-v-118de66a] {
+.flzt-config__hint[data-v-75ffc3fd] {
   color: #64748b;
   font-size: 13px;
   margin-top: 4px;
 }
-.flzt-config__section-title[data-v-118de66a] {
+.flzt-config__section-title[data-v-75ffc3fd] {
   font-size: 13px;
   font-weight: 700;
   color: #475569;
   margin-bottom: 12px;
 }
-.flzt-config__field-row[data-v-118de66a] {
+.flzt-config__field-row[data-v-75ffc3fd] {
   margin-top: 0;
 }
-.flzt-config__field-label[data-v-118de66a] {
+.flzt-config__field-label[data-v-75ffc3fd] {
   font-size: 13px;
   font-weight: 600;
   color: #475569;
   margin-bottom: 4px;
 }
-.flzt-config__switch-item[data-v-118de66a] {
+.flzt-config__switch-item[data-v-75ffc3fd] {
   height: 100%;
   padding: 12px 14px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.9);
 }
-.flzt-config__switch-item--muted[data-v-118de66a] {
+.flzt-config__switch-item--muted[data-v-75ffc3fd] {
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
-.flzt-config__switch-text[data-v-118de66a] {
+.flzt-config__switch-text[data-v-75ffc3fd] {
   font-size: 13px;
   color: #64748b;
   line-height: 1.5;
 }
-.flzt-config__site-card[data-v-118de66a] {
+.flzt-config__site-card[data-v-75ffc3fd] {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.flzt-config__site-switches[data-v-118de66a] {
+.flzt-config__site-switches[data-v-75ffc3fd] {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
 }
-.flzt-config__cookie-textarea[data-v-118de66a] textarea {
+.flzt-config__cookie-textarea[data-v-75ffc3fd] textarea {
   line-height: 1.4;
 }
 

@@ -1,8 +1,8 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { f as flztSiteMeta, r as rightForumSiteMeta, c as cloneConfig, n as normalizeSiteConfig, v as validateRightForumCookie } from './index-7b3b5f0c.js';
+import { f as flztSiteMeta, r as rightForumSiteMeta, y as ypojieSiteMeta, c as cloneConfig, n as normalizeSiteConfig, v as validateRightForumCookie, a as validateYpojieCookie } from './index-e58dd682.js';
 import { _ as _export_sfc } from './_plugin-vue_export-helper-c4c0bc37.js';
 
-const Config_vue_vue_type_style_index_0_scoped_118de66a_lang = '';
+const Config_vue_vue_type_style_index_0_scoped_75ffc3fd_lang = '';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,openBlock:_openBlock,createBlock:_createBlock,createCommentVNode:_createCommentVNode,unref:_unref,createElementBlock:_createElementBlock} = await importShared('vue');
 
@@ -13,6 +13,7 @@ const _hoisted_3 = { class: "flzt-config__switch-item" };
 const _hoisted_4 = { class: "flzt-config__switch-item" };
 const _hoisted_5 = { class: "flzt-config__site-switches mb-4" };
 const _hoisted_6 = { class: "flzt-config__site-switches mb-4" };
+const _hoisted_7 = { class: "flzt-config__site-switches mb-4" };
 
 const {computed,reactive,ref,watch} = await importShared('vue');
 
@@ -57,6 +58,11 @@ const defaultConfig = {
         use_proxy: false,
       cookie: '',
     },
+    ypojie: {
+      enabled: false,
+      use_proxy: false,
+      cookie: '',
+    },
   },
 };
 
@@ -98,6 +104,12 @@ async function saveConfig() {
         throw new Error(cookieError)
       }
     }
+    if (config.sites.ypojie.enabled) {
+      const cookieError = validateYpojieCookie(config.sites.ypojie.cookie);
+      if (cookieError) {
+        throw new Error(cookieError)
+      }
+    }
     emit('save', cloneConfig(config));
     message.value = '配置已提交';
     messageType.value = 'success';
@@ -128,7 +140,7 @@ return (_ctx, _cache) => {
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createElementVNode("div", _hoisted_2, [
-      _cache[17] || (_cache[17] = _createElementVNode("div", null, [
+      _cache[20] || (_cache[20] = _createElementVNode("div", null, [
         _createElementVNode("div", { class: "flzt-topbar__title" }, "自用签到工具配置"),
         _createElementVNode("div", { class: "flzt-topbar__subtitle" }, "保留常用配置与站点开关")
       ], -1)),
@@ -146,7 +158,7 @@ return (_ctx, _cache) => {
                 icon: "mdi-view-dashboard-outline",
                 class: "mr-1"
               }),
-              _cache[14] || (_cache[14] = _createTextVNode(" 状态页 ", -1))
+              _cache[17] || (_cache[17] = _createTextVNode(" 状态页 ", -1))
             ]),
             _: 1
           }),
@@ -159,7 +171,7 @@ return (_ctx, _cache) => {
                 icon: "mdi-restore",
                 class: "mr-1"
               }),
-              _cache[15] || (_cache[15] = _createTextVNode(" 重置 ", -1))
+              _cache[18] || (_cache[18] = _createTextVNode(" 重置 ", -1))
             ]),
             _: 1
           }),
@@ -173,7 +185,7 @@ return (_ctx, _cache) => {
                 icon: "mdi-content-save-outline",
                 class: "mr-1"
               }),
-              _cache[16] || (_cache[16] = _createTextVNode(" 保存 ", -1))
+              _cache[19] || (_cache[19] = _createTextVNode(" 保存 ", -1))
             ]),
             _: 1
           }, 8, ["loading"]),
@@ -220,13 +232,13 @@ return (_ctx, _cache) => {
                       class: "mr-2",
                       color: "primary"
                     }),
-                    _cache[18] || (_cache[18] = _createTextVNode(" 通用 ", -1))
+                    _cache[21] || (_cache[21] = _createTextVNode(" 通用 ", -1))
                   ]),
                   _: 1
                 }),
                 _createVNode(_component_v_card_text, null, {
                   default: _withCtx(() => [
-                    _cache[22] || (_cache[22] = _createElementVNode("div", { class: "flzt-config__section-title" }, "基础开关", -1)),
+                    _cache[25] || (_cache[25] = _createElementVNode("div", { class: "flzt-config__section-title" }, "基础开关", -1)),
                     _createVNode(_component_v_row, { class: "flzt-config__field-row" }, {
                       default: _withCtx(() => [
                         _createVNode(_component_v_col, {
@@ -235,7 +247,7 @@ return (_ctx, _cache) => {
                         }, {
                           default: _withCtx(() => [
                             _createElementVNode("div", _hoisted_3, [
-                              _cache[19] || (_cache[19] = _createElementVNode("div", { class: "flzt-config__field-label" }, "插件状态", -1)),
+                              _cache[22] || (_cache[22] = _createElementVNode("div", { class: "flzt-config__field-label" }, "插件状态", -1)),
                               _createVNode(_component_v_switch, {
                                 modelValue: config.enabled,
                                 "onUpdate:modelValue": _cache[2] || (_cache[2] = $event => ((config.enabled) = $event)),
@@ -254,7 +266,7 @@ return (_ctx, _cache) => {
                         }, {
                           default: _withCtx(() => [
                             _createElementVNode("div", _hoisted_4, [
-                              _cache[20] || (_cache[20] = _createElementVNode("div", { class: "flzt-config__field-label" }, "通知", -1)),
+                              _cache[23] || (_cache[23] = _createElementVNode("div", { class: "flzt-config__field-label" }, "通知", -1)),
                               _createVNode(_component_v_switch, {
                                 modelValue: config.notify,
                                 "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((config.notify) = $event)),
@@ -271,7 +283,7 @@ return (_ctx, _cache) => {
                           cols: "12",
                           md: "4"
                         }, {
-                          default: _withCtx(() => [...(_cache[21] || (_cache[21] = [
+                          default: _withCtx(() => [...(_cache[24] || (_cache[24] = [
                             _createElementVNode("div", { class: "flzt-config__switch-item flzt-config__switch-item--muted" }, [
                               _createElementVNode("div", { class: "flzt-config__field-label" }, "网络"),
                               _createElementVNode("div", { class: "flzt-config__switch-text" }, "代理已改为各站点单独配置")
@@ -282,7 +294,7 @@ return (_ctx, _cache) => {
                       ]),
                       _: 1
                     }),
-                    _cache[23] || (_cache[23] = _createElementVNode("div", { class: "flzt-config__section-title mt-2" }, "执行参数", -1)),
+                    _cache[26] || (_cache[26] = _createElementVNode("div", { class: "flzt-config__section-title mt-2" }, "执行参数", -1)),
                     _createVNode(_component_v_row, { class: "flzt-config__field-row" }, {
                       default: _withCtx(() => [
                         _createVNode(_component_v_col, {
@@ -436,7 +448,7 @@ return (_ctx, _cache) => {
                       ]),
                       _: 1
                     }),
-                    _cache[24] || (_cache[24] = _createElementVNode("div", { class: "flzt-config__hint" }, "使用账号密码登录并签到。", -1))
+                    _cache[27] || (_cache[27] = _createElementVNode("div", { class: "flzt-config__hint" }, "使用账号密码登录并签到。", -1))
                   ]),
                   _: 1
                 })
@@ -498,7 +510,69 @@ return (_ctx, _cache) => {
                       "prepend-inner-icon": "mdi-cookie-outline",
                       class: "flzt-config__cookie-textarea"
                     }, null, 8, ["modelValue"]),
-                    _cache[25] || (_cache[25] = _createElementVNode("div", { class: "flzt-config__hint mt-3" }, "请先在浏览器登录并复制完整 Cookie。", -1))
+                    _cache[28] || (_cache[28] = _createElementVNode("div", { class: "flzt-config__hint mt-3" }, "请先在浏览器登录并复制完整 Cookie。", -1))
+                  ]),
+                  _: 1
+                })
+              ]),
+              _: 1
+            })
+          ]),
+          _: 1
+        }),
+        _createVNode(_component_v_col, {
+          cols: "12",
+          md: "6"
+        }, {
+          default: _withCtx(() => [
+            _createVNode(_component_v_card, {
+              variant: "outlined",
+              class: "h-100"
+            }, {
+              default: _withCtx(() => [
+                _createVNode(_component_v_card_title, { class: "d-flex align-center" }, {
+                  default: _withCtx(() => [
+                    _createVNode(_component_v_icon, {
+                      icon: _unref(ypojieSiteMeta).icon,
+                      class: "mr-2",
+                      color: _unref(ypojieSiteMeta).color
+                    }, null, 8, ["icon", "color"]),
+                    _createTextVNode(" " + _toDisplayString(_unref(ypojieSiteMeta).title), 1)
+                  ]),
+                  _: 1
+                }),
+                _createVNode(_component_v_card_text, { class: "flzt-config__site-card" }, {
+                  default: _withCtx(() => [
+                    _createElementVNode("div", _hoisted_7, [
+                      _createVNode(_component_v_switch, {
+                        modelValue: config.sites.ypojie.enabled,
+                        "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((config.sites.ypojie.enabled) = $event)),
+                        color: _unref(ypojieSiteMeta).color,
+                        label: "启用该站点",
+                        inset: "",
+                        "hide-details": ""
+                      }, null, 8, ["modelValue", "color"]),
+                      _createVNode(_component_v_switch, {
+                        modelValue: config.sites.ypojie.use_proxy,
+                        "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((config.sites.ypojie.use_proxy) = $event)),
+                        color: _unref(ypojieSiteMeta).color,
+                        label: "该站点使用代理",
+                        inset: "",
+                        "hide-details": ""
+                      }, null, 8, ["modelValue", "color"])
+                    ]),
+                    _createVNode(_component_v_textarea, {
+                      modelValue: config.sites.ypojie.cookie,
+                      "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((config.sites.ypojie.cookie) = $event)),
+                      label: "Cookie",
+                      variant: "outlined",
+                      rows: "4",
+                      "max-rows": "6",
+                      "auto-grow": "",
+                      "prepend-inner-icon": "mdi-cookie-outline",
+                      class: "flzt-config__cookie-textarea"
+                    }, null, 8, ["modelValue"]),
+                    _cache[29] || (_cache[29] = _createElementVNode("div", { class: "flzt-config__hint mt-3" }, "请先在浏览器登录易破解会员中心后复制完整 Cookie。", -1))
                   ]),
                   _: 1
                 })
@@ -516,6 +590,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-118de66a"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-75ffc3fd"]]);
 
 export { Config as default };
