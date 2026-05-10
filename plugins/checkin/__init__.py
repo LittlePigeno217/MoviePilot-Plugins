@@ -469,7 +469,7 @@ class Checkin(_PluginBase):
     plugin_name = "自用签到工具"
     plugin_desc = "用于自用站点签到的统一工具，支持自动登录、Cookie 签到、通知与历史记录。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.3.1"
+    plugin_version = "1.3.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "checkin_"
@@ -947,7 +947,7 @@ class Checkin(_PluginBase):
         if not self._notify:
             return
         details = summary.get("details") or []
-        detail_text = "\n".join([f"{item.get('site_name', item.get('site', '-'))}：{item.get('status', '-')}（{item.get('message', '-')}）" for item in details])
+        detail_text = "\n".join([f"{item.get('site_name', item.get('site', '-'))}：{item.get('status', '-')}" for item in details])
         self.post_message(
             mtype=NotificationType.Plugin,
             title=f"{self.plugin_name} - {summary.get('status', '执行完成')}",
