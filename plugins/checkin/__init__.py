@@ -168,6 +168,7 @@ class RightForumSiteAdapter(BaseSiteAdapter):
     mode = "Cookie"
     base_url = "https://www.right.com.cn/forum"
     sign_page = "/erling_qd-sign_in.html"
+    sign_plugin_page = "/plugin.php?id=erling_qd:sign"
     sign_action = "/plugin.php?id=erling_qd:action&action=sign"
     forum_page = "/forum.php"
 
@@ -205,27 +206,48 @@ class RightForumSiteAdapter(BaseSiteAdapter):
         headers = {
             "User-Agent": self.plugin.USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Cookie": cookie,
         }
         if referer:
             headers["Referer"] = referer
+            headers["Origin"] = self.base_url
         if ajax:
             headers["X-Requested-With"] = "XMLHttpRequest"
+            headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
         return headers
 
-    def _fetch_sign_page(self, cookie: str, site_config: Dict[str, Any]) -> Tuple[str, str]:
-        referer = f"{self.base_url}{self.sign_page}"
-        text = self.plugin._request_text(
-            "GET",
-            self.base_url,
-            self.sign_page,
-            use_proxy=site_config.get("use_proxy", False),
-            headers=self._headers(cookie, referer=referer),
-        )
+    def _ensure_logged_in(self, text: str) -> None:
         if "请先登录" in text or "您需要登录后才能使用签到功能" in text or ("立即登录" in text and "签到功能" in text):
             raise RuntimeError("右键论坛 Cookie 无效或已过期，请重新从浏览器复制")
         if "安全验证" in text or "滑块" in text:
             raise RuntimeError("右键论坛触发安全验证，请在浏览器中重新完成验证后更新 Cookie")
+
+    def _fetch_page_with_fallback(self, cookie: str, site_config: Dict[str, Any], paths: List[str]) -> Tuple[str, str]:
+        last_error: Optional[Exception] = None
+        for path in paths:
+            referer = f"{self.base_url}{path}"
+            try:
+                text = self.plugin._request_text(
+                    "GET",
+                    self.base_url,
+                    path,
+                    use_proxy=site_config.get("use_proxy", False),
+                    headers=self._headers(cookie, referer=referer),
+                )
+                self._ensure_logged_in(text)
+                return path, text
+            except Exception as err:
+                last_error = err
+                logger.warning(f"{self.plugin_name}: 恩山页面访问失败，尝试回退 {path}: {err}")
+        raise RuntimeError(str(last_error) if last_error else "右键论坛页面访问失败")
+
+    def _fetch_sign_page(self, cookie: str, site_config: Dict[str, Any]) -> Tuple[str, str, str]:
+        page_path, text = self._fetch_page_with_fallback(
+            cookie,
+            site_config,
+            [self.sign_page, self.sign_plugin_page, self.forum_page],
+        )
 
         formhash = self.plugin._extract_formhash(text)
         if not formhash:
@@ -234,12 +256,13 @@ class RightForumSiteAdapter(BaseSiteAdapter):
                 self.base_url,
                 self.forum_page,
                 use_proxy=site_config.get("use_proxy", False),
-                headers=self._headers(cookie, referer=referer),
+                headers=self._headers(cookie, referer=f"{self.base_url}{page_path}"),
             )
+            self._ensure_logged_in(forum_text)
             formhash = self.plugin._extract_formhash(forum_text)
         if not formhash:
             raise RuntimeError("未能获取右键论坛 formhash，请检查 Cookie 是否有效")
-        return formhash, text
+        return formhash, text, page_path
 
     def _evaluate_response(self, text: str) -> Dict[str, str]:
         message = self.plugin._extract_dialog_message(text) or self.plugin._clean_text(text)[:120]
@@ -259,10 +282,18 @@ class RightForumSiteAdapter(BaseSiteAdapter):
         if not cookie:
             raise ValueError("请先配置右键论坛 Cookie")
 
-        sign_page_url = f"{self.base_url}{self.sign_page}"
-        formhash, _ = self._fetch_sign_page(cookie, site_config)
+        formhash, _, entry_path = self._fetch_sign_page(cookie, site_config)
+        sign_page_url = f"{self.base_url}{entry_path}"
         candidate_requests = [
             {"path": self.sign_action, "data": {"formhash": formhash}},
+            {
+                "path": self.sign_plugin_page,
+                "data": {
+                    "formhash": formhash,
+                    "submit": "true",
+                    "inajax": 1,
+                },
+            },
             {
                 "path": self.sign_page,
                 "data": {
@@ -312,11 +343,11 @@ class RightForumSiteAdapter(BaseSiteAdapter):
         cookie = (site_config.get("cookie") or "").strip()
         if not cookie:
             raise ValueError("请先配置右键论坛 Cookie")
-        formhash, _ = self._fetch_sign_page(cookie, site_config)
+        formhash, _, page_path = self._fetch_sign_page(cookie, site_config)
         return {
             "site": self.site_key,
             "site_name": self.site_name,
-            "message": f"Cookie 校验成功，formhash：{formhash}",
+            "message": f"Cookie 校验成功，入口：{page_path}，formhash：{formhash}",
         }
 
 
@@ -438,7 +469,7 @@ class Checkin(_PluginBase):
     plugin_name = "自用签到工具"
     plugin_desc = "用于自用站点签到的统一工具，支持自动登录、Cookie 签到、通知与历史记录。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.3.0"
+    plugin_version = "1.3.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "checkin_"
