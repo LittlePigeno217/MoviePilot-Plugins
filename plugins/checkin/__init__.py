@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -239,7 +240,7 @@ class RightForumSiteAdapter(BaseSiteAdapter):
                 return path, text
             except Exception as err:
                 last_error = err
-                logger.warning(f"{self.plugin_name}: 恩山页面访问失败，尝试回退 {path}: {err}")
+                logger.warning(f"{self.plugin.plugin_name}: 恩山页面访问失败，尝试回退 {path}: {err}")
         raise RuntimeError(str(last_error) if last_error else "右键论坛页面访问失败")
 
     def _fetch_sign_page(self, cookie: str, site_config: Dict[str, Any]) -> Tuple[str, str, str]:
@@ -264,12 +265,74 @@ class RightForumSiteAdapter(BaseSiteAdapter):
             raise RuntimeError("未能获取右键论坛 formhash，请检查 Cookie 是否有效")
         return formhash, text, page_path
 
-    def _evaluate_response(self, text: str) -> Dict[str, str]:
+    @staticmethod
+    def _has_any(text: str, keywords: List[str]) -> bool:
+        return any(keyword in (text or "") for keyword in keywords)
+
+    def _extract_right_forum_message(self, text: str) -> str:
         message = self.plugin._extract_dialog_message(text) or self.plugin._clean_text(text)[:120]
+        return message
+
+    def _extract_right_forum_stats(self, text: str) -> str:
+        if not text:
+            return ""
+        cleaned = self.plugin._clean_text(text)
+        patterns = [
+            ("今日积分", r"今日积分[:：]\s*(\d+)"),
+            ("连续签到", r"连续签到[:：]\s*(\d+)\s*天"),
+            ("总签到天数", r"总签到天数[:：]\s*(\d+)\s*天"),
+        ]
+        parts: List[str] = []
+        for label, pattern in patterns:
+            match = re.search(pattern, cleaned)
+            if not match:
+                continue
+            suffix = " 天" if label != "今日积分" else ""
+            parts.append(f"{label}：{match.group(1)}{suffix}")
+        return "；".join(parts)
+
+    def _with_right_forum_stats(self, message: str, text: str) -> str:
+        stats = self._extract_right_forum_stats(text)
+        if not stats:
+            return message
+        return stats
+
+    def _is_right_forum_already(self, text: str, message: str = "") -> bool:
+        already_keywords = [
+            "今日已签",
+            "今天已签",
+            "今日已签到",
+            "今天已签到",
+            "您今天已经签到过了",
+            "您今日已经签到过了",
+            "明儿再来",
+        ]
+        return self._has_any(message, already_keywords) or self._has_any(text, already_keywords)
+
+    def _is_right_forum_success(self, text: str, message: str = "") -> bool:
+        success_keywords = ["签到成功", "签到完成"]
+        message_success_keywords = ["签到成功", "签到完成", "恭喜", "奖励", "获得"]
+        return self._has_any(message, message_success_keywords) or self._has_any(text, success_keywords)
+
+    def _is_right_forum_waiting_for_sign(self, text: str) -> bool:
+        return self._has_any(text, ["立即签到", "马上签到", "我要签到"]) or (
+            "erling_qd" in (text or "") and "formhash" in (text or "")
+        )
+
+    def _log_right_forum_state(self, source: str, path: str, text: str = "", err: Optional[Exception] = None) -> None:
+        message = self._extract_right_forum_message(text) if text else ""
+        summary = message or self.plugin._clean_text(text)[:120]
+        if err:
+            logger.warning(f"{self.plugin.plugin_name}: 恩山状态识别失败 source={source}, path={path}, message={summary or '-'}, error={err}")
+        else:
+            logger.info(f"{self.plugin.plugin_name}: 恩山状态识别 source={source}, path={path}, message={summary or '-'}")
+
+    def _evaluate_response(self, text: str) -> Dict[str, str]:
+        message = self._extract_right_forum_message(text)
         lower_text = (text or "").lower()
-        if any(keyword in text for keyword in ["今日已签", "今天已签", "已经签到", "您今天已经签到过了"]) or self.plugin._is_already_checked_in(message):
+        if self._is_right_forum_already(text, message):
             return {"status": "今日已签到", "message": message or "今日已签到"}
-        if any(keyword in text for keyword in ["签到成功", "恭喜", "奖励", "获得", "签到完成"]):
+        if self._is_right_forum_success(text, message):
             return {"status": "签到成功", "message": message or "签到成功"}
         if "安全验证" in text or "滑块" in text:
             raise RuntimeError("右键论坛触发安全验证，请在浏览器中重新完成验证后更新 Cookie")
@@ -277,13 +340,48 @@ class RightForumSiteAdapter(BaseSiteAdapter):
             raise RuntimeError("右键论坛 Cookie 无效或已过期，请重新复制")
         raise RuntimeError(message or "右键论坛签到失败")
 
+    def _evaluate_current_page(self, text: str) -> Dict[str, str]:
+        message = self._extract_right_forum_message(text)
+        if self._is_right_forum_already(text, message):
+            base_message = "" if self._extract_right_forum_stats(message) else message
+            return {"status": "今日已签到", "message": self._with_right_forum_stats(base_message or "当前页面显示今日已签到", text)}
+        if self._is_right_forum_success(text, message):
+            base_message = "" if self._extract_right_forum_stats(message) else message
+            return {"status": "签到成功", "message": self._with_right_forum_stats(base_message or "当前页面显示签到成功", text)}
+        if "安全验证" in text or "滑块" in text:
+            raise RuntimeError("右键论坛触发安全验证，请在浏览器中重新完成验证后更新 Cookie")
+        if "未登录" in text or "请先登录" in text:
+            raise RuntimeError("右键论坛 Cookie 无效或已过期，请重新复制")
+        if self._is_right_forum_waiting_for_sign(text):
+            raise RuntimeError("右键论坛当前页面显示仍可签到，未确认签到成功")
+        raise RuntimeError(message or "右键论坛当前签到状态未识别")
+
     def run_checkin(self, site_config: Dict[str, Any]) -> Dict[str, Any]:
         cookie = (site_config.get("cookie") or "").strip()
         if not cookie:
             raise ValueError("请先配置右键论坛 Cookie")
 
-        formhash, _, entry_path = self._fetch_sign_page(cookie, site_config)
+        formhash, entry_text, entry_path = self._fetch_sign_page(cookie, site_config)
         sign_page_url = f"{self.base_url}{entry_path}"
+        try:
+            initial_state = self._evaluate_current_page(entry_text)
+            if initial_state.get("status") == "今日已签到":
+                self._log_right_forum_state("initial", entry_path, entry_text)
+                return {
+                    "site": self.site_key,
+                    "site_name": self.site_name,
+                    "status": initial_state["status"],
+                    "message": initial_state["message"],
+                    "reward_mb": "-",
+                    "total_traffic": "-",
+                    "account": "Cookie 登录态",
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+        except RuntimeError as err:
+            if "仍可签到" not in str(err) and "状态未识别" not in str(err):
+                raise
+            self._log_right_forum_state("initial", entry_path, entry_text, err)
+
         candidate_requests = [
             {"path": self.sign_action, "data": {"formhash": formhash}},
             {
@@ -324,7 +422,27 @@ class RightForumSiteAdapter(BaseSiteAdapter):
                     headers=self._headers(cookie, referer=sign_page_url, ajax=True),
                     data=candidate["data"],
                 )
-                evaluation = self._evaluate_response(text)
+                response_evaluation: Optional[Dict[str, str]] = None
+                try:
+                    response_evaluation = self._evaluate_response(text)
+                except RuntimeError as err:
+                    last_error = err
+                    self._log_right_forum_state("response", candidate["path"], text, err)
+
+                current_path, current_text = self._fetch_page_with_fallback(
+                    cookie,
+                    site_config,
+                    [self.sign_page, self.sign_plugin_page, self.forum_page],
+                )
+                current_evaluation = self._evaluate_current_page(current_text)
+                self._log_right_forum_state("current", current_path, current_text)
+                evaluation = {
+                    "status": "签到成功" if current_evaluation.get("status") == "今日已签到" else current_evaluation["status"],
+                    "message": self._with_right_forum_stats(
+                        response_evaluation.get("message") if response_evaluation else current_evaluation["message"],
+                        current_text,
+                    ),
+                }
                 return {
                     "site": self.site_key,
                     "site_name": self.site_name,
@@ -354,39 +472,46 @@ class RightForumSiteAdapter(BaseSiteAdapter):
 class YpojieSiteAdapter(BaseSiteAdapter):
     site_key = "ypojie"
     site_name = "易破解"
-    mode = "Cookie"
+    mode = "账号密码"
     base_url = "https://www.ypojie.com"
     vip_path = "/vip"
+    login_path = "/wp-login.php"
     ajax_path = "/wp-admin/admin-ajax.php"
 
     def default_config(self) -> Dict[str, Any]:
         return {
             "enabled": False,
             "use_proxy": False,
-            "cookie": "",
+            "email": "",
+            "password": "",
         }
 
     def is_configured(self, site_config: Dict[str, Any]) -> bool:
-        return bool(site_config.get("cookie"))
+        return bool(site_config.get("email") and site_config.get("password"))
 
     def validate_config(self, site_config: Dict[str, Any]) -> List[str]:
         errors: List[str] = []
         if not self.plugin._to_bool(site_config.get("enabled", False)):
             return errors
-        cookie = (site_config.get("cookie") or "").strip()
-        if not cookie:
-            errors.append("易破解已启用但未填写 Cookie")
-            return errors
-        if len(cookie) < 20:
-            errors.append("易破解 Cookie 长度过短，请粘贴完整浏览器 Cookie")
-        if "=" not in cookie or ";" not in cookie:
-            errors.append("易破解 Cookie 格式异常，应类似 key=value; key2=value2")
+        if not site_config.get("email"):
+            errors.append("易破解已启用但未填写账号")
+        if not site_config.get("password"):
+            errors.append("易破解已启用但未填写密码")
         return errors
 
     def get_account_label(self, site_config: Dict[str, Any]) -> str:
-        return "已配置 Cookie" if site_config.get("cookie") else "-"
+        return self.plugin._mask_email(site_config.get("email") or "")
 
-    def _headers(self, cookie: str) -> Dict[str, str]:
+    def _login_headers(self, referer: Optional[str] = None) -> Dict[str, str]:
+        headers = {
+            "User-Agent": self.plugin.USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Referer": referer or f"{self.base_url}{self.login_path}",
+        }
+        return headers
+
+    def _ajax_headers(self) -> Dict[str, str]:
         return {
             "User-Agent": self.plugin.USER_AGENT,
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -394,51 +519,122 @@ class YpojieSiteAdapter(BaseSiteAdapter):
             "Origin": self.base_url,
             "Referer": f"{self.base_url}{self.vip_path}",
             "X-Requested-With": "XMLHttpRequest",
-            "Cookie": cookie,
         }
 
-    def _validate_cookie(self, cookie: str, site_config: Dict[str, Any]) -> None:
-        page = self.plugin._request_text(
-            "GET",
-            self.base_url,
-            self.vip_path,
-            use_proxy=site_config.get("use_proxy", False),
-            headers={
-                "User-Agent": self.plugin.USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Cookie": cookie,
-                "Referer": f"{self.base_url}{self.vip_path}",
-            },
+    def _session_get_text(self, session: requests.Session, path: str, site_config: Dict[str, Any], **kwargs) -> str:
+        response = session.get(
+            f"{self.base_url}{path}",
+            timeout=self.plugin._timeout,
+            proxies=self.plugin._get_proxies(site_config.get("use_proxy", False)),
+            **kwargs,
         )
-        if "Hi," not in page and "今日签到" not in page and "个人中心" not in page:
-            raise RuntimeError("易破解 Cookie 无效或已过期，请重新从浏览器复制")
+        response.raise_for_status()
+        response.encoding = response.apparent_encoding or response.encoding or "utf-8"
+        return response.text
 
-    def _check_in(self, cookie: str, site_config: Dict[str, Any]) -> Dict[str, Any]:
-        result = self.plugin._request_json(
-            "POST",
-            self.base_url,
-            self.ajax_path,
-            use_proxy=site_config.get("use_proxy", False),
-            headers=self._headers(cookie),
+    def _validate_login_page(self, page: str) -> None:
+        if "Hi," not in page and "今日签到" not in page and "个人中心" not in page:
+            if "wp-login.php" in page or "用户名或电子邮件地址" in page or "登录" in page:
+                raise RuntimeError("易破解登录失败，请检查账号或密码")
+            raise RuntimeError("易破解登录状态未确认，请检查账号密码或站点登录限制")
+
+    def _extract_balance(self, page: str) -> Optional[Decimal]:
+        cleaned = self.plugin._clean_text(page)
+        match = re.search(r"可用余额\s*([0-9]+(?:\.[0-9]+)?)\s*积分", cleaned)
+        if not match:
+            return None
+        try:
+            return Decimal(match.group(1))
+        except InvalidOperation:
+            return None
+
+    @staticmethod
+    def _format_points(value: Decimal) -> str:
+        normalized = value.quantize(Decimal("0.01")).normalize()
+        return format(normalized, "f")
+
+    def _format_checkin_reward(self, before_page: str, after_page: str) -> str:
+        before_balance = self._extract_balance(before_page)
+        after_balance = self._extract_balance(after_page)
+        if before_balance is None or after_balance is None:
+            return ""
+        diff = after_balance - before_balance
+        if diff < 0:
+            return ""
+        return f"本次签到增加：{self._format_points(diff)}积分"
+
+    def _login(self, site_config: Dict[str, Any]) -> Tuple[requests.Session, str]:
+        account = site_config.get("email") or ""
+        password = site_config.get("password") or ""
+        if not account or not password:
+            raise ValueError("请先配置易破解账号和密码")
+
+        session = requests.Session()
+        use_proxy = site_config.get("use_proxy", False)
+        login_url = f"{self.base_url}{self.login_path}"
+        vip_url = f"{self.base_url}{self.vip_path}"
+        try:
+            session.get(
+                login_url,
+                timeout=self.plugin._timeout,
+                proxies=self.plugin._get_proxies(use_proxy),
+                headers=self._login_headers(),
+            ).raise_for_status()
+            response = session.post(
+                login_url,
+                timeout=self.plugin._timeout,
+                proxies=self.plugin._get_proxies(use_proxy),
+                headers={
+                    **self._login_headers(referer=login_url),
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data={
+                    "log": account,
+                    "pwd": password,
+                    "rememberme": "forever",
+                    "wp-submit": "登录",
+                    "redirect_to": vip_url,
+                    "testcookie": "1",
+                },
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+            page = self._session_get_text(session, self.vip_path, site_config, headers=self._login_headers(referer=vip_url))
+            self._validate_login_page(page)
+            return session, page
+        except RequestException as err:
+            raise RuntimeError(f"易破解登录请求失败：{self.plugin._format_request_error(err, use_proxy)}") from err
+
+    def _check_in(self, session: requests.Session, site_config: Dict[str, Any]) -> Dict[str, Any]:
+        use_proxy = site_config.get("use_proxy", False)
+        response = session.post(
+            f"{self.base_url}{self.ajax_path}",
+            timeout=self.plugin._timeout,
+            proxies=self.plugin._get_proxies(use_proxy),
+            headers=self._ajax_headers(),
             data={"action": "epd_checkin"},
-            allow_400_json=True,
         )
+        if response.status_code != 400:
+            response.raise_for_status()
+        result = response.json()
         return result
 
     def run_checkin(self, site_config: Dict[str, Any]) -> Dict[str, Any]:
-        cookie = (site_config.get("cookie") or "").strip()
-        if not cookie:
-            raise ValueError("请先配置易破解 Cookie")
-        self._validate_cookie(cookie, site_config)
-        result = self._check_in(cookie, site_config)
+        session, before_page = self._login(site_config)
+        try:
+            result = self._check_in(session, site_config)
+        except RequestException as err:
+            raise RuntimeError(f"易破解签到请求失败：{self.plugin._format_request_error(err, site_config.get('use_proxy', False))}") from err
+        after_page = self._session_get_text(session, self.vip_path, site_config, headers=self._login_headers(referer=f"{self.base_url}{self.vip_path}"))
+        reward_message = self._format_checkin_reward(before_page, after_page)
         status_code = result.get("status")
         message = result.get("msg") or result.get("message") or ""
         if status_code == 200:
             status_text = "签到成功"
-            final_message = message or "签到成功"
+            final_message = reward_message or message or "签到成功"
         elif message and self.plugin._is_already_checked_in(message):
             status_text = "今日已签到"
-            final_message = message
+            final_message = reward_message or message
         else:
             raise RuntimeError(message or f"易破解签到失败（status={status_code}）")
 
@@ -449,19 +645,16 @@ class YpojieSiteAdapter(BaseSiteAdapter):
             "message": final_message,
             "reward_mb": "-",
             "total_traffic": "-",
-            "account": "Cookie 登录态",
+            "account": self.get_account_label(site_config),
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
     def test_connection(self, site_config: Dict[str, Any]) -> Dict[str, Any]:
-        cookie = (site_config.get("cookie") or "").strip()
-        if not cookie:
-            raise ValueError("请先配置易破解 Cookie")
-        self._validate_cookie(cookie, site_config)
+        self._login(site_config)
         return {
             "site": self.site_key,
             "site_name": self.site_name,
-            "message": "Cookie 校验成功，可用于签到",
+            "message": "登录测试成功，可用于签到",
         }
 
 
@@ -469,7 +662,7 @@ class Checkin(_PluginBase):
     plugin_name = "自用签到工具"
     plugin_desc = "用于自用站点签到的统一工具，支持自动登录、Cookie 签到、通知与历史记录。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.3.2"
+    plugin_version = "1.4.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "checkin_"
@@ -635,14 +828,15 @@ class Checkin(_PluginBase):
             if getattr(self, "plugin_config_prefix", None) == LEGACY_PLUGIN_CONFIG_PREFIX:
                 return
             if hasattr(self, "systemconfig") and self.systemconfig:
+                system_config = self.systemconfig.all() or {}
                 legacy_keys = [
-                    key for key in list(self.systemconfig.keys())
+                    key for key in list(system_config.keys())
                     if isinstance(key, str) and key.startswith(LEGACY_PLUGIN_CONFIG_PREFIX)
                 ]
                 for legacy_key in legacy_keys:
                     new_key = legacy_key.replace(LEGACY_PLUGIN_CONFIG_PREFIX, self.plugin_config_prefix, 1)
-                    if new_key not in self.systemconfig:
-                        self.systemconfig[new_key] = self.systemconfig.get(legacy_key)
+                    if new_key not in system_config:
+                        self.systemconfig.set(new_key, self.systemconfig.get(legacy_key))
         except Exception as err:
             logger.warning(f"{self.plugin_name}: 迁移旧配置前缀失败: {err}")
 
