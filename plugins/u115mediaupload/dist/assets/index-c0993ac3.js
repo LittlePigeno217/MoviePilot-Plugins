@@ -1,7 +1,8 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import Config from './__federation_expose_Config-97e95f87.js';
+import Config from './__federation_expose_Config-fe12c113.js';
 import Page from './__federation_expose_Page-7c7c88d5.js';
-import AppPage from './__federation_expose_AppPage-1258f807.js';
+import AppPage from './__federation_expose_AppPage-a711497f.js';
+import './PathMappingEditor-b57145b1.js';
 import { _ as _export_sfc } from './_plugin-vue_export-helper-75e59c87.js';
 
 true&&(function polyfill() {
@@ -48,7 +49,7 @@ true&&(function polyfill() {
     }
 }());
 
-const App_vue_vue_type_style_index_0_scoped_434e346d_lang = '';
+const App_vue_vue_type_style_index_0_scoped_dcc6b7e4_lang = '';
 
 const {createElementVNode:_createElementVNode,renderList:_renderList,Fragment:_Fragment,openBlock:_openBlock,createElementBlock:_createElementBlock,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,resolveComponent:_resolveComponent,withCtx:_withCtx,createVNode:_createVNode,resolveDynamicComponent:_resolveDynamicComponent,createBlock:_createBlock} = await importShared('vue');
 
@@ -125,7 +126,7 @@ return (_ctx, _cache) => {
 }
 
 };
-const App = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-434e346d"]]);
+const App = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-dcc6b7e4"]]);
 
 const {createApp} = await importShared('vue');
 

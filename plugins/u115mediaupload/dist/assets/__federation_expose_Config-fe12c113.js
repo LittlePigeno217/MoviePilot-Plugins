@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { A as AuthPanel, P as PathMappingEditor } from './PathMappingEditor-3f05e3a1.js';
+import { A as AuthPanel, P as PathMappingEditor } from './PathMappingEditor-b57145b1.js';
 import { _ as _export_sfc } from './_plugin-vue_export-helper-75e59c87.js';
 
 const Config_vue_vue_type_style_index_0_scoped_aad0f5d2_lang = '';
