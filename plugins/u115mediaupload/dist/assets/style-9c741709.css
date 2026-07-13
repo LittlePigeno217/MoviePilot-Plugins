@@ -17900,17 +17900,17 @@ h1[data-v-7f94cd73] {
   background-color: rgba(22, 122, 91, 0.08);
 }
 
-.p115-path-selector[data-v-c67169c7] {
+.p115-path-selector[data-v-1e32f711] {
   min-height: 400px;
 }
-.breadcrumb-bar[data-v-c67169c7] {
+.breadcrumb-bar[data-v-1e32f711] {
   display: flex;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid #e0e0e0;
   padding-bottom: 12px;
 }
-.breadcrumb-text[data-v-c67169c7] {
+.breadcrumb-text[data-v-1e32f711] {
   font-size: 14px;
   color: #666;
   flex: 1;
@@ -17918,15 +17918,15 @@ h1[data-v-7f94cd73] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.directory-list[data-v-c67169c7] {
+.directory-list[data-v-1e32f711] {
   max-height: 400px;
   overflow-y: auto;
 }
-.directory-item[data-v-c67169c7] {
+.directory-item[data-v-1e32f711] {
   cursor: pointer;
   transition: background-color 0.2s;
 }
-.directory-item[data-v-c67169c7]:hover {
+.directory-item[data-v-1e32f711]:hover {
   background-color: rgba(36, 91, 122, 0.08);
 }
 

@@ -453,7 +453,7 @@ return (_ctx, _cache) => {
 };
 const LocalPathSelector = /*#__PURE__*/_export_sfc(_sfc_main$2, [['__scopeId',"data-v-f72b39f6"]]);
 
-const P115PathSelector_vue_vue_type_style_index_0_scoped_c67169c7_lang = '';
+const P115PathSelector_vue_vue_type_style_index_0_scoped_1e32f711_lang = '';
 
 const {createElementVNode:_createElementVNode$1,resolveComponent:_resolveComponent$1,createVNode:_createVNode$1,withCtx:_withCtx$1,toDisplayString:_toDisplayString,openBlock:_openBlock$1,createBlock:_createBlock,createCommentVNode:_createCommentVNode$1,renderList:_renderList$1,Fragment:_Fragment$1,createElementBlock:_createElementBlock$1,createTextVNode:_createTextVNode$1} = await importShared('vue');
 
@@ -483,59 +483,63 @@ const props = __props;
 
 const emit = __emit;
 
+const ROOT_BREADCRUMB = { cid: '0', name: '115云盘' };
+
 const loading = ref$1(false);
 const refreshing = ref$1(false);
 const items = ref$1([]);
-const breadcrumbs = ref$1([{ cid: '0', name: '115云盘' }]);
+const breadcrumbs = ref$1([{ ...ROOT_BREADCRUMB }]);
 
+/**
+ * 加载指定目录的内容。
+ * 仅负责拉取并渲染列表与加载状态，不修改面包屑；
+ * 面包屑由 navigateToDirectory / goBack 独立维护。
+ */
 async function loadDirectory(cid = '0', isRefresh = false) {
-  const isInitial = !isRefresh && breadcrumbs.value.length === 1;
-
-  if (isInitial) {
-    loading.value = true;
-  } else if (isRefresh) {
+  if (isRefresh) {
     refreshing.value = true;
+  } else {
+    loading.value = true;
   }
 
   try {
     const refreshParam = isRefresh ? '&refresh=true' : '';
     const result = await pluginRequest(
       props.api,
-      `/browse_115?cid=${cid}${refreshParam}`,
+      `/browse_115?cid=${encodeURIComponent(cid)}${refreshParam}`,
       { method: 'GET' }
     );
 
     if (!result?.success) {
       emit('toast', result?.msg || '获取目录失败', 'error');
-      return
+      return false
     }
 
-    items.value = result.data.items || [];
-
-    if (!isRefresh && cid !== '0') {
-      // 导航到新目录时更新面包屑
-      const currentBreadcrumb = breadcrumbs.value[breadcrumbs.value.length - 1];
-      if (currentBreadcrumb.cid !== cid) {
-        const itemName = items.value[0]?.name || `文件夹 ${cid}`;
-        breadcrumbs.value.push({ cid, name: itemName });
-      }
-    }
+    items.value = result.data?.items || [];
 
     if (isRefresh) {
       emit('toast', '目录已刷新', 'success');
     }
+    return true
   } catch (error) {
     emit('toast', error?.message || '获取目录失败', 'error');
+    return false
   } finally {
     loading.value = false;
     refreshing.value = false;
   }
 }
 
-function navigateToDirectory(item) {
-  // 更新面包屑，然后加载子目录
-  breadcrumbs.value.push({ cid: item.cid, name: item.name });
-  loadDirectory(item.cid, false);
+async function navigateToDirectory(item) {
+  if (!item?.cid) {
+    return
+  }
+  // 先入栈面包屑再加载；加载失败则回退，保持面包屑与列表一致。
+  breadcrumbs.value.push({ cid: item.cid, name: item.name || `文件夹 ${item.cid}` });
+  const ok = await loadDirectory(item.cid, false);
+  if (!ok) {
+    breadcrumbs.value.pop();
+  }
 }
 
 function goBack() {
@@ -555,12 +559,12 @@ function selectCurrentDirectory() {
   const current = breadcrumbs.value[breadcrumbs.value.length - 1];
   emit('selected', current.cid, current.name);
   emit('update:modelValue', false);
-  breadcrumbs.value = [{ cid: '0', name: '115云盘' }];
+  breadcrumbs.value = [{ ...ROOT_BREADCRUMB }];
 }
 
 function closeDialog() {
   emit('update:modelValue', false);
-  breadcrumbs.value = [{ cid: '0', name: '115云盘' }];
+  breadcrumbs.value = [{ ...ROOT_BREADCRUMB }];
 }
 
 watch(
@@ -723,7 +727,7 @@ return (_ctx, _cache) => {
 }
 
 };
-const P115PathSelector = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-c67169c7"]]);
+const P115PathSelector = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-1e32f711"]]);
 
 const PathMappingEditor_vue_vue_type_style_index_0_scoped_ed80e65f_lang = '';
 
