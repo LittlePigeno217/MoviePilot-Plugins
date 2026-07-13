@@ -47,9 +47,10 @@ except Exception:  # pragma: no cover
     eventmanager = _EventManager()
 
 from .client import U115AuthError, U115Client
-from .records import IncrementalRecordStore, TaskHistory
+from .records import IncrementalRecordStore, TaskHistory, PathMappingManager
 from .scanner import MediaScanner, UploadPlanItem
 from .scraper import MetadataScraper
+from .api_handlers import U115MediaUploadApiHandler
 
 
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -107,6 +108,10 @@ class U115MediaUpload(_PluginBase):
         self._stop_event = threading.Event()
         self._task_thread: Optional[threading.Thread] = None
         self._status: Dict[str, Any] = self._default_status()
+        self._mapping_manager = PathMappingManager(
+            config_path=str(self.get_plugin_config_path())
+        )
+        self._api_handler: Optional[U115MediaUploadApiHandler] = None
 
     def init_plugin(self, config: dict = None):
         self._config = self._merge_config(config or self.get_config() or {})
@@ -167,6 +172,9 @@ class U115MediaUpload(_PluginBase):
             {"path": "/check_login", "endpoint": self._check_login_api, "methods": ["GET"], "auth": "bear", "summary": "检查 115 登录状态"},
             {"path": "/history", "endpoint": self._history_api, "methods": ["GET"], "auth": "bear", "summary": "获取历史"},
             {"path": "/clear_records", "endpoint": self._clear_records_api, "methods": ["POST"], "auth": "bear", "summary": "清理增量记录"},
+            {"path": "/browse_local", "endpoint": self._browse_local_api, "methods": ["GET"], "auth": "bear", "summary": "浏览本地目录"},
+            {"path": "/browse_115", "endpoint": self._browse_115_api, "methods": ["GET"], "auth": "bear", "summary": "浏览 115 云盘目录"},
+            {"path": "/path_mappings", "endpoint": self._save_path_mappings_api, "methods": ["POST"], "auth": "bear", "summary": "保存路径映射"},
         ]
 
     def stop_service(self):
@@ -209,7 +217,9 @@ class U115MediaUpload(_PluginBase):
 
     def _qrcode_api(self) -> Dict[str, Any]:
         client = self._make_client(require_cookie=False)
-        return client.generate_qrcode()
+        if not self._api_handler:
+            self._api_handler = U115MediaUploadApiHandler(client, self._mapping_manager)
+        return self._api_handler.generate_qrcode()
 
     def _check_login_api(self) -> Dict[str, Any]:
         client = self._make_client(require_cookie=False)
@@ -219,6 +229,29 @@ class U115MediaUpload(_PluginBase):
             self._config["auth_mode"] = "qrcode"
             self.update_config(self._config)
         return result
+
+    def _browse_local_api(self, path: str = "") -> Dict[str, Any]:
+        """浏览本地目录 API"""
+        if not self._api_handler:
+            client = self._make_client(require_cookie=False)
+            self._api_handler = U115MediaUploadApiHandler(client, self._mapping_manager)
+        return self._api_handler.browse_local(path)
+
+    def _browse_115_api(self, cid: str = "0", refresh: bool = False) -> Dict[str, Any]:
+        """浏览 115 目录 API"""
+        if not self._api_handler:
+            client = self._make_client(require_cookie=False)
+            self._api_handler = U115MediaUploadApiHandler(client, self._mapping_manager)
+        return self._api_handler.browse_115(cid, refresh)
+
+    def _save_path_mappings_api(self, mappings: List[Dict] = None) -> Dict[str, Any]:
+        """保存路径映射 API"""
+        if not mappings:
+            mappings = []
+        if not self._api_handler:
+            client = self._make_client(require_cookie=False)
+            self._api_handler = U115MediaUploadApiHandler(client, self._mapping_manager)
+        return self._api_handler.save_path_mappings(mappings)
 
     def _history_api(self) -> Dict[str, Any]:
         return {

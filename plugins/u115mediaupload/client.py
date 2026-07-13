@@ -472,6 +472,20 @@ class U115Client:
             "modify_time": info.get("utime") or info.get("modify_time"),
         }
 
+    def get_dir_list(self, cid: str = "0") -> list:
+        """获取 115 目录列表"""
+        result = self._request(
+            "POST",
+            "/open/folder/list",
+            data={"cid": cid},
+            no_error=True,
+        )
+        data = self._response_data(result)
+        if not data:
+            return []
+        items = data.get("items", []) if isinstance(data, dict) else data
+        return list(items) if isinstance(items, list) else []
+
     def _log_warning(self, message: str) -> None:
         if self.logger and hasattr(self.logger, "warning"):
             self.logger.warning(message)
