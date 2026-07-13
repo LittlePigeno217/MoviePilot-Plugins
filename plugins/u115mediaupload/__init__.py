@@ -94,7 +94,7 @@ class U115MediaUpload(_PluginBase):
     plugin_name = "115媒体上传"
     plugin_desc = "上传本地媒体和刮削文件到 115，支持全量、增量和秒传。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.0.0"
+    plugin_version = "1.1.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno"
     plugin_config_prefix = "u115mediaupload_"
