@@ -20,5 +20,19 @@
 			"v1.0.1": "修复 MoviePilot 宿主下配置页与数据页的 API 属性兼容问题，优化本地联调体验。",
 			"v1.0.0": "初始版本，支持 FLZT 登录测试、手动签到、定时签到、通知与历史记录。"
 		}
+	},
+	"P115StrmHelper": {
+		"name": "115 STRM 助手",
+		"description": "扫描115网盘目录生成STRM，经302重定向流式播放，支持定时、增量、刮削同步与多目录映射。",
+		"labels": "115,STRM,媒体,流媒体",
+		"version": "1.0.0",
+		"icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png",
+		"author": "LittlePigeno",
+		"level": 1,
+		"release": true,
+		"v2": true,
+		"history": {
+			"v1.0.0": "初始版本：扫码授权、目录选择、STRM生成、302重定向播放、定时/增量/刮削同步、多目录映射。"
+		}
 	}
 }
