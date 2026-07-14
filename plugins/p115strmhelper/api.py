@@ -126,8 +126,8 @@ class Api:
     def save_config(self, payload: Dict = None) -> Dict:
         payload = payload or {}
         cfg = self._store.get_config()
-        for key in ("cookie", "mappings", "schedule_cron", "incremental",
-                    "sync_metadata", "moviepilot_url"):
+        for key in ("cookie", "app_id", "auth_server", "mappings", "schedule_cron",
+                    "incremental", "sync_metadata", "moviepilot_url"):
             if key in payload:
                 cfg[key] = payload[key]
         self._store.save_config(cfg)

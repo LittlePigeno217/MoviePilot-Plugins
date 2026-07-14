@@ -12,6 +12,8 @@ HISTORY_KEY = "history"
 DEFAULT_CONFIG = {
     "cookie": "",
     "tokens": {},
+    "app_id": "",
+    "auth_server": "",
     "mappings": [],
     "schedule_cron": "",
     "incremental": True,
