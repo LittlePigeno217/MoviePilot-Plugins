@@ -1,5 +1,9 @@
+// 签到插件前端共享模块：站点元数据、配置规范化、请求封装、状态色。
+// 逻辑与后端 API 契约保持一致，仅供 Page.vue / Config.vue 复用。
+
 const PLUGIN_ID = 'Checkin';
 
+// 站点元数据（key、显示名、登录方式、印色）
 const SITE_META = {
   flzt: {
     key: 'flzt',
@@ -24,6 +28,7 @@ const SITE_META = {
   },
 };
 
+// 默认配置
 const DEFAULT_CONFIG = {
   enabled: false,
   notify: true,
@@ -38,9 +43,10 @@ const DEFAULT_CONFIG = {
 };
 
 function clone(value) {
-  return JSON.parse(JSON.stringify(value || {}))
+  return JSON.parse(JSON.stringify(value || {}));
 }
 
+// 将后端返回/历史配置补齐为完整结构，避免缺字段导致的绑定报错
 function normalizeConfig(value = {}) {
   const config = {
     ...clone(DEFAULT_CONFIG),
@@ -48,23 +54,15 @@ function normalizeConfig(value = {}) {
   };
 
   config.sites = {
-    flzt: {
-      ...DEFAULT_CONFIG.sites.flzt,
-      ...(value.sites?.flzt || {}),
-    },
-    right_forum: {
-      ...DEFAULT_CONFIG.sites.right_forum,
-      ...(value.sites?.right_forum || {}),
-    },
-    ypojie: {
-      ...DEFAULT_CONFIG.sites.ypojie,
-      ...(value.sites?.ypojie || {}),
-    },
+    flzt: { ...DEFAULT_CONFIG.sites.flzt, ...(value.sites?.flzt || {}) },
+    right_forum: { ...DEFAULT_CONFIG.sites.right_forum, ...(value.sites?.right_forum || {}) },
+    ypojie: { ...DEFAULT_CONFIG.sites.ypojie, ...(value.sites?.ypojie || {}) },
   };
 
-  return config
+  return config;
 }
 
+// 兼容 MoviePilot 传输层可能包裹的 { data: ... } 外壳
 function unwrapTransport(response) {
   if (
     response
@@ -73,23 +71,23 @@ function unwrapTransport(response) {
     && !Object.prototype.hasOwnProperty.call(response, 'success')
     && !Object.prototype.hasOwnProperty.call(response, 'message')
   ) {
-    return response.data
+    return response.data;
   }
-  return response
+  return response;
 }
 
 function unwrapData(response) {
   const body = unwrapTransport(response);
   if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'data')) {
-    return body.data ?? {}
+    return body.data ?? {};
   }
-  return body ?? {}
+  return body ?? {};
 }
 
 function unwrapResult(response) {
   const body = unwrapTransport(response);
   if (!body || typeof body !== 'object') {
-    return { success: true, message: '', data: body }
+    return { success: true, message: '', data: body };
   }
 
   if (
@@ -101,27 +99,21 @@ function unwrapResult(response) {
       success: body.success !== false,
       message: body.message || '',
       data: body.data,
-    }
+    };
   }
 
-  return { success: true, message: '', data: body }
+  return { success: true, message: '', data: body };
 }
 
 async function pluginGet(api, path) {
-  return unwrapData(await api.get(`plugin/${PLUGIN_ID}${path}`))
+  return unwrapData(await api.get(`plugin/${PLUGIN_ID}${path}`));
 }
 
 async function pluginPost(api, path, payload = {}) {
-  return unwrapResult(await api.post(`plugin/${PLUGIN_ID}${path}`, payload))
+  return unwrapResult(await api.post(`plugin/${PLUGIN_ID}${path}`, payload));
 }
 
-function statusColor(status = '') {
-  if (['全部成功', '签到成功', '今日已签到'].includes(status)) return 'success'
-  if (status === '部分成功') return 'warning'
-  if (status === '执行失败') return 'error'
-  return 'info'
-}
-
+// 保存前的配置校验
 function validateConfig(config) {
   const errors = [];
   const sites = config.sites || {};
@@ -135,13 +127,21 @@ function validateConfig(config) {
 
   for (const key of ['right_forum']) {
     const site = sites[key];
-    if (!site?.enabled) continue
+    if (!site?.enabled) continue;
     const cookie = String(site.cookie || '').trim();
     if (!cookie) errors.push(`${SITE_META[key].title} 已启用但 Cookie 未填写`);
     else if (!cookie.includes('=') || cookie.length < 20) errors.push(`${SITE_META[key].title} Cookie 格式异常`);
   }
 
-  return errors
+  return errors;
 }
 
-export { SITE_META as S, pluginPost as a, clone as c, normalizeConfig as n, pluginGet as p, statusColor as s, validateConfig as v };
+const _export_sfc = (sfc, props) => {
+  const target = sfc.__vccOpts || sfc;
+  for (const [key, val] of props) {
+    target[key] = val;
+  }
+  return target;
+};
+
+export { SITE_META as S, _export_sfc as _, pluginPost as a, clone as c, normalizeConfig as n, pluginGet as p, validateConfig as v };

@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { p as propsFactory, i as includes, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, I as findChildrenWithProvide, J as IconValue, K as useTheme, L as useIcon, M as flattenFragments, N as useResizeObserver, O as hasEvent, Q as IN_BROWSER, R as useLocale, T as EventProp, U as filterInputAttrs, V as matchesSelector, W as pick, X as makeDisplayProps, Y as useDisplay, Z as useGoTo, _ as focusableChildren, $ as consoleError, a0 as defineComponent, a1 as deprecate, a2 as getPropertyFromItem, a3 as focusChild, a4 as CircularBuffer, a5 as defer, a6 as templateRef, a7 as isClickInsideElement, a8 as getNextElement, a9 as debounce, aa as camelizeProps, ab as ensureValidVNode, ac as checkPrintable, ad as noop, ae as pickWithRest, af as provideLocale, ag as useDate, ah as keys, ai as getEventCoordinates, aj as HSVtoRGB, ak as RGBtoHSV, al as HSVtoHSL, am as HSLtoHSV, an as HSVtoHex, ao as HexToHSV, ap as has, aq as getDecimals, ar as createRange, as as keyValues, at as SUPPORTS_EYE_DROPPER, au as HSVtoCSS, av as RGBtoCSS, aw as getContrast, ax as escapeForRegex, ay as isComposingIgnoreKey, az as deepToRaw, aA as getObjectValueByPath, aB as isEmpty, aC as defineFunctionalComponent, aD as breakpoints, aE as createDateRange, aF as daysDiff, aG as humanReadableFileSize, aH as splitKeySequence, aI as splitKeyCombination, aJ as mergeDeep, aK as useLayout, aL as extractNumber, aM as VuetifyLayoutKey, aN as refElement, aO as SUPPORTS_MATCH_MEDIA, aP as renderSlot, aQ as VClassIcon, aR as VComponentIcon, aS as VLigatureIcon, aT as VSvgIcon } from './hotkey-parsing-6cb35ed2.js';
-import Config from './__federation_expose_Config-40a2a9f8.js';
-import _sfc_main$1 from './__federation_expose_Page-1e612adb.js';
+import { p as propsFactory, i as includes, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, I as findChildrenWithProvide, J as IconValue, K as useTheme, L as useIcon, M as flattenFragments, N as useResizeObserver, O as hasEvent, Q as IN_BROWSER, R as useLocale, T as EventProp, U as filterInputAttrs, V as matchesSelector, W as pick, X as makeDisplayProps, Y as useDisplay, Z as useGoTo, _ as focusableChildren, $ as consoleError, a0 as defineComponent$1, a1 as deprecate, a2 as getPropertyFromItem, a3 as focusChild, a4 as CircularBuffer, a5 as defer, a6 as templateRef, a7 as isClickInsideElement, a8 as getNextElement, a9 as debounce, aa as camelizeProps, ab as ensureValidVNode, ac as checkPrintable, ad as noop, ae as pickWithRest, af as provideLocale, ag as useDate, ah as keys, ai as getEventCoordinates, aj as HSVtoRGB, ak as RGBtoHSV, al as HSVtoHSL, am as HSLtoHSV, an as HSVtoHex, ao as HexToHSV, ap as has, aq as getDecimals, ar as createRange, as as keyValues, at as SUPPORTS_EYE_DROPPER, au as HSVtoCSS, av as RGBtoCSS, aw as getContrast, ax as escapeForRegex, ay as isComposingIgnoreKey, az as deepToRaw, aA as getObjectValueByPath, aB as isEmpty, aC as defineFunctionalComponent, aD as breakpoints, aE as createDateRange, aF as daysDiff, aG as humanReadableFileSize, aH as splitKeySequence, aI as splitKeyCombination, aJ as mergeDeep, aK as useLayout, aL as extractNumber, aM as VuetifyLayoutKey, aN as refElement, aO as SUPPORTS_MATCH_MEDIA, aP as renderSlot, aQ as VClassIcon, aR as VComponentIcon, aS as VLigatureIcon, aT as VSvgIcon } from './hotkey-parsing-6cb35ed2.js';
+import Page from './__federation_expose_Page-925183de.js';
+import Config from './__federation_expose_Config-a76a3381.js';
 
 true&&(function polyfill() {
     const relList = document.createElement('link').relList;
@@ -300,7 +300,7 @@ function unbindProps(el, props) {
   });
 }
 
-const {camelize,capitalize: capitalize$3,h: h$5} = await importShared('vue');
+const {camelize,capitalize: capitalize$3,h: h$6} = await importShared('vue');
 function createSimpleFunctional(klass) {
   let tag = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'div';
   let name = arguments.length > 2 ? arguments[2] : undefined;
@@ -318,7 +318,7 @@ function createSimpleFunctional(klass) {
         slots
       } = _ref;
       return () => {
-        return h$5(props.tag, {
+        return h$6(props.tag, {
           class: [klass, props.class],
           style: props.style
         }, slots.default?.());
@@ -584,7 +584,7 @@ const makeTagProps = propsFactory({
   }
 }, 'tag');
 
-const {createElementVNode:_createElementVNode$1O,normalizeClass:_normalizeClass$1B,normalizeStyle:_normalizeStyle$1m,createVNode:_createVNode$2e} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1O,normalizeClass:_normalizeClass$1B,normalizeStyle:_normalizeStyle$1m,createVNode:_createVNode$2d} = await importShared('vue');
 const makeVToolbarTitleProps = propsFactory({
   text: String,
   ...makeComponentProps(),
@@ -599,7 +599,7 @@ const VToolbarTitle = genericComponent()({
     } = _ref;
     useRender(() => {
       const hasText = !!(slots.default || slots.text || props.text);
-      return _createVNode$2e(props.tag, {
+      return _createVNode$2d(props.tag, {
         "class": _normalizeClass$1B(['v-toolbar-title', props.class]),
         "style": _normalizeStyle$1m(props.style)
       }, {
@@ -613,7 +613,7 @@ const VToolbarTitle = genericComponent()({
 });
 
 // Utilities
-const {h: h$4,Transition: Transition$5,TransitionGroup: TransitionGroup$1} = await importShared('vue');
+const {h: h$5,Transition: Transition$5,TransitionGroup: TransitionGroup$1} = await importShared('vue');
 const makeTransitionProps$1 = propsFactory({
   disabled: Boolean,
   group: Boolean,
@@ -684,7 +684,7 @@ function createCssTransition(name, origin, mode) {
       };
       return () => {
         const tag = props.group ? TransitionGroup$1 : Transition$5;
-        return h$4(tag, {
+        return h$5(tag, {
           name: props.disabled ? '' : name,
           css: !props.disabled,
           ...(props.group ? undefined : {
@@ -718,7 +718,7 @@ function createJavascriptTransition(name, functions) {
       } = _ref2;
       const tag = props.group ? TransitionGroup$1 : Transition$5;
       return () => {
-        return h$4(tag, {
+        return h$5(tag, {
           name: props.disabled ? '' : name,
           css: !props.disabled,
           // mode: props.mode, // TODO: vuejs/vue-next#3104
@@ -814,7 +814,7 @@ function ExpandTransitionGenerator () {
 }
 
 // Utilities
-const {Transition: Transition$4,mergeProps:_mergeProps$1h,createVNode:_createVNode$2d} = await importShared('vue');
+const {Transition: Transition$4,mergeProps:_mergeProps$1h,createVNode:_createVNode$2c} = await importShared('vue');
 const makeVDialogTransitionProps = propsFactory({
   target: [Object, Array]
 }, 'v-dialog-transition');
@@ -928,11 +928,11 @@ const VDialogTransition = genericComponent()({
       }
     };
     return () => {
-      return props.target ? _createVNode$2d(Transition$4, _mergeProps$1h({
+      return props.target ? _createVNode$2c(Transition$4, _mergeProps$1h({
         "name": "dialog-transition"
       }, functions, {
         "css": false
-      }), slots) : _createVNode$2d(Transition$4, {
+      }), slots) : _createVNode$2c(Transition$4, {
         "name": "dialog-transition"
       }, slots);
     };
@@ -1227,7 +1227,7 @@ function useRounded(props) {
 }
 
 // Utilities
-const {h: h$3,mergeProps: mergeProps$d,Transition: Transition$3,TransitionGroup} = await importShared('vue');
+const {h: h$4,mergeProps: mergeProps$d,Transition: Transition$3,TransitionGroup} = await importShared('vue');
 const makeTransitionProps = propsFactory({
   transition: {
     type: null,
@@ -1260,7 +1260,7 @@ const MaybeTransition = (props, _ref) => {
       name: disabled || !transition ? '' : transition
     }, rest);
   }
-  return h$3(component, transitionProps, slots);
+  return h$4(component, transitionProps, slots);
 };
 
 // Utilities
@@ -1314,7 +1314,7 @@ const Intersect = {
   }
 };
 
-const {normalizeClass:_normalizeClass$1z,createElementVNode:_createElementVNode$1M,createVNode:_createVNode$2c,Fragment:_Fragment$L,mergeProps:_mergeProps$1g,withDirectives:_withDirectives$m} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1z,createElementVNode:_createElementVNode$1M,createVNode:_createVNode$2b,Fragment:_Fragment$L,mergeProps:_mergeProps$1g,withDirectives:_withDirectives$m} = await importShared('vue');
 const {computed: computed$1Z,nextTick: nextTick$x,onBeforeMount: onBeforeMount$4,onBeforeUnmount: onBeforeUnmount$a,ref: ref$12,shallowRef: shallowRef$U,toRef: toRef$1e,vShow,watch: watch$Q,withDirectives: withDirectives$2} = await importShared('vue');
 // not intended for public use, this is passed in by vuetify-loader
 const makeVImgProps = propsFactory({
@@ -1503,7 +1503,7 @@ const VImg = genericComponent()({
         "onError": onError
       }, null);
       const sources = slots.sources?.();
-      return _createVNode$2c(MaybeTransition, {
+      return _createVNode$2b(MaybeTransition, {
         "transition": props.transition,
         "appear": true
       }, {
@@ -1512,7 +1512,7 @@ const VImg = genericComponent()({
         }, [sources, img]) : img, [[vShow, state.value === 'loaded']])]
       });
     };
-    const __preloadImage = () => _createVNode$2c(MaybeTransition, {
+    const __preloadImage = () => _createVNode$2b(MaybeTransition, {
       "transition": props.transition
     }, {
       default: () => [normalisedSrc.value.lazySrc && state.value !== 'loaded' && _createElementVNode$1M("img", {
@@ -1529,7 +1529,7 @@ const VImg = genericComponent()({
     });
     const __placeholder = () => {
       if (!slots.placeholder) return null;
-      return _createVNode$2c(MaybeTransition, {
+      return _createVNode$2b(MaybeTransition, {
         "transition": props.transition,
         "appear": true
       }, {
@@ -1540,7 +1540,7 @@ const VImg = genericComponent()({
     };
     const __error = () => {
       if (!slots.error) return null;
-      return _createVNode$2c(MaybeTransition, {
+      return _createVNode$2b(MaybeTransition, {
         "transition": props.transition,
         "appear": true
       }, {
@@ -1574,7 +1574,7 @@ const VImg = genericComponent()({
     }
     useRender(() => {
       const responsiveProps = VResponsive.filterProps(props);
-      return _withDirectives$m(_createVNode$2c(VResponsive, _mergeProps$1g({
+      return _withDirectives$m(_createVNode$2b(VResponsive, _mergeProps$1g({
         "class": ['v-img', {
           'v-img--absolute': props.absolute,
           'v-img--booting': !isBooted.value,
@@ -1588,7 +1588,7 @@ const VImg = genericComponent()({
         "aria-label": props.alt,
         "role": props.alt ? 'img' : undefined
       }), {
-        additional: () => _createElementVNode$1M(_Fragment$L, null, [_createVNode$2c(__image, null, null), _createVNode$2c(__preloadImage, null, null), _createVNode$2c(__gradient, null, null), _createVNode$2c(__placeholder, null, null), _createVNode$2c(__error, null, null)]),
+        additional: () => _createElementVNode$1M(_Fragment$L, null, [_createVNode$2b(__image, null, null), _createVNode$2b(__preloadImage, null, null), _createVNode$2b(__gradient, null, null), _createVNode$2b(__placeholder, null, null), _createVNode$2b(__error, null, null)]),
         default: slots.default
       }), [[Intersect, {
         handler: init,
@@ -1711,7 +1711,7 @@ function useLocation(props) {
   };
 }
 
-const {createVNode:_createVNode$2b,createElementVNode:_createElementVNode$1L,normalizeClass:_normalizeClass$1y,normalizeStyle:_normalizeStyle$1k} = await importShared('vue');
+const {createVNode:_createVNode$2a,createElementVNode:_createElementVNode$1L,normalizeClass:_normalizeClass$1y,normalizeStyle:_normalizeStyle$1k} = await importShared('vue');
 const {computed: computed$1W,shallowRef: shallowRef$T} = await importShared('vue');
 const allowedDensities$1 = [null, 'prominent', 'default', 'comfortable', 'compact'];
 const makeVToolbarProps = propsFactory({
@@ -1795,7 +1795,7 @@ const VToolbar = genericComponent()({
       const hasImage = !!(slots.image || props.image);
       const extension = slots.extension?.();
       isExtended.value = props.extended === null ? !!extension : props.extended;
-      return _createVNode$2b(props.tag, {
+      return _createVNode$2a(props.tag, {
         "class": _normalizeClass$1y(['v-toolbar', `v-toolbar--collapse-${props.collapsePosition}`, {
           'v-toolbar--absolute': props.absolute,
           'v-toolbar--collapse': props.collapse,
@@ -1808,11 +1808,11 @@ const VToolbar = genericComponent()({
         default: () => [hasImage && _createElementVNode$1L("div", {
           "key": "image",
           "class": "v-toolbar__image"
-        }, [!slots.image ? _createVNode$2b(VImg, {
+        }, [!slots.image ? _createVNode$2a(VImg, {
           "key": "image-img",
           "cover": true,
           "src": props.image
-        }, null) : _createVNode$2b(VDefaultsProvider, {
+        }, null) : _createVNode$2a(VDefaultsProvider, {
           "key": "image-defaults",
           "disabled": !props.image,
           "defaults": {
@@ -1821,7 +1821,7 @@ const VToolbar = genericComponent()({
               src: props.image
             }
           }
-        }, slots.image)]), _createVNode$2b(VDefaultsProvider, {
+        }, slots.image)]), _createVNode$2a(VDefaultsProvider, {
           "defaults": {
             VTabs: {
               height: convertToUnit(contentHeight.value)
@@ -1835,7 +1835,7 @@ const VToolbar = genericComponent()({
             }
           }, [slots.prepend && _createElementVNode$1L("div", {
             "class": "v-toolbar__prepend"
-          }, [slots.prepend?.()]), hasTitle && _createVNode$2b(VToolbarTitle, {
+          }, [slots.prepend?.()]), hasTitle && _createVNode$2a(VToolbarTitle, {
             "key": "title",
             "text": props.title
           }, {
@@ -1843,14 +1843,14 @@ const VToolbar = genericComponent()({
           }), slots.default?.(), slots.append && _createElementVNode$1L("div", {
             "class": "v-toolbar__append"
           }, [slots.append?.()])])]
-        }), _createVNode$2b(VDefaultsProvider, {
+        }), _createVNode$2a(VDefaultsProvider, {
           "defaults": {
             VTabs: {
               height: convertToUnit(extensionHeight.value)
             }
           }
         }, {
-          default: () => [_createVNode$2b(VExpandTransition, null, {
+          default: () => [_createVNode$2a(VExpandTransition, null, {
             default: () => [isExtended.value && _createElementVNode$1L("div", {
               "class": "v-toolbar__extension",
               "style": {
@@ -2065,7 +2065,7 @@ function useSsrBoot() {
   };
 }
 
-const {mergeProps:_mergeProps$1f,createVNode:_createVNode$2a} = await importShared('vue');
+const {mergeProps:_mergeProps$1f,createVNode:_createVNode$29} = await importShared('vue');
 const {computed: computed$1U,ref: ref$10,shallowRef: shallowRef$Q,toRef: toRef$1b,watchEffect: watchEffect$k} = await importShared('vue');
 const makeVAppBarProps = propsFactory({
   scrollBehavior: String,
@@ -2189,7 +2189,7 @@ const VAppBar = genericComponent()({
     });
     useRender(() => {
       const toolbarProps = omit(VToolbar.filterProps(props), ['location']);
-      return _createVNode$2a(VToolbar, _mergeProps$1f({
+      return _createVNode$29(VToolbar, _mergeProps$1f({
         "ref": vToolbarRef,
         "class": ['v-app-bar', {
           'v-app-bar--bottom': props.location === 'bottom'
@@ -2287,7 +2287,7 @@ function useVariant(props) {
   };
 }
 
-const {normalizeClass:_normalizeClass$1w,normalizeStyle:_normalizeStyle$1j,createVNode:_createVNode$29} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1w,normalizeStyle:_normalizeStyle$1j,createVNode:_createVNode$28} = await importShared('vue');
 const {toRef: toRef$18} = await importShared('vue');
 const makeVBtnGroupProps = propsFactory({
   baseColor: String,
@@ -2338,7 +2338,7 @@ const VBtnGroup = genericComponent()({
       }
     });
     useRender(() => {
-      return _createVNode$29(props.tag, {
+      return _createVNode$28(props.tag, {
         "class": _normalizeClass$1w(['v-btn-group', `v-btn-group--${props.direction}`, {
           'v-btn-group--divided': props.divided
         }, themeClasses.value, borderClasses.value, densityClasses.value, elevationClasses.value, roundedClasses.value, props.class]),
@@ -2348,7 +2348,7 @@ const VBtnGroup = genericComponent()({
   }
 });
 
-const {computed: computed$1T,inject: inject$o,onBeforeUnmount: onBeforeUnmount$8,onMounted: onMounted$f,onUpdated: onUpdated$1,provide: provide$h,reactive: reactive$5,toRef: toRef$17,unref: unref$2,useId: useId$h,watch: watch$O} = await importShared('vue');
+const {computed: computed$1T,inject: inject$o,onBeforeUnmount: onBeforeUnmount$8,onMounted: onMounted$f,onUpdated: onUpdated$1,provide: provide$h,reactive: reactive$4,toRef: toRef$17,unref: unref$2,useId: useId$h,watch: watch$O} = await importShared('vue');
 const makeGroupProps = propsFactory({
   modelValue: {
     type: null,
@@ -2429,7 +2429,7 @@ function useGroupItem(props, injectKey) {
 }
 function useGroup(props, injectKey) {
   let isUnmounted = false;
-  const items = reactive$5([]);
+  const items = reactive$4([]);
   const selected = useProxiedModel(props, 'modelValue', [], v => {
     if (v === undefined) return [];
     return getIds(items, v === null ? [null] : wrapInArray(v));
@@ -2578,7 +2578,7 @@ function getValues(items, ids) {
   return values;
 }
 
-const {mergeProps:_mergeProps$1e,createVNode:_createVNode$28} = await importShared('vue');
+const {mergeProps:_mergeProps$1e,createVNode:_createVNode$27} = await importShared('vue');
 const VBtnToggleSymbol = Symbol.for('vuetify:v-btn-toggle');
 const makeVBtnToggleProps = propsFactory({
   ...makeVBtnGroupProps(),
@@ -2603,7 +2603,7 @@ const VBtnToggle = genericComponent()({
     } = useGroup(props, VBtnToggleSymbol);
     useRender(() => {
       const btnGroupProps = VBtnGroup.filterProps(props);
-      return _createVNode$28(VBtnGroup, _mergeProps$1e({
+      return _createVNode$27(VBtnGroup, _mergeProps$1e({
         "class": ['v-btn-toggle', props.class]
       }, btnGroupProps, {
         "style": props.style
@@ -2657,7 +2657,7 @@ function useSize(props) {
   });
 }
 
-const {normalizeClass:_normalizeClass$1v,normalizeStyle:_normalizeStyle$1i,createVNode:_createVNode$27} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1v,normalizeStyle:_normalizeStyle$1i,createVNode:_createVNode$26} = await importShared('vue');
 const {shallowRef: shallowRef$P,Text} = await importShared('vue');
 const makeVIconProps = propsFactory({
   color: String,
@@ -2701,7 +2701,7 @@ const VIcon = genericComponent()({
         slotIcon.value = flattenFragments(slotValue).filter(node => node.type === Text && node.children && typeof node.children === 'string')[0]?.children;
       }
       const hasClick = !!(attrs.onClick || attrs.onClickOnce);
-      return _createVNode$27(iconData.value.component, {
+      return _createVNode$26(iconData.value.component, {
         "tag": props.tag,
         "icon": iconData.value.icon,
         "class": _normalizeClass$1v(['v-icon', 'notranslate', themeClasses.value, sizeClasses.value, textColorClasses.value, {
@@ -2788,7 +2788,7 @@ function useReveal(props) {
   };
 }
 
-const {normalizeClass:_normalizeClass$1u,normalizeStyle:_normalizeStyle$1h,createElementVNode:_createElementVNode$1J,createVNode:_createVNode$26} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1u,normalizeStyle:_normalizeStyle$1h,createElementVNode:_createElementVNode$1J,createVNode:_createVNode$25} = await importShared('vue');
 const {computed: computed$1S,ref: ref$_,toRef: toRef$15,watchEffect: watchEffect$j} = await importShared('vue');
 const makeVProgressCircularProps = propsFactory({
   bgColor: String,
@@ -2872,7 +2872,7 @@ const VProgressCircular = genericComponent()({
       intersectionRef.value = root.value;
       resizeRef.value = root.value;
     });
-    useRender(() => _createVNode$26(props.tag, {
+    useRender(() => _createVNode$25(props.tag, {
       "ref": root,
       "class": _normalizeClass$1u(['v-progress-circular', {
         'v-progress-circular--indeterminate': !!props.indeterminate,
@@ -2987,7 +2987,7 @@ function useChunks(props, containerWidth) {
   };
 }
 
-const {normalizeClass:_normalizeClass$1t,createElementVNode:_createElementVNode$1I,normalizeStyle:_normalizeStyle$1g,createVNode:_createVNode$25} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1t,createElementVNode:_createElementVNode$1I,normalizeStyle:_normalizeStyle$1g,createVNode:_createVNode$24} = await importShared('vue');
 const {computed: computed$1Q,ref: ref$Z,shallowRef: shallowRef$M,Transition: Transition$2,watchEffect: watchEffect$i} = await importShared('vue');
 const makeVProgressLinearProps = propsFactory({
   absolute: Boolean,
@@ -3114,7 +3114,7 @@ const VProgressLinear = genericComponent()({
     watchEffect$i(() => {
       intersectionRef.value = root.value;
     });
-    useRender(() => _createVNode$25(props.tag, {
+    useRender(() => _createVNode$24(props.tag, {
       "ref": root,
       "class": _normalizeClass$1t(['v-progress-linear', {
         'v-progress-linear--absolute': props.absolute,
@@ -3163,7 +3163,7 @@ const VProgressLinear = genericComponent()({
           opacity: parseFloat(props.bufferOpacity),
           width: convertToUnit(bufferWidth.value, '%')
         }])
-      }, null), _createVNode$25(Transition$2, {
+      }, null), _createVNode$24(Transition$2, {
         "name": transition.value
       }, {
         default: () => [!props.indeterminate ? _createElementVNode$1I("div", {
@@ -3189,7 +3189,7 @@ const VProgressLinear = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$24,normalizeClass:_normalizeClass$1s,createElementVNode:_createElementVNode$1H} = await importShared('vue');
+const {createVNode:_createVNode$23,normalizeClass:_normalizeClass$1s,createElementVNode:_createElementVNode$1H} = await importShared('vue');
 const {toRef: toRef$13} = await importShared('vue');
 // Composables
 const makeLoaderProps = propsFactory({
@@ -3213,7 +3213,7 @@ function LoaderSlot(props, _ref) {
   }, [slots.default?.({
     color: props.color,
     isActive: props.active
-  }) || _createVNode$24(VProgressLinear, {
+  }) || _createVNode$23(VProgressLinear, {
     "absolute": props.absolute,
     "active": props.active,
     "color": props.color,
@@ -3243,7 +3243,7 @@ function usePosition(props) {
 }
 
 // Utilities
-const {computed: computed$1P,nextTick: nextTick$w,onScopeDispose: onScopeDispose$d,reactive: reactive$4,resolveDynamicComponent,toRef: toRef$11} = await importShared('vue');
+const {computed: computed$1P,nextTick: nextTick$w,onScopeDispose: onScopeDispose$d,reactive: reactive$3,resolveDynamicComponent,toRef: toRef$11} = await importShared('vue');
 function useRoute() {
   const vm = getCurrentInstance('useRoute');
   return computed$1P(() => vm?.proxy?.$route);
@@ -3264,7 +3264,7 @@ function useLink(props, attrs) {
       isRouterLink: toRef$11(() => false),
       isClickable,
       href,
-      linkProps: reactive$4({
+      linkProps: reactive$3({
         href
       }),
       route: toRef$11(() => undefined),
@@ -3296,7 +3296,7 @@ function useLink(props, attrs) {
     route: toRef$11(() => link.value?.route.value),
     navigate: toRef$11(() => link.value?.navigate),
     href,
-    linkProps: reactive$4({
+    linkProps: reactive$3({
       href,
       'aria-current': toRef$11(() => isActive.value ? 'page' : undefined),
       'aria-disabled': toRef$11(() => props.disabled && isLink.value ? 'true' : undefined),
@@ -3656,7 +3656,7 @@ const Ripple = {
   updated: updated$1
 };
 
-const {createVNode:_createVNode$23,createElementVNode:_createElementVNode$1G,mergeProps:_mergeProps$1d} = await importShared('vue');
+const {createVNode:_createVNode$22,createElementVNode:_createElementVNode$1G,mergeProps:_mergeProps$1d} = await importShared('vue');
 const {computed: computed$1O,toDisplayString: toDisplayString$5,toRef: toRef$10,withDirectives: withDirectives$1} = await importShared('vue');
 const makeVBtnProps = propsFactory({
   active: {
@@ -3795,7 +3795,7 @@ const VBtn = genericComponent()({
       const hasPrepend = !!(props.prependIcon || slots.prepend);
       const hasAppend = !!(props.appendIcon || slots.append);
       const hasIcon = !!(props.icon && props.icon !== true);
-      return withDirectives$1(_createVNode$23(Tag, _mergeProps$1d(link.linkProps, {
+      return withDirectives$1(_createVNode$22(Tag, _mergeProps$1d(link.linkProps, {
         "type": Tag === 'a' ? undefined : 'button',
         "class": ['v-btn', group?.selectedClass.value, {
           'v-btn--active': isActive.value,
@@ -3819,10 +3819,10 @@ const VBtn = genericComponent()({
         default: () => [genOverlays(true, 'v-btn'), !props.icon && hasPrepend && _createElementVNode$1G("span", {
           "key": "prepend",
           "class": "v-btn__prepend"
-        }, [!slots.prepend ? _createVNode$23(VIcon, {
+        }, [!slots.prepend ? _createVNode$22(VIcon, {
           "key": "prepend-icon",
           "icon": props.prependIcon
-        }, null) : _createVNode$23(VDefaultsProvider, {
+        }, null) : _createVNode$22(VDefaultsProvider, {
           "key": "prepend-defaults",
           "disabled": !props.prependIcon,
           "defaults": {
@@ -3833,10 +3833,10 @@ const VBtn = genericComponent()({
         }, slots.prepend)]), _createElementVNode$1G("span", {
           "class": "v-btn__content",
           "data-no-activator": ""
-        }, [!slots.default && hasIcon ? _createVNode$23(VIcon, {
+        }, [!slots.default && hasIcon ? _createVNode$22(VIcon, {
           "key": "content-icon",
           "icon": props.icon
-        }, null) : _createVNode$23(VDefaultsProvider, {
+        }, null) : _createVNode$22(VDefaultsProvider, {
           "key": "content-defaults",
           "disabled": !hasIcon,
           "defaults": {
@@ -3849,10 +3849,10 @@ const VBtn = genericComponent()({
         })]), !props.icon && hasAppend && _createElementVNode$1G("span", {
           "key": "append",
           "class": "v-btn__append"
-        }, [!slots.append ? _createVNode$23(VIcon, {
+        }, [!slots.append ? _createVNode$22(VIcon, {
           "key": "append-icon",
           "icon": props.appendIcon
-        }, null) : _createVNode$23(VDefaultsProvider, {
+        }, null) : _createVNode$22(VDefaultsProvider, {
           "key": "append-defaults",
           "disabled": !props.appendIcon,
           "defaults": {
@@ -3863,7 +3863,7 @@ const VBtn = genericComponent()({
         }, slots.append)]), !!props.loading && _createElementVNode$1G("span", {
           "key": "loader",
           "class": "v-btn__loader"
-        }, [slots.loader?.() ?? _createVNode$23(VProgressCircular, {
+        }, [slots.loader?.() ?? _createVNode$22(VProgressCircular, {
           "color": typeof props.loading === 'boolean' ? undefined : props.loading,
           "indeterminate": true,
           "width": "2"
@@ -3878,7 +3878,7 @@ const VBtn = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$1c,createVNode:_createVNode$22} = await importShared('vue');
+const {mergeProps:_mergeProps$1c,createVNode:_createVNode$21} = await importShared('vue');
 const makeVAppBarNavIconProps = propsFactory({
   ...omit(makeVBtnProps({
     icon: '$menu',
@@ -3892,14 +3892,14 @@ const VAppBarNavIcon = genericComponent()({
     let {
       slots
     } = _ref;
-    useRender(() => _createVNode$22(VBtn, _mergeProps$1c(props, {
+    useRender(() => _createVNode$21(VBtn, _mergeProps$1c(props, {
       "class": ['v-app-bar-nav-icon']
     }), slots));
     return {};
   }
 });
 
-const {mergeProps:_mergeProps$1b,createVNode:_createVNode$21} = await importShared('vue');
+const {mergeProps:_mergeProps$1b,createVNode:_createVNode$20} = await importShared('vue');
 const VAppBarTitle = genericComponent()({
   name: 'VAppBarTitle',
   props: makeVToolbarTitleProps(),
@@ -3907,7 +3907,7 @@ const VAppBarTitle = genericComponent()({
     let {
       slots
     } = _ref;
-    useRender(() => _createVNode$21(VToolbarTitle, _mergeProps$1b(props, {
+    useRender(() => _createVNode$20(VToolbarTitle, _mergeProps$1b(props, {
       "class": "v-app-bar-title"
     }), slots));
     return {};
@@ -3941,7 +3941,7 @@ function useIconSizes(props, fallback) {
   };
 }
 
-const {normalizeClass:_normalizeClass$1r,normalizeStyle:_normalizeStyle$1f,createElementVNode:_createElementVNode$1F,mergeProps:_mergeProps$1a,createVNode:_createVNode$20} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1r,normalizeStyle:_normalizeStyle$1f,createElementVNode:_createElementVNode$1F,mergeProps:_mergeProps$1a,createVNode:_createVNode$1$} = await importShared('vue');
 const {toRef: toRef$$} = await importShared('vue');
 const allowedTypes = ['success', 'info', 'warning', 'error'];
 const makeVAlertProps = propsFactory({
@@ -4063,7 +4063,7 @@ const VAlert = genericComponent()({
         icon: icon.value,
         size: props.iconSize || props.prominent ? iconSize.value : undefined
       };
-      return isActive.value && _createVNode$20(props.tag, {
+      return isActive.value && _createVNode$1$(props.tag, {
         "class": _normalizeClass$1r(['v-alert', props.border && {
           'v-alert--border': !!props.border,
           [`v-alert--border-${props.border === true ? 'start' : props.border}`]: true
@@ -4080,9 +4080,9 @@ const VAlert = genericComponent()({
         }, null), hasPrepend && _createElementVNode$1F("div", {
           "key": "prepend",
           "class": "v-alert__prepend"
-        }, [!slots.prepend ? _createVNode$20(VIcon, _mergeProps$1a({
+        }, [!slots.prepend ? _createVNode$1$(VIcon, _mergeProps$1a({
           "key": "prepend-icon"
-        }, iconProps), null) : _createVNode$20(VDefaultsProvider, {
+        }, iconProps), null) : _createVNode$1$(VDefaultsProvider, {
           "key": "prepend-defaults",
           "disabled": !icon.value,
           "defaults": {
@@ -4092,7 +4092,7 @@ const VAlert = genericComponent()({
           }
         }, slots.prepend)]), _createElementVNode$1F("div", {
           "class": "v-alert__content"
-        }, [hasTitle && _createVNode$20(VAlertTitle, {
+        }, [hasTitle && _createVNode$1$(VAlertTitle, {
           "key": "title"
         }, {
           default: () => [slots.title?.() ?? props.title]
@@ -4102,12 +4102,12 @@ const VAlert = genericComponent()({
         }, [slots.append()]), hasClose && _createElementVNode$1F("div", {
           "key": "close",
           "class": "v-alert__close"
-        }, [!slots.close ? _createVNode$20(VBtn, _mergeProps$1a({
+        }, [!slots.close ? _createVNode$1$(VBtn, _mergeProps$1a({
           "key": "close-btn",
           "icon": props.closeIcon,
           "size": "x-small",
           "variant": "text"
-        }, closeProps.value), null) : _createVNode$20(VDefaultsProvider, {
+        }, closeProps.value), null) : _createVNode$1$(VDefaultsProvider, {
           "key": "close-defaults",
           "defaults": {
             VBtn: {
@@ -4130,7 +4130,7 @@ const VAutocomplete$1 = '';
 
 const VAvatar$1 = '';
 
-const {createVNode:_createVNode$1$,normalizeClass:_normalizeClass$1q,normalizeStyle:_normalizeStyle$1e} = await importShared('vue');
+const {createVNode:_createVNode$1_,normalizeClass:_normalizeClass$1q,normalizeStyle:_normalizeStyle$1e} = await importShared('vue');
 const makeVAvatarProps = propsFactory({
   start: Boolean,
   end: Boolean,
@@ -4176,22 +4176,22 @@ const VAvatar = genericComponent()({
       sizeClasses,
       sizeStyles
     } = useSize(props);
-    useRender(() => _createVNode$1$(props.tag, {
+    useRender(() => _createVNode$1_(props.tag, {
       "class": _normalizeClass$1q(['v-avatar', {
         'v-avatar--start': props.start,
         'v-avatar--end': props.end
       }, themeClasses.value, borderClasses.value, colorClasses.value, densityClasses.value, roundedClasses.value, sizeClasses.value, variantClasses.value, props.class]),
       "style": _normalizeStyle$1e([colorStyles.value, sizeStyles.value, props.style])
     }, {
-      default: () => [!slots.default ? props.image ? _createVNode$1$(VImg, {
+      default: () => [!slots.default ? props.image ? _createVNode$1_(VImg, {
         "key": "image",
         "src": props.image,
         "alt": "",
         "cover": true
-      }, null) : props.icon ? _createVNode$1$(VIcon, {
+      }, null) : props.icon ? _createVNode$1_(VIcon, {
         "key": "icon",
         "icon": props.icon
-      }, null) : props.text : _createVNode$1$(VDefaultsProvider, {
+      }, null) : props.text : _createVNode$1_(VDefaultsProvider, {
         "key": "content-defaults",
         "defaults": {
           VImg: {
@@ -4342,7 +4342,7 @@ const VSelectionControlGroup = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$19,createElementVNode:_createElementVNode$1C,Fragment:_Fragment$J,createVNode:_createVNode$1_,normalizeClass:_normalizeClass$1n,withDirectives:_withDirectives$l,normalizeStyle:_normalizeStyle$1b} = await importShared('vue');
+const {mergeProps:_mergeProps$19,createElementVNode:_createElementVNode$1C,Fragment:_Fragment$J,createVNode:_createVNode$1Z,normalizeClass:_normalizeClass$1n,withDirectives:_withDirectives$l,normalizeStyle:_normalizeStyle$1b} = await importShared('vue');
 const {computed: computed$1M,inject: inject$n,nextTick: nextTick$u,ref: ref$Y,shallowRef: shallowRef$L,toRef: toRef$Z,useId: useId$f} = await importShared('vue');
 const makeVSelectionControlProps = propsFactory({
   label: String,
@@ -4529,13 +4529,13 @@ const VSelectionControl = genericComponent()({
           onBlur,
           id: id.value
         }
-      }) ?? _createElementVNode$1C(_Fragment$J, null, [icon.value && _createVNode$1_(VIcon, {
+      }) ?? _createElementVNode$1C(_Fragment$J, null, [icon.value && _createVNode$1Z(VIcon, {
         "key": "icon",
         "icon": icon.value
       }, null), inputNode])]), [[Ripple, !props.disabled && !props.readonly && props.ripple, null, {
         center: true,
         circle: true
-      }]])]), label && _createVNode$1_(VLabel, {
+      }]])]), label && _createVNode$1Z(VLabel, {
         "for": id.value,
         "onClick": onClickLabel
       }, {
@@ -4549,7 +4549,7 @@ const VSelectionControl = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$18,createVNode:_createVNode$1Z} = await importShared('vue');
+const {mergeProps:_mergeProps$18,createVNode:_createVNode$1Y} = await importShared('vue');
 const {toRef: toRef$Y} = await importShared('vue');
 const makeVCheckboxBtnProps = propsFactory({
   indeterminate: Boolean,
@@ -4588,7 +4588,7 @@ const VCheckboxBtn = genericComponent()({
     });
     useRender(() => {
       const controlProps = omit(VSelectionControl.filterProps(props), ['modelValue']);
-      return _createVNode$1Z(VSelectionControl, _mergeProps$18(controlProps, {
+      return _createVNode$1Y(VSelectionControl, _mergeProps$18(controlProps, {
         "modelValue": model.value,
         "onUpdate:modelValue": [$event => model.value = $event, onChange],
         "class": ['v-checkbox-btn', props.class],
@@ -4605,7 +4605,7 @@ const VCheckboxBtn = genericComponent()({
 
 const VInput$1 = '';
 
-const {mergeProps:_mergeProps$17,createVNode:_createVNode$1Y} = await importShared('vue');
+const {mergeProps:_mergeProps$17,createVNode:_createVNode$1X} = await importShared('vue');
 function useInputIcon(props) {
   const {
     t
@@ -4631,7 +4631,7 @@ function useInputIcon(props) {
       callEvent(listener, new PointerEvent('click', e));
     }
     const label = listener && localeKey ? t(`$vuetify.input.${localeKey}`, props.label ?? '') : undefined;
-    return _createVNode$1Y(VIcon, _mergeProps$17({
+    return _createVNode$1X(VIcon, _mergeProps$17({
       "icon": props[`${name}Icon`],
       "aria-label": label,
       "onClick": listener,
@@ -4646,7 +4646,7 @@ function useInputIcon(props) {
 
 const VMessages$1 = '';
 
-const {createElementVNode:_createElementVNode$1B,normalizeClass:_normalizeClass$1m,normalizeStyle:_normalizeStyle$1a,createVNode:_createVNode$1X} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1B,normalizeClass:_normalizeClass$1m,normalizeStyle:_normalizeStyle$1a,createVNode:_createVNode$1W} = await importShared('vue');
 const {computed: computed$1L} = await importShared('vue');
 const makeVMessagesProps = propsFactory({
   active: Boolean,
@@ -4676,7 +4676,7 @@ const VMessages = genericComponent()({
       textColorClasses,
       textColorStyles
     } = useTextColor(() => props.color);
-    useRender(() => _createVNode$1X(MaybeTransition, {
+    useRender(() => _createVNode$1W(MaybeTransition, {
       "transition": props.transition,
       "tag": "div",
       "class": _normalizeClass$1m(['v-messages', textColorClasses.value, props.class]),
@@ -5031,7 +5031,7 @@ function useValidation(props) {
   };
 }
 
-const {createVNode:_createVNode$1W,createElementVNode:_createElementVNode$1A,normalizeClass:_normalizeClass$1l,normalizeStyle:_normalizeStyle$19} = await importShared('vue');
+const {createVNode:_createVNode$1V,createElementVNode:_createElementVNode$1A,normalizeClass:_normalizeClass$1l,normalizeStyle:_normalizeStyle$19} = await importShared('vue');
 const {computed: computed$1H,toRef: toRef$U,useId: useId$d} = await importShared('vue');
 const makeVInputProps = propsFactory({
   id: String,
@@ -5157,7 +5157,7 @@ const VInput = genericComponent()({
       }, [hasPrepend && _createElementVNode$1A("div", {
         "key": "prepend",
         "class": "v-input__prepend"
-      }, [slots.prepend ? slots.prepend(slotProps.value) : props.prependIcon && _createVNode$1W(InputIcon, {
+      }, [slots.prepend ? slots.prepend(slotProps.value) : props.prependIcon && _createVNode$1V(InputIcon, {
         "key": "prepend-icon",
         "name": "prepend",
         "color": iconColor.value
@@ -5166,7 +5166,7 @@ const VInput = genericComponent()({
       }, [slots.default?.(slotProps.value)]), hasAppend && _createElementVNode$1A("div", {
         "key": "append",
         "class": "v-input__append"
-      }, [slots.append ? slots.append(slotProps.value) : props.appendIcon && _createVNode$1W(InputIcon, {
+      }, [slots.append ? slots.append(slotProps.value) : props.appendIcon && _createVNode$1V(InputIcon, {
         "key": "append-icon",
         "name": "append",
         "color": iconColor.value
@@ -5175,7 +5175,7 @@ const VInput = genericComponent()({
         "class": "v-input__details",
         "role": "alert",
         "aria-live": "polite"
-      }, [_createVNode$1W(VMessages, {
+      }, [_createVNode$1V(VMessages, {
         "active": hasMessages.value,
         "messages": messages.value
       }, {
@@ -5289,7 +5289,7 @@ function forwardRefs(target) {
   });
 }
 
-const {mergeProps:_mergeProps$16,createVNode:_createVNode$1V} = await importShared('vue');
+const {mergeProps:_mergeProps$16,createVNode:_createVNode$1U} = await importShared('vue');
 const {ref: ref$V,useId: useId$c} = await importShared('vue');
 const makeVCheckboxProps = propsFactory({
   ...omit(makeVInputProps(), ['direction']),
@@ -5320,7 +5320,7 @@ const VCheckbox = genericComponent()({
       const [rootAttrs, controlAttrs] = filterInputAttrs(attrs);
       const inputProps = VInput.filterProps(props);
       const checkboxProps = VCheckboxBtn.filterProps(props);
-      return _createVNode$1V(VInput, _mergeProps$16({
+      return _createVNode$1U(VInput, _mergeProps$16({
         "ref": inputRef,
         "class": ['v-checkbox', props.class]
       }, rootAttrs, inputProps, {
@@ -5339,7 +5339,7 @@ const VCheckbox = genericComponent()({
             isReadonly,
             isValid
           } = _ref2;
-          return _createVNode$1V(VCheckboxBtn, _mergeProps$16(checkboxProps, {
+          return _createVNode$1U(VCheckboxBtn, _mergeProps$16(checkboxProps, {
             "id": id.value,
             "aria-describedby": messagesId.value,
             "disabled": isDisabled.value,
@@ -5425,7 +5425,7 @@ function getOffsetPosition(isHorizontal, element) {
   return element?.[key] || 0;
 }
 
-const {createVNode:_createVNode$1U,normalizeClass:_normalizeClass$1k,createElementVNode:_createElementVNode$1z,normalizeStyle:_normalizeStyle$18} = await importShared('vue');
+const {createVNode:_createVNode$1T,normalizeClass:_normalizeClass$1k,createElementVNode:_createElementVNode$1z,normalizeStyle:_normalizeStyle$18} = await importShared('vue');
 const {computed: computed$1G,shallowRef: shallowRef$I,watch: watch$J} = await importShared('vue');
 const VSlideGroupSymbol = Symbol.for('vuetify:v-slide-group');
 const makeVSlideGroupProps = propsFactory({
@@ -5727,7 +5727,7 @@ const VSlideGroup = genericComponent()({
       // 1 pixel in reserve, may be lost after rounding
       return scrollSizeMax - Math.abs(scrollOffset.value) > 1;
     });
-    useRender(() => _createVNode$1U(props.tag, {
+    useRender(() => _createVNode$1T(props.tag, {
       "class": _normalizeClass$1k(['v-slide-group', {
         'v-slide-group--vertical': !isHorizontal.value,
         'v-slide-group--has-affixes': hasAffixes.value,
@@ -5744,8 +5744,8 @@ const VSlideGroup = genericComponent()({
         }]),
         "onMousedown": onFocusAffixes,
         "onClick": () => hasPrev.value && scrollTo('prev')
-      }, [slots.prev?.(slotProps.value) ?? _createVNode$1U(VFadeTransition, null, {
-        default: () => [_createVNode$1U(VIcon, {
+      }, [slots.prev?.(slotProps.value) ?? _createVNode$1T(VFadeTransition, null, {
+        default: () => [_createVNode$1T(VIcon, {
           "icon": isRtl.value ? props.nextIcon : props.prevIcon
         }, null)]
       })]), _createElementVNode$1z("div", {
@@ -5766,8 +5766,8 @@ const VSlideGroup = genericComponent()({
         }]),
         "onMousedown": onFocusAffixes,
         "onClick": () => hasNext.value && scrollTo('next')
-      }, [slots.next?.(slotProps.value) ?? _createVNode$1U(VFadeTransition, null, {
-        default: () => [_createVNode$1U(VIcon, {
+      }, [slots.next?.(slotProps.value) ?? _createVNode$1T(VFadeTransition, null, {
+        default: () => [_createVNode$1T(VIcon, {
           "icon": isRtl.value ? props.prevIcon : props.nextIcon
         }, null)]
       })])]
@@ -5783,7 +5783,7 @@ const VSlideGroup = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$15,createVNode:_createVNode$1T} = await importShared('vue');
+const {mergeProps:_mergeProps$15,createVNode:_createVNode$1S} = await importShared('vue');
 const {toRef: toRef$T} = await importShared('vue');
 const VChipGroupSymbol = Symbol.for('vuetify:v-chip-group');
 const makeVChipGroupProps = propsFactory({
@@ -5838,7 +5838,7 @@ const VChipGroup = genericComponent()({
     });
     useRender(() => {
       const slideGroupProps = VSlideGroup.filterProps(props);
-      return _createVNode$1T(VSlideGroup, _mergeProps$15(slideGroupProps, {
+      return _createVNode$1S(VSlideGroup, _mergeProps$15(slideGroupProps, {
         "class": ['v-chip-group', {
           'v-chip-group--column': props.column
         }, themeClasses.value, props.class],
@@ -5857,7 +5857,7 @@ const VChipGroup = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$1S,vShow:_vShow$9,createElementVNode:_createElementVNode$1y,withDirectives:_withDirectives$k,Fragment:_Fragment$I,mergeProps:_mergeProps$14} = await importShared('vue');
+const {createVNode:_createVNode$1R,vShow:_vShow$9,createElementVNode:_createElementVNode$1y,withDirectives:_withDirectives$k,Fragment:_Fragment$I,mergeProps:_mergeProps$14} = await importShared('vue');
 const {computed: computed$1F,toDisplayString: toDisplayString$4,toRef: toRef$S,watch: watch$I} = await importShared('vue');
 const makeVChipProps = propsFactory({
   activeClass: String,
@@ -6012,7 +6012,7 @@ const VChip = genericComponent()({
       const hasFilter = !!(slots.filter || props.filter) && group;
       const hasPrependMedia = !!(props.prependIcon || props.prependAvatar);
       const hasPrepend = !!(hasPrependMedia || slots.prepend);
-      return isActive.value && _withDirectives$k(_createVNode$1S(Tag, _mergeProps$14(link.linkProps, {
+      return isActive.value && _withDirectives$k(_createVNode$1R(Tag, _mergeProps$14(link.linkProps, {
         "class": ['v-chip', {
           'v-chip--disabled': props.disabled,
           'v-chip--label': props.label,
@@ -6028,15 +6028,15 @@ const VChip = genericComponent()({
         "onClick": onClick,
         "onKeydown": isClickable.value && !isLink.value && onKeyDown
       }), {
-        default: () => [genOverlays(isClickable.value, 'v-chip'), hasFilter && _createVNode$1S(VExpandXTransition, {
+        default: () => [genOverlays(isClickable.value, 'v-chip'), hasFilter && _createVNode$1R(VExpandXTransition, {
           "key": "filter"
         }, {
           default: () => [_withDirectives$k(_createElementVNode$1y("div", {
             "class": "v-chip__filter"
-          }, [!slots.filter ? _createVNode$1S(VIcon, {
+          }, [!slots.filter ? _createVNode$1R(VIcon, {
             "key": "filter-icon",
             "icon": props.filterIcon
-          }, null) : _createVNode$1S(VDefaultsProvider, {
+          }, null) : _createVNode$1R(VDefaultsProvider, {
             "key": "filter-defaults",
             "disabled": !props.filterIcon,
             "defaults": {
@@ -6048,15 +6048,15 @@ const VChip = genericComponent()({
         }), hasPrepend && _createElementVNode$1y("div", {
           "key": "prepend",
           "class": "v-chip__prepend"
-        }, [!slots.prepend ? _createElementVNode$1y(_Fragment$I, null, [props.prependIcon && _createVNode$1S(VIcon, {
+        }, [!slots.prepend ? _createElementVNode$1y(_Fragment$I, null, [props.prependIcon && _createVNode$1R(VIcon, {
           "key": "prepend-icon",
           "icon": props.prependIcon,
           "start": true
-        }, null), props.prependAvatar && _createVNode$1S(VAvatar, {
+        }, null), props.prependAvatar && _createVNode$1R(VAvatar, {
           "key": "prepend-avatar",
           "image": props.prependAvatar,
           "start": true
-        }, null)]) : _createVNode$1S(VDefaultsProvider, {
+        }, null)]) : _createVNode$1R(VDefaultsProvider, {
           "key": "prepend-defaults",
           "disabled": !hasPrependMedia,
           "defaults": {
@@ -6082,15 +6082,15 @@ const VChip = genericComponent()({
         }) ?? toDisplayString$4(props.text)]), hasAppend && _createElementVNode$1y("div", {
           "key": "append",
           "class": "v-chip__append"
-        }, [!slots.append ? _createElementVNode$1y(_Fragment$I, null, [props.appendIcon && _createVNode$1S(VIcon, {
+        }, [!slots.append ? _createElementVNode$1y(_Fragment$I, null, [props.appendIcon && _createVNode$1R(VIcon, {
           "key": "append-icon",
           "end": true,
           "icon": props.appendIcon
-        }, null), props.appendAvatar && _createVNode$1S(VAvatar, {
+        }, null), props.appendAvatar && _createVNode$1R(VAvatar, {
           "key": "append-avatar",
           "end": true,
           "image": props.appendAvatar
-        }, null)]) : _createVNode$1S(VDefaultsProvider, {
+        }, null)]) : _createVNode$1R(VDefaultsProvider, {
           "key": "append-defaults",
           "disabled": !hasAppendMedia,
           "defaults": {
@@ -6108,11 +6108,11 @@ const VChip = genericComponent()({
           "class": "v-chip__close",
           "type": "button",
           "data-testid": "close-chip"
-        }, closeProps.value), [!slots.close ? _createVNode$1S(VIcon, {
+        }, closeProps.value), [!slots.close ? _createVNode$1R(VIcon, {
           "key": "close-icon",
           "icon": props.closeIcon,
           "size": "x-small"
-        }, null) : _createVNode$1S(VDefaultsProvider, {
+        }, null) : _createVNode$1R(VDefaultsProvider, {
           "key": "close-defaults",
           "defaults": {
             VIcon: {
@@ -7067,9 +7067,9 @@ const useNestedGroupActivator = () => {
   });
 };
 
-const {createVNode:_createVNode$1R,vShow:_vShow$8,createElementVNode:_createElementVNode$1w,withDirectives:_withDirectives$j,normalizeClass:_normalizeClass$1i,normalizeStyle:_normalizeStyle$16} = await importShared('vue');
+const {createVNode:_createVNode$1Q,vShow:_vShow$8,createElementVNode:_createElementVNode$1w,withDirectives:_withDirectives$j,normalizeClass:_normalizeClass$1i,normalizeStyle:_normalizeStyle$16} = await importShared('vue');
 const {computed: computed$1B,inject: inject$i,toRef: toRef$P} = await importShared('vue');
-const VListGroupActivator = defineComponent({
+const VListGroupActivator = defineComponent$1({
   name: 'VListGroupActivator',
   setup(_, _ref) {
     let {
@@ -7143,7 +7143,7 @@ const VListGroup = genericComponent()({
         value: props.value
       }
     }));
-    useRender(() => _createVNode$1R(props.tag, {
+    useRender(() => _createVNode$1Q(props.tag, {
       "class": _normalizeClass$1i(['v-list-group', {
         'v-list-group--prepend': list?.hasPrepend.value,
         'v-list-group--fluid': props.fluid,
@@ -7152,16 +7152,16 @@ const VListGroup = genericComponent()({
       }, props.class]),
       "style": _normalizeStyle$16(props.style)
     }, {
-      default: () => [slots.activator && _createVNode$1R(VDefaultsProvider, {
+      default: () => [slots.activator && _createVNode$1Q(VDefaultsProvider, {
         "defaults": activatorDefaults.value
       }, {
-        default: () => [_createVNode$1R(VListGroupActivator, null, {
+        default: () => [_createVNode$1Q(VListGroupActivator, null, {
           default: () => [slots.activator({
             props: activatorProps.value,
             isOpen: isOpen.value
           })]
         })]
-      }), _createVNode$1R(MaybeTransition, {
+      }), _createVNode$1Q(MaybeTransition, {
         "transition": {
           component: VExpandTransition
         },
@@ -7186,7 +7186,7 @@ const VListGroup = genericComponent()({
 
 const VListItem$1 = '';
 
-const {normalizeClass:_normalizeClass$1h,normalizeStyle:_normalizeStyle$15,createVNode:_createVNode$1Q} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1h,normalizeStyle:_normalizeStyle$15,createVNode:_createVNode$1P} = await importShared('vue');
 const makeVListItemSubtitleProps = propsFactory({
   opacity: [Number, String],
   ...makeComponentProps(),
@@ -7199,7 +7199,7 @@ const VListItemSubtitle = genericComponent()({
     let {
       slots
     } = _ref;
-    useRender(() => _createVNode$1Q(props.tag, {
+    useRender(() => _createVNode$1P(props.tag, {
       "class": _normalizeClass$1h(['v-list-item-subtitle', props.class]),
       "style": _normalizeStyle$15([{
         '--v-list-item-subtitle-opacity': props.opacity
@@ -7212,7 +7212,7 @@ const VListItemSubtitle = genericComponent()({
 // Utilities
 const VListItemTitle = createSimpleFunctional('v-list-item-title');
 
-const {Fragment:_Fragment$H,createVNode:_createVNode$1P,createElementVNode:_createElementVNode$1v,mergeProps:_mergeProps$13,withDirectives:_withDirectives$i} = await importShared('vue');
+const {Fragment:_Fragment$H,createVNode:_createVNode$1O,createElementVNode:_createElementVNode$1v,mergeProps:_mergeProps$13,withDirectives:_withDirectives$i} = await importShared('vue');
 const {computed: computed$1A,nextTick: nextTick$r,onBeforeMount: onBeforeMount$1,ref: ref$T,toDisplayString: toDisplayString$3,toRef: toRef$O,watch: watch$G} = await importShared('vue');
 const makeVListItemProps = propsFactory({
   active: {
@@ -7417,7 +7417,7 @@ const VListItem = genericComponent()({
       if (props.activeColor) {
         deprecate('active-color', ['color', 'base-color']);
       }
-      return _withDirectives$i(_createVNode$1P(Tag, _mergeProps$13(link.linkProps, {
+      return _withDirectives$i(_createVNode$1O(Tag, _mergeProps$13(link.linkProps, {
         "ref": rootEl,
         "id": props.index !== undefined && list ? `v-list-item-${list.uid}-${props.index}` : undefined,
         "class": ['v-list-item', {
@@ -7442,15 +7442,15 @@ const VListItem = genericComponent()({
         default: () => [genOverlays(isClickable.value || isActive.value, 'v-list-item'), hasPrepend && _createElementVNode$1v("div", {
           "key": "prepend",
           "class": "v-list-item__prepend"
-        }, [!slots.prepend ? _createElementVNode$1v(_Fragment$H, null, [props.prependAvatar && _createVNode$1P(VAvatar, {
+        }, [!slots.prepend ? _createElementVNode$1v(_Fragment$H, null, [props.prependAvatar && _createVNode$1O(VAvatar, {
           "key": "prepend-avatar",
           "density": props.density,
           "image": props.prependAvatar
-        }, null), props.prependIcon && _createVNode$1P(VIcon, {
+        }, null), props.prependIcon && _createVNode$1O(VIcon, {
           "key": "prepend-icon",
           "density": props.density,
           "icon": props.prependIcon
-        }, null)]) : _createVNode$1P(VDefaultsProvider, {
+        }, null)]) : _createVNode$1O(VDefaultsProvider, {
           "key": "prepend-defaults",
           "defaults": {
             VAvatar: {
@@ -7475,13 +7475,13 @@ const VListItem = genericComponent()({
         }, null)]), _createElementVNode$1v("div", {
           "class": "v-list-item__content",
           "data-no-activator": ""
-        }, [hasTitle && _createVNode$1P(VListItemTitle, {
+        }, [hasTitle && _createVNode$1O(VListItemTitle, {
           "key": "title"
         }, {
           default: () => [slots.title?.({
             title: props.title
           }) ?? toDisplayString$3(props.title)]
-        }), hasSubtitle && _createVNode$1P(VListItemSubtitle, {
+        }), hasSubtitle && _createVNode$1O(VListItemSubtitle, {
           "key": "subtitle"
         }, {
           default: () => [slots.subtitle?.({
@@ -7490,15 +7490,15 @@ const VListItem = genericComponent()({
         }), slots.default?.(slotProps.value)]), hasAppend && _createElementVNode$1v("div", {
           "key": "append",
           "class": "v-list-item__append"
-        }, [!slots.append ? _createElementVNode$1v(_Fragment$H, null, [props.appendIcon && _createVNode$1P(VIcon, {
+        }, [!slots.append ? _createElementVNode$1v(_Fragment$H, null, [props.appendIcon && _createVNode$1O(VIcon, {
           "key": "append-icon",
           "density": props.density,
           "icon": props.appendIcon
-        }, null), props.appendAvatar && _createVNode$1P(VAvatar, {
+        }, null), props.appendAvatar && _createVNode$1O(VAvatar, {
           "key": "append-avatar",
           "density": props.density,
           "image": props.appendAvatar
-        }, null)]) : _createVNode$1P(VDefaultsProvider, {
+        }, null)]) : _createVNode$1O(VDefaultsProvider, {
           "key": "append-defaults",
           "defaults": {
             VAvatar: {
@@ -7537,7 +7537,7 @@ const VListItem = genericComponent()({
   }
 });
 
-const {createElementVNode:_createElementVNode$1u,normalizeClass:_normalizeClass$1g,normalizeStyle:_normalizeStyle$14,createVNode:_createVNode$1O} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1u,normalizeClass:_normalizeClass$1g,normalizeStyle:_normalizeStyle$14,createVNode:_createVNode$1N} = await importShared('vue');
 const makeVListSubheaderProps = propsFactory({
   color: String,
   inset: Boolean,
@@ -7559,7 +7559,7 @@ const VListSubheader = genericComponent()({
     } = useTextColor(() => props.color);
     useRender(() => {
       const hasText = !!(slots.default || props.title);
-      return _createVNode$1O(props.tag, {
+      return _createVNode$1N(props.tag, {
         "class": _normalizeClass$1g(['v-list-subheader', {
           'v-list-subheader--inset': props.inset,
           'v-list-subheader--sticky': props.sticky
@@ -7577,7 +7577,7 @@ const VListSubheader = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$1N,mergeProps:_mergeProps$12} = await importShared('vue');
+const {createVNode:_createVNode$1M,mergeProps:_mergeProps$12} = await importShared('vue');
 const {mergeProps: mergeProps$c} = await importShared('vue');
 const makeVListChildrenProps = propsFactory({
   items: Array,
@@ -7601,12 +7601,12 @@ const VListChildren = genericComponent()({
       if (type === 'divider') {
         return slots.divider?.({
           props: itemProps
-        }) ?? _createVNode$1N(VDivider, itemProps, null);
+        }) ?? _createVNode$1M(VDivider, itemProps, null);
       }
       if (type === 'subheader') {
         return slots.subheader?.({
           props: itemProps
-        }) ?? _createVNode$1N(VListSubheader, itemProps, null);
+        }) ?? _createVNode$1M(VListSubheader, itemProps, null);
       }
       const slotsWithItem = {
         subtitle: slots.subtitle ? slotProps => slots.subtitle?.({
@@ -7627,7 +7627,7 @@ const VListChildren = genericComponent()({
         }) : undefined
       };
       const listGroupProps = VListGroup.filterProps(itemProps);
-      return children ? _createVNode$1N(VListGroup, _mergeProps$12(listGroupProps, {
+      return children ? _createVNode$1M(VListGroup, _mergeProps$12(listGroupProps, {
         "value": props.returnObject ? item : itemProps?.value,
         "rawId": itemProps?.value
       }), {
@@ -7640,11 +7640,11 @@ const VListChildren = genericComponent()({
           });
           return slots.header ? slots.header({
             props: listItemProps
-          }) : _createVNode$1N(VListItem, _mergeProps$12(listItemProps, {
+          }) : _createVNode$1M(VListItem, _mergeProps$12(listItemProps, {
             "index": index
           }), slotsWithItem);
         },
-        default: () => _createVNode$1N(VListChildren, {
+        default: () => _createVNode$1M(VListChildren, {
           "items": children,
           "returnObject": props.returnObject
         }, slots)
@@ -7653,7 +7653,7 @@ const VListChildren = genericComponent()({
           ...itemProps,
           index
         }
-      }) : _createVNode$1N(VListItem, _mergeProps$12(itemProps, {
+      }) : _createVNode$1M(VListItem, _mergeProps$12(itemProps, {
         "index": index,
         "value": props.returnObject ? item : itemProps.value
       }), slotsWithItem);
@@ -7818,7 +7818,7 @@ function useItems(props) {
   };
 }
 
-const {createVNode:_createVNode$1M,normalizeClass:_normalizeClass$1f,normalizeStyle:_normalizeStyle$13} = await importShared('vue');
+const {createVNode:_createVNode$1L,normalizeClass:_normalizeClass$1f,normalizeStyle:_normalizeStyle$13} = await importShared('vue');
 const {computed: computed$1y,ref: ref$S,shallowRef: shallowRef$E,toRef: toRef$N,useId: useId$a,watch: watch$F} = await importShared('vue');
 const itemTypes = new Set(['item', 'divider', 'subheader']);
 function transformItem$2(props, item) {
@@ -8085,7 +8085,7 @@ const VList = genericComponent()({
     useRender(() => {
       const indent = props.indent ?? (props.prependGap ? Number(props.prependGap) + 24 : undefined);
       const ariaMultiselectable = isSelectable.value ? attrs.ariaMultiselectable ?? !String(props.selectStrategy).startsWith('single-') : undefined;
-      return _createVNode$1M(props.tag, {
+      return _createVNode$1L(props.tag, {
         "ref": contentRef,
         "class": _normalizeClass$1f(['v-list', {
           'v-list--disabled': props.disabled,
@@ -8108,7 +8108,7 @@ const VList = genericComponent()({
         "onKeydown": onKeydown,
         "onMousedown": onMousedown
       }, {
-        default: () => [_createVNode$1M(VListChildren, {
+        default: () => [_createVNode$1L(VListChildren, {
           "items": items.value,
           "returnObject": props.returnObject
         }, slots)]
@@ -8129,7 +8129,7 @@ const VList = genericComponent()({
 // Utilities
 const VListImg = createSimpleFunctional('v-list-img');
 
-const {normalizeClass:_normalizeClass$1e,normalizeStyle:_normalizeStyle$12,createVNode:_createVNode$1L} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1e,normalizeStyle:_normalizeStyle$12,createVNode:_createVNode$1K} = await importShared('vue');
 const makeVListItemActionProps = propsFactory({
   start: Boolean,
   end: Boolean,
@@ -8143,7 +8143,7 @@ const VListItemAction = genericComponent()({
     let {
       slots
     } = _ref;
-    useRender(() => _createVNode$1L(props.tag, {
+    useRender(() => _createVNode$1K(props.tag, {
       "class": _normalizeClass$1e(['v-list-item-action', {
         'v-list-item-action--start': props.start,
         'v-list-item-action--end': props.end
@@ -8154,7 +8154,7 @@ const VListItemAction = genericComponent()({
   }
 });
 
-const {normalizeClass:_normalizeClass$1d,normalizeStyle:_normalizeStyle$11,createVNode:_createVNode$1K} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1d,normalizeStyle:_normalizeStyle$11,createVNode:_createVNode$1J} = await importShared('vue');
 const makeVListItemMediaProps = propsFactory({
   start: Boolean,
   end: Boolean,
@@ -8169,7 +8169,7 @@ const VListItemMedia = genericComponent()({
       slots
     } = _ref;
     useRender(() => {
-      return _createVNode$1K(props.tag, {
+      return _createVNode$1J(props.tag, {
         "class": _normalizeClass$1d(['v-list-item-media', {
           'v-list-item-media--start': props.start,
           'v-list-item-media--end': props.end
@@ -9319,14 +9319,14 @@ function useScopeId() {
   };
 }
 
-const {inject: inject$g,onScopeDispose: onScopeDispose$7,provide: provide$c,reactive: reactive$3,readonly: readonly$1,shallowRef: shallowRef$B,toRaw: toRaw$4,toRef: toRef$K,toValue: toValue$6,watchEffect: watchEffect$e} = await importShared('vue');
+const {inject: inject$g,onScopeDispose: onScopeDispose$7,provide: provide$c,reactive: reactive$2,readonly: readonly$1,shallowRef: shallowRef$B,toRaw: toRaw$4,toRef: toRef$K,toValue: toValue$6,watchEffect: watchEffect$e} = await importShared('vue');
 const StackSymbol = Symbol.for('vuetify:stack');
-const globalStack = reactive$3([]);
+const globalStack = reactive$2([]);
 function useStack(isActive, zIndex, disableGlobalStack) {
   const vm = getCurrentInstance('useStack');
   const createStackEntry = !disableGlobalStack;
   const parent = inject$g(StackSymbol, undefined);
-  const stack = reactive$3({
+  const stack = reactive$2({
     activeChildren: new Set()
   });
   provide$c(StackSymbol, stack);
@@ -9477,7 +9477,7 @@ const ClickOutside = {
   }
 };
 
-const {mergeProps:_mergeProps$11,createElementVNode:_createElementVNode$1t,createVNode:_createVNode$1J,Fragment:_Fragment$G,vShow:_vShow$7,withDirectives:_withDirectives$h} = await importShared('vue');
+const {mergeProps:_mergeProps$11,createElementVNode:_createElementVNode$1t,createVNode:_createVNode$1I,Fragment:_Fragment$G,vShow:_vShow$7,withDirectives:_withDirectives$h} = await importShared('vue');
 const {computed: computed$1u,mergeProps: mergeProps$a,onBeforeUnmount: onBeforeUnmount$5,ref: ref$P,Teleport,Transition: Transition$1,watch: watch$A} = await importShared('vue');
 function Scrim(props) {
   const {
@@ -9485,7 +9485,7 @@ function Scrim(props) {
     color,
     ...rest
   } = props;
-  return _createVNode$1J(Transition$1, {
+  return _createVNode$1I(Transition$1, {
     "name": "fade-transition",
     "appear": true
   }, {
@@ -9723,7 +9723,7 @@ const VOverlay = genericComponent()({
       props: mergeProps$a({
         ref: activatorRef
       }, activatorEvents.value, props.activatorProps)
-    }), isMounted.value && hasContent.value && _createVNode$1J(Teleport, {
+    }), isMounted.value && hasContent.value && _createVNode$1I(Teleport, {
       "disabled": !teleportTarget.value,
       "to": teleportTarget.value
     }, {
@@ -9739,11 +9739,11 @@ const VOverlay = genericComponent()({
         }, props.style],
         "ref": root,
         "onKeydown": onKeydownSelf
-      }, scopeId, attrs), [_createVNode$1J(Scrim, _mergeProps$11({
+      }, scopeId, attrs), [_createVNode$1I(Scrim, _mergeProps$11({
         "color": scrimColor,
         "modelValue": isActive.value && !!props.scrim,
         "ref": scrimEl
-      }, scrimEvents.value), null), _createVNode$1J(MaybeTransition, {
+      }, scrimEvents.value), null), _createVNode$1I(MaybeTransition, {
         "appear": true,
         "persisted": true,
         "transition": props.transition,
@@ -9778,7 +9778,7 @@ const VOverlay = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$1I,mergeProps:_mergeProps$10} = await importShared('vue');
+const {createVNode:_createVNode$1H,mergeProps:_mergeProps$10} = await importShared('vue');
 const {computed: computed$1t,inject: inject$f,mergeProps: mergeProps$9,onBeforeUnmount: onBeforeUnmount$4,onDeactivated,provide: provide$b,ref: ref$O,shallowRef: shallowRef$A,toRef: toRef$J,useId: useId$9,watch: watch$z} = await importShared('vue');
 const makeVMenuProps = propsFactory({
   // TODO
@@ -9897,7 +9897,7 @@ const VMenu = genericComponent()({
     }, props.activatorProps));
     useRender(() => {
       const overlayProps = VOverlay.filterProps(props);
-      return _createVNode$1I(VOverlay, _mergeProps$10({
+      return _createVNode$1H(VOverlay, _mergeProps$10({
         "ref": overlay,
         "id": id.value,
         "class": ['v-menu', props.class],
@@ -9916,7 +9916,7 @@ const VMenu = genericComponent()({
           for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
             args[_key] = arguments[_key];
           }
-          return _createVNode$1I(VDefaultsProvider, {
+          return _createVNode$1H(VDefaultsProvider, {
             "root": "VMenu"
           }, {
             default: () => [slots.default?.(...args)]
@@ -9935,7 +9935,7 @@ const VSelect$1 = '';
 
 const VSheet$1 = '';
 
-const {normalizeClass:_normalizeClass$1c,normalizeStyle:_normalizeStyle$10,createVNode:_createVNode$1H} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1c,normalizeStyle:_normalizeStyle$10,createVNode:_createVNode$1G} = await importShared('vue');
 const makeVSheetProps = propsFactory({
   color: String,
   ...makeBorderProps(),
@@ -9980,7 +9980,7 @@ const VSheet = genericComponent()({
     const {
       roundedClasses
     } = useRounded(props);
-    useRender(() => _createVNode$1H(props.tag, {
+    useRender(() => _createVNode$1G(props.tag, {
       "class": _normalizeClass$1c(['v-sheet', themeClasses.value, backgroundColorClasses.value, borderClasses.value, elevationClasses.value, positionClasses.value, roundedClasses.value, props.class]),
       "style": _normalizeStyle$10([backgroundColorStyles.value, dimensionStyles.value, locationStyles.value, props.style])
     }, slots));
@@ -9992,7 +9992,7 @@ const VTextField$1 = '';
 
 const VCounter$1 = '';
 
-const {vShow:_vShow$6,normalizeClass:_normalizeClass$1b,normalizeStyle:_normalizeStyle$$,createElementVNode:_createElementVNode$1s,withDirectives:_withDirectives$g,createVNode:_createVNode$1G} = await importShared('vue');
+const {vShow:_vShow$6,normalizeClass:_normalizeClass$1b,normalizeStyle:_normalizeStyle$$,createElementVNode:_createElementVNode$1s,withDirectives:_withDirectives$g,createVNode:_createVNode$1F} = await importShared('vue');
 const {toRef: toRef$I} = await importShared('vue');
 const makeVCounterProps = propsFactory({
   active: Boolean,
@@ -10020,7 +10020,7 @@ const VCounter = genericComponent()({
     const counter = toRef$I(() => {
       return props.max ? `${props.value} / ${props.max}` : String(props.value);
     });
-    useRender(() => _createVNode$1G(MaybeTransition, {
+    useRender(() => _createVNode$1F(MaybeTransition, {
       "transition": props.transition
     }, {
       default: () => [_withDirectives$g(_createElementVNode$1s("div", {
@@ -10040,7 +10040,7 @@ const VCounter = genericComponent()({
 
 const VField$1 = '';
 
-const {normalizeClass:_normalizeClass$1a,normalizeStyle:_normalizeStyle$_,createVNode:_createVNode$1F} = await importShared('vue');
+const {normalizeClass:_normalizeClass$1a,normalizeStyle:_normalizeStyle$_,createVNode:_createVNode$1E} = await importShared('vue');
 const makeVFieldLabelProps = propsFactory({
   floating: Boolean,
   ...makeComponentProps()
@@ -10052,7 +10052,7 @@ const VFieldLabel = genericComponent()({
     let {
       slots
     } = _ref;
-    useRender(() => _createVNode$1F(VLabel, {
+    useRender(() => _createVNode$1E(VLabel, {
       "class": _normalizeClass$1a(['v-field-label', {
         'v-field-label--floating': props.floating
       }, props.class]),
@@ -10062,7 +10062,7 @@ const VFieldLabel = genericComponent()({
   }
 });
 
-const {createElementVNode:_createElementVNode$1r,createVNode:_createVNode$1E,mergeProps:_mergeProps$$,vShow:_vShow$5,withDirectives:_withDirectives$f,Fragment:_Fragment$F,normalizeClass:_normalizeClass$19,normalizeStyle:_normalizeStyle$Z} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1r,createVNode:_createVNode$1D,mergeProps:_mergeProps$$,vShow:_vShow$5,withDirectives:_withDirectives$f,Fragment:_Fragment$F,normalizeClass:_normalizeClass$19,normalizeStyle:_normalizeStyle$Z} = await importShared('vue');
 const {computed: computed$1s,ref: ref$N,toRef: toRef$H,useId: useId$8,watch: watch$y} = await importShared('vue');
 const allowedVariants$1 = ['underlined', 'outlined', 'filled', 'solo', 'solo-inverted', 'solo-filled', 'plain'];
 const makeVFieldProps = propsFactory({
@@ -10271,7 +10271,7 @@ const VField = genericComponent()({
         "onClick": onClick
       }, attrs), [_createElementVNode$1r("div", {
         "class": "v-field__overlay"
-      }, null), _createVNode$1E(LoaderSlot, {
+      }, null), _createVNode$1D(LoaderSlot, {
         "name": "v-field",
         "active": !!props.loading,
         "color": props.error ? 'error' : typeof props.loading === 'string' ? props.loading : props.color
@@ -10280,14 +10280,14 @@ const VField = genericComponent()({
       }), hasPrepend && _createElementVNode$1r("div", {
         "key": "prepend",
         "class": "v-field__prepend-inner"
-      }, [slots['prepend-inner'] ? slots['prepend-inner'](slotProps.value) : props.prependInnerIcon && _createVNode$1E(InputIcon, {
+      }, [slots['prepend-inner'] ? slots['prepend-inner'](slotProps.value) : props.prependInnerIcon && _createVNode$1D(InputIcon, {
         "key": "prepend-icon",
         "name": "prependInner",
         "color": iconColor.value
       }, null)]), _createElementVNode$1r("div", {
         "class": "v-field__field",
         "data-no-activator": ""
-      }, [['filled', 'solo', 'solo-inverted', 'solo-filled'].includes(props.variant) && hasFloatingLabel.value && _createVNode$1E(VFieldLabel, _mergeProps$$({
+      }, [['filled', 'solo', 'solo-inverted', 'solo-filled'].includes(props.variant) && hasFloatingLabel.value && _createVNode$1D(VFieldLabel, _mergeProps$$({
         "key": "floating-label",
         "ref": floatingLabelRef,
         "class": [textColorClasses.value],
@@ -10296,7 +10296,7 @@ const VField = genericComponent()({
         "style": textColorStyles.value
       }), {
         default: () => [label()]
-      }), hasLabel.value && _createVNode$1E(VFieldLabel, _mergeProps$$({
+      }), hasLabel.value && _createVNode$1D(VFieldLabel, _mergeProps$$({
         "key": "label",
         "ref": labelRef,
         "id": props.labelId
@@ -10315,7 +10315,7 @@ const VField = genericComponent()({
         "id": id.value,
         "class": "v-field__input",
         "aria-describedby": messagesId.value
-      }, null)]), hasClear && _createVNode$1E(VExpandXTransition, {
+      }, null)]), hasClear && _createVNode$1D(VExpandXTransition, {
         "key": "clear"
       }, {
         default: () => [_withDirectives$f(_createElementVNode$1r("div", {
@@ -10324,7 +10324,7 @@ const VField = genericComponent()({
             e.preventDefault();
             e.stopPropagation();
           }
-        }, [_createVNode$1E(VDefaultsProvider, {
+        }, [_createVNode$1D(VDefaultsProvider, {
           "defaults": {
             VIcon: {
               icon: props.clearIcon
@@ -10339,7 +10339,7 @@ const VField = genericComponent()({
               onClick: props['onClick:clear'],
               tabindex: -1
             }
-          }) : _createVNode$1E(InputIcon, {
+          }) : _createVNode$1D(InputIcon, {
             "name": "clear",
             "onFocus": focus,
             "onBlur": blur,
@@ -10349,7 +10349,7 @@ const VField = genericComponent()({
       }), hasAppend && _createElementVNode$1r("div", {
         "key": "append",
         "class": "v-field__append-inner"
-      }, [slots['append-inner'] ? slots['append-inner'](slotProps.value) : props.appendInnerIcon && _createVNode$1E(InputIcon, {
+      }, [slots['append-inner'] ? slots['append-inner'](slotProps.value) : props.appendInnerIcon && _createVNode$1D(InputIcon, {
         "key": "append-icon",
         "name": "appendInner",
         "color": iconColor.value
@@ -10360,14 +10360,14 @@ const VField = genericComponent()({
         "class": "v-field__outline__start"
       }, null), hasFloatingLabel.value && _createElementVNode$1r("div", {
         "class": "v-field__outline__notch"
-      }, [_createVNode$1E(VFieldLabel, _mergeProps$$({
+      }, [_createVNode$1D(VFieldLabel, _mergeProps$$({
         "ref": floatingLabelRef,
         "floating": true
       }, floatingLabelProps.value), {
         default: () => [label()]
       })]), _createElementVNode$1r("div", {
         "class": "v-field__outline__end"
-      }, null)]), isPlainOrUnderlined.value && hasFloatingLabel.value && _createVNode$1E(VFieldLabel, _mergeProps$$({
+      }, null)]), isPlainOrUnderlined.value && hasFloatingLabel.value && _createVNode$1D(VFieldLabel, _mergeProps$$({
         "ref": floatingLabelRef,
         "floating": true
       }, floatingLabelProps.value), {
@@ -10419,7 +10419,7 @@ function useAutofocus(props) {
   };
 }
 
-const {mergeProps:_mergeProps$_,createElementVNode:_createElementVNode$1q,Fragment:_Fragment$E,normalizeClass:_normalizeClass$18,createVNode:_createVNode$1D} = await importShared('vue');
+const {mergeProps:_mergeProps$_,createElementVNode:_createElementVNode$1q,Fragment:_Fragment$E,normalizeClass:_normalizeClass$18,createVNode:_createVNode$1C} = await importShared('vue');
 const {cloneVNode,computed: computed$1r,nextTick: nextTick$n,ref: ref$M,withDirectives} = await importShared('vue');
 const activeTypes = ['color', 'file', 'time', 'date', 'datetime-local', 'week', 'month'];
 const makeVTextFieldProps = propsFactory({
@@ -10544,7 +10544,7 @@ const VTextField = genericComponent()({
         ...inputProps
       } = VInput.filterProps(props);
       const fieldProps = VField.filterProps(props);
-      return _createVNode$1D(VInput, _mergeProps$_({
+      return _createVNode$1C(VInput, _mergeProps$_({
         "ref": vInputRef,
         "modelValue": model.value,
         "onUpdate:modelValue": $event => model.value = $event,
@@ -10569,7 +10569,7 @@ const VTextField = genericComponent()({
             hasDetails,
             reset
           } = _ref2;
-          return _createVNode$1D(VField, _mergeProps$_({
+          return _createVNode$1C(VField, _mergeProps$_({
             "ref": vFieldRef,
             "onMousedown": onControlMousedown,
             "onClick": onControlClick,
@@ -10632,7 +10632,7 @@ const VTextField = genericComponent()({
             }
           });
         },
-        details: hasDetails ? slotProps => _createElementVNode$1q(_Fragment$E, null, [slots.details?.(slotProps), hasCounter && _createElementVNode$1q(_Fragment$E, null, [_createElementVNode$1q("span", null, null), _createVNode$1D(VCounter, {
+        details: hasDetails ? slotProps => _createElementVNode$1q(_Fragment$E, null, [slots.details?.(slotProps), hasCounter && _createElementVNode$1q(_Fragment$E, null, [_createElementVNode$1q("span", null, null), _createVNode$1C(VCounter, {
           "active": props.persistentCounter || isFocused.value,
           "value": counterValue.value,
           "max": max.value,
@@ -10940,7 +10940,7 @@ function binaryClosest(arr, val) {
   return target;
 }
 
-const {createVNode:_createVNode$1C,Fragment:_Fragment$C,createElementVNode:_createElementVNode$1o,normalizeClass:_normalizeClass$17,normalizeStyle:_normalizeStyle$Y} = await importShared('vue');
+const {createVNode:_createVNode$1B,Fragment:_Fragment$C,createElementVNode:_createElementVNode$1o,normalizeClass:_normalizeClass$17,normalizeStyle:_normalizeStyle$Y} = await importShared('vue');
 const {onMounted: onMounted$b,onScopeDispose: onScopeDispose$5,toRef: toRef$F} = await importShared('vue');
 const makeVVirtualScrollProps = propsFactory({
   items: {
@@ -10998,7 +10998,7 @@ const VVirtualScroll = genericComponent()({
       onScopeDispose$5(handleListeners);
     });
     useRender(() => {
-      const children = computedItems.value.map(item => _createVNode$1C(VVirtualScrollItem, {
+      const children = computedItems.value.map(item => _createVNode$1B(VVirtualScrollItem, {
         "key": item.key,
         "renderless": props.renderless,
         "onUpdate:height": height => handleItemResize(item.index, height)
@@ -11370,7 +11370,7 @@ function useMenuActivator(props, isOpen) {
   };
 }
 
-const {Fragment:_Fragment$A,createElementVNode:_createElementVNode$1m,createVNode:_createVNode$1B,mergeProps:_mergeProps$Y,createTextVNode:_createTextVNode$a} = await importShared('vue');
+const {Fragment:_Fragment$A,createElementVNode:_createElementVNode$1m,createVNode:_createVNode$1A,mergeProps:_mergeProps$Y,createTextVNode:_createTextVNode$9} = await importShared('vue');
 const {computed: computed$1n,mergeProps: mergeProps$8,nextTick: nextTick$l,ref: ref$K,shallowRef: shallowRef$v,toRef: toRef$D,watch: watch$u} = await importShared('vue');
 const makeSelectProps = propsFactory({
   chips: Boolean,
@@ -11709,7 +11709,7 @@ const VSelect = genericComponent()({
         search,
         filteredItems: filteredItems.value
       };
-      return _createVNode$1B(VTextField, _mergeProps$Y({
+      return _createVNode$1A(VTextField, _mergeProps$Y({
         "ref": vTextFieldRef
       }, textFieldProps, {
         "modelValue": model.value.map(v => v.props.title).join(', '),
@@ -11750,7 +11750,7 @@ const VSelect = genericComponent()({
             "key": item.value,
             "value": item.value,
             "selected": selectedValues.value.includes(item.value)
-          }, null))]), _createVNode$1B(VMenu, _mergeProps$Y({
+          }, null))]), _createVNode$1A(VMenu, _mergeProps$Y({
             "id": menuId.value,
             "ref": vMenuRef,
             "modelValue": menu.value,
@@ -11766,14 +11766,14 @@ const VSelect = genericComponent()({
             "onAfterEnter": onAfterEnter,
             "onAfterLeave": onAfterLeave
           }, computedMenuProps.value), {
-            default: () => [_createVNode$1B(VSheet, {
+            default: () => [_createVNode$1A(VSheet, {
               "onFocusin": onFocusin,
               "onFocusout": onFocusout,
               "onKeydown": onMenuKeydown
             }, {
               default: () => [slots['menu-header'] && _createElementVNode$1m("header", {
                 "ref": headerRef
-              }, [slots['menu-header'](menuSlotProps)]), hasList && _createVNode$1B(VList, _mergeProps$Y({
+              }, [slots['menu-header'](menuSlotProps)]), hasList && _createVNode$1A(VList, _mergeProps$Y({
                 "key": "select-list",
                 "ref": listRef,
                 "selected": selectedValues.value,
@@ -11785,10 +11785,10 @@ const VSelect = genericComponent()({
                 "aria-multiselectable": props.multiple,
                 "color": props.itemColor ?? props.color
               }, listEvents, props.listProps), {
-                default: () => [slots['prepend-item']?.(), !displayItems.value.length && !props.hideNoData && (slots['no-data']?.() ?? _createVNode$1B(VListItem, {
+                default: () => [slots['prepend-item']?.(), !displayItems.value.length && !props.hideNoData && (slots['no-data']?.() ?? _createVNode$1A(VListItem, {
                   "key": "no-data",
                   "title": t(props.noDataText)
-                }, null)), _createVNode$1B(VVirtualScroll, {
+                }, null)), _createVNode$1A(VVirtualScroll, {
                   "ref": vVirtualScrollRef,
                   "renderless": true,
                   "items": displayItems.value,
@@ -11812,7 +11812,7 @@ const VSelect = genericComponent()({
                       return slots.divider?.({
                         props: item.raw,
                         index
-                      }) ?? _createVNode$1B(VDivider, _mergeProps$Y(item.props, {
+                      }) ?? _createVNode$1A(VDivider, _mergeProps$Y(item.props, {
                         "key": `divider-${index}`
                       }), null);
                     }
@@ -11820,7 +11820,7 @@ const VSelect = genericComponent()({
                       return slots.subheader?.({
                         props: item.raw,
                         index
-                      }) ?? _createVNode$1B(VListSubheader, _mergeProps$Y(item.props, {
+                      }) ?? _createVNode$1A(VListSubheader, _mergeProps$Y(item.props, {
                         "key": `subheader-${index}`
                       }), null);
                     }
@@ -11828,23 +11828,23 @@ const VSelect = genericComponent()({
                       item,
                       index,
                       props: itemProps
-                    }) ?? _createVNode$1B(VListItem, _mergeProps$Y(itemProps, {
+                    }) ?? _createVNode$1A(VListItem, _mergeProps$Y(itemProps, {
                       "role": "option"
                     }), {
                       prepend: _ref4 => {
                         let {
                           isSelected
                         } = _ref4;
-                        return _createElementVNode$1m(_Fragment$A, null, [props.multiple && !props.hideSelected ? _createVNode$1B(VCheckboxBtn, {
+                        return _createElementVNode$1m(_Fragment$A, null, [props.multiple && !props.hideSelected ? _createVNode$1A(VCheckboxBtn, {
                           "key": item.value,
                           "modelValue": isSelected,
                           "ripple": false,
                           "tabindex": "-1",
                           "aria-hidden": true,
                           "onClick": event => event.preventDefault()
-                        }, null) : undefined, camelizedProps.prependAvatar && _createVNode$1B(VAvatar, {
+                        }, null) : undefined, camelizedProps.prependAvatar && _createVNode$1A(VAvatar, {
                           "image": camelizedProps.prependAvatar
-                        }, null), camelizedProps.prependIcon && _createVNode$1B(VIcon, {
+                        }, null), camelizedProps.prependIcon && _createVNode$1A(VIcon, {
                           "icon": camelizedProps.prependIcon
                         }, null)]);
                       },
@@ -11892,13 +11892,13 @@ const VSelect = genericComponent()({
             return _createElementVNode$1m("div", {
               "key": item.value,
               "class": "v-select__selection"
-            }, [hasChips ? !slots.chip ? _createVNode$1B(VChip, _mergeProps$Y({
+            }, [hasChips ? !slots.chip ? _createVNode$1A(VChip, _mergeProps$Y({
               "key": "chip",
               "closable": closableChips.value,
               "size": "small",
               "text": item.title,
               "disabled": item.props.disabled
-            }, slotProps), null) : _createVNode$1B(VDefaultsProvider, {
+            }, slotProps), null) : _createVNode$1A(VDefaultsProvider, {
               "key": "chip-defaults",
               "defaults": {
                 VChip: {
@@ -11913,19 +11913,19 @@ const VSelect = genericComponent()({
               "class": "v-select__selection-text"
             }, [item.title, props.multiple && index < model.value.length - 1 && _createElementVNode$1m("span", {
               "class": "v-select__selection-comma"
-            }, [_createTextVNode$a(",")])])]);
+            }, [_createTextVNode$9(",")])])]);
           })]);
         },
         'append-inner': function () {
           for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
             args[_key] = arguments[_key];
           }
-          return _createElementVNode$1m(_Fragment$A, null, [slots['append-inner']?.(...args), props.menuIcon ? _createVNode$1B(VIcon, {
+          return _createElementVNode$1m(_Fragment$A, null, [slots['append-inner']?.(...args), props.menuIcon ? _createVNode$1A(VIcon, {
             "class": "v-select__menu-icon",
             "color": vTextFieldRef.value?.fieldIconColor,
             "icon": props.menuIcon,
             "aria-hidden": true
-          }, null) : undefined, props.appendInnerIcon && _createVNode$1B(InputIcon, {
+          }, null) : undefined, props.appendInnerIcon && _createVNode$1A(InputIcon, {
             "key": "append-icon",
             "name": "appendInner",
             "color": args[0].iconColor.value
@@ -11943,7 +11943,7 @@ const VSelect = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$z,createElementVNode:_createElementVNode$1l,createVNode:_createVNode$1A,mergeProps:_mergeProps$X,createTextVNode:_createTextVNode$9,normalizeClass:_normalizeClass$15,normalizeStyle:_normalizeStyle$X} = await importShared('vue');
+const {Fragment:_Fragment$z,createElementVNode:_createElementVNode$1l,createVNode:_createVNode$1z,mergeProps:_mergeProps$X,createTextVNode:_createTextVNode$8,normalizeClass:_normalizeClass$15,normalizeStyle:_normalizeStyle$X} = await importShared('vue');
 const {computed: computed$1m,mergeProps: mergeProps$7,nextTick: nextTick$k,ref: ref$J,shallowRef: shallowRef$u,toRef: toRef$C,watch: watch$t} = await importShared('vue');
 const makeVAutocompleteProps = propsFactory({
   autoSelectFirst: {
@@ -12268,7 +12268,7 @@ const VAutocomplete = genericComponent()({
         search,
         filteredItems: filteredItems.value
       };
-      return _createVNode$1A(VTextField, _mergeProps$X({
+      return _createVNode$1z(VTextField, _mergeProps$X({
         "ref": vTextFieldRef
       }, textFieldProps, {
         "modelValue": search.value,
@@ -12300,7 +12300,7 @@ const VAutocomplete = genericComponent()({
           let {
             id
           } = _ref3;
-          return _createElementVNode$1l(_Fragment$z, null, [_createVNode$1A(VMenu, _mergeProps$X({
+          return _createElementVNode$1l(_Fragment$z, null, [_createVNode$1z(VMenu, _mergeProps$X({
             "id": menuId.value,
             "ref": vMenuRef,
             "modelValue": menu.value,
@@ -12315,13 +12315,13 @@ const VAutocomplete = genericComponent()({
             "onAfterEnter": onAfterEnter,
             "onAfterLeave": onAfterLeave
           }, props.menuProps), {
-            default: () => [_createVNode$1A(VSheet, {
+            default: () => [_createVNode$1z(VSheet, {
               "onFocusin": onFocusin,
               "onKeydown": onMenuKeydown
             }, {
               default: () => [slots['menu-header'] && _createElementVNode$1l("header", {
                 "ref": headerRef
-              }, [slots['menu-header'](menuSlotProps)]), hasList && _createVNode$1A(VList, _mergeProps$X({
+              }, [slots['menu-header'](menuSlotProps)]), hasList && _createVNode$1z(VList, _mergeProps$X({
                 "key": "autocomplete-list",
                 "ref": listRef,
                 "filterable": true,
@@ -12336,10 +12336,10 @@ const VAutocomplete = genericComponent()({
                 "aria-multiselectable": props.multiple,
                 "color": props.itemColor ?? props.color
               }, listEvents, props.listProps), {
-                default: () => [slots['prepend-item']?.(), !displayItems.value.length && !props.hideNoData && (slots['no-data']?.() ?? _createVNode$1A(VListItem, {
+                default: () => [slots['prepend-item']?.(), !displayItems.value.length && !props.hideNoData && (slots['no-data']?.() ?? _createVNode$1z(VListItem, {
                   "key": "no-data",
                   "title": t(props.noDataText)
-                }, null)), _createVNode$1A(VVirtualScroll, {
+                }, null)), _createVNode$1z(VVirtualScroll, {
                   "ref": vVirtualScrollRef,
                   "renderless": true,
                   "items": displayItems.value,
@@ -12363,7 +12363,7 @@ const VAutocomplete = genericComponent()({
                       return slots.divider?.({
                         props: item.raw,
                         index
-                      }) ?? _createVNode$1A(VDivider, _mergeProps$X(item.props, {
+                      }) ?? _createVNode$1z(VDivider, _mergeProps$X(item.props, {
                         "key": `divider-${index}`
                       }), null);
                     }
@@ -12371,7 +12371,7 @@ const VAutocomplete = genericComponent()({
                       return slots.subheader?.({
                         props: item.raw,
                         index
-                      }) ?? _createVNode$1A(VListSubheader, _mergeProps$X(item.props, {
+                      }) ?? _createVNode$1z(VListSubheader, _mergeProps$X(item.props, {
                         "key": `subheader-${index}`
                       }), null);
                     }
@@ -12379,23 +12379,23 @@ const VAutocomplete = genericComponent()({
                       item,
                       index,
                       props: itemProps
-                    }) ?? _createVNode$1A(VListItem, _mergeProps$X(itemProps, {
+                    }) ?? _createVNode$1z(VListItem, _mergeProps$X(itemProps, {
                       "role": "option"
                     }), {
                       prepend: _ref5 => {
                         let {
                           isSelected
                         } = _ref5;
-                        return _createElementVNode$1l(_Fragment$z, null, [props.multiple && !props.hideSelected ? _createVNode$1A(VCheckboxBtn, {
+                        return _createElementVNode$1l(_Fragment$z, null, [props.multiple && !props.hideSelected ? _createVNode$1z(VCheckboxBtn, {
                           "key": item.value,
                           "modelValue": isSelected,
                           "ripple": false,
                           "tabindex": "-1",
                           "aria-hidden": true,
                           "onClick": event => event.preventDefault()
-                        }, null) : undefined, item.props.prependAvatar && _createVNode$1A(VAvatar, {
+                        }, null) : undefined, item.props.prependAvatar && _createVNode$1z(VAvatar, {
                           "image": item.props.prependAvatar
-                        }, null), item.props.prependIcon && _createVNode$1A(VIcon, {
+                        }, null), item.props.prependIcon && _createVNode$1z(VIcon, {
                           "icon": item.props.prependIcon
                         }, null)]);
                       },
@@ -12444,13 +12444,13 @@ const VAutocomplete = genericComponent()({
               "key": item.value,
               "class": _normalizeClass$15(['v-autocomplete__selection', index === selectionIndex.value && ['v-autocomplete__selection--selected', textColorClasses.value]]),
               "style": _normalizeStyle$X(index === selectionIndex.value ? textColorStyles.value : {})
-            }, [hasChips.value ? !slots.chip ? _createVNode$1A(VChip, _mergeProps$X({
+            }, [hasChips.value ? !slots.chip ? _createVNode$1z(VChip, _mergeProps$X({
               "key": "chip",
               "closable": closableChips.value,
               "size": "small",
               "text": item.title,
               "disabled": item.props.disabled
-            }, slotProps), null) : _createVNode$1A(VDefaultsProvider, {
+            }, slotProps), null) : _createVNode$1z(VDefaultsProvider, {
               "key": "chip-defaults",
               "defaults": {
                 VChip: {
@@ -12465,14 +12465,14 @@ const VAutocomplete = genericComponent()({
               "class": "v-autocomplete__selection-text"
             }, [item.title, props.multiple && index < model.value.length - 1 && _createElementVNode$1l("span", {
               "class": "v-autocomplete__selection-comma"
-            }, [_createTextVNode$9(",")])])]);
+            }, [_createTextVNode$8(",")])])]);
           })]);
         },
         'append-inner': function () {
           for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
             args[_key] = arguments[_key];
           }
-          return _createElementVNode$1l(_Fragment$z, null, [slots['append-inner']?.(...args), props.menuIcon ? _createVNode$1A(VIcon, {
+          return _createElementVNode$1l(_Fragment$z, null, [slots['append-inner']?.(...args), props.menuIcon ? _createVNode$1z(VIcon, {
             "class": "v-autocomplete__menu-icon",
             "color": vTextFieldRef.value?.fieldIconColor,
             "icon": props.menuIcon,
@@ -12480,7 +12480,7 @@ const VAutocomplete = genericComponent()({
             "onClick": noop,
             "aria-hidden": true,
             "tabindex": "-1"
-          }, null) : undefined, props.appendInnerIcon && _createVNode$1A(InputIcon, {
+          }, null) : undefined, props.appendInnerIcon && _createVNode$1z(InputIcon, {
             "key": "append-icon",
             "name": "appendInner",
             "color": args[0].iconColor.value
@@ -12501,7 +12501,7 @@ const VAutocomplete = genericComponent()({
 
 const VBadge$1 = '';
 
-const {createVNode:_createVNode$1z,vShow:_vShow$4,mergeProps:_mergeProps$W,createElementVNode:_createElementVNode$1k,withDirectives:_withDirectives$e} = await importShared('vue');
+const {createVNode:_createVNode$1y,vShow:_vShow$4,mergeProps:_mergeProps$W,createElementVNode:_createElementVNode$1k,withDirectives:_withDirectives$e} = await importShared('vue');
 const makeVBadgeProps = propsFactory({
   bordered: Boolean,
   color: String,
@@ -12569,7 +12569,7 @@ const VBadge = genericComponent()({
       const value = Number(props.content);
       const content = !props.max || isNaN(value) ? props.content : value <= Number(props.max) ? value : `${props.max}+`;
       const [badgeAttrs, attrs] = pickWithRest(ctx.attrs, ['aria-atomic', 'aria-label', 'aria-live', 'role', 'title']);
-      return _createVNode$1z(props.tag, _mergeProps$W({
+      return _createVNode$1y(props.tag, _mergeProps$W({
         "class": ['v-badge', {
           'v-badge--bordered': props.bordered,
           'v-badge--dot': props.dot,
@@ -12581,7 +12581,7 @@ const VBadge = genericComponent()({
       }), {
         default: () => [_createElementVNode$1k("div", {
           "class": "v-badge__wrapper"
-        }, [ctx.slots.default?.(), _createVNode$1z(MaybeTransition, {
+        }, [ctx.slots.default?.(), _createVNode$1y(MaybeTransition, {
           "transition": props.transition
         }, {
           default: () => [_withDirectives$e(_createElementVNode$1k("span", _mergeProps$W({
@@ -12591,7 +12591,7 @@ const VBadge = genericComponent()({
             "aria-label": t(props.label, value),
             "aria-live": "polite",
             "role": "status"
-          }, badgeAttrs), [props.dot ? undefined : ctx.slots.badge ? ctx.slots.badge?.() : props.icon ? _createVNode$1z(VIcon, {
+          }, badgeAttrs), [props.dot ? undefined : ctx.slots.badge ? ctx.slots.badge?.() : props.icon ? _createVNode$1y(VIcon, {
             "icon": props.icon
           }, null) : content]), [[_vShow$4, props.modelValue]])]
         })])]
@@ -12635,7 +12635,7 @@ const VBannerActions = genericComponent()({
 // Utilities
 const VBannerText = createSimpleFunctional('v-banner-text');
 
-const {createVNode:_createVNode$1y,createElementVNode:_createElementVNode$1i,normalizeClass:_normalizeClass$13,normalizeStyle:_normalizeStyle$V} = await importShared('vue');
+const {createVNode:_createVNode$1x,createElementVNode:_createElementVNode$1i,normalizeClass:_normalizeClass$13,normalizeStyle:_normalizeStyle$V} = await importShared('vue');
 const {toRef: toRef$B} = await importShared('vue');
 const makeVBannerProps = propsFactory({
   avatar: String,
@@ -12711,7 +12711,7 @@ const VBanner = genericComponent()({
       const hasText = !!(props.text || slots.text);
       const hasPrependMedia = !!(props.avatar || props.icon);
       const hasPrepend = !!(hasPrependMedia || slots.prepend);
-      return _createVNode$1y(props.tag, {
+      return _createVNode$1x(props.tag, {
         "class": _normalizeClass$13(['v-banner', {
           'v-banner--stacked': props.stacked || mobile.value,
           'v-banner--sticky': props.sticky,
@@ -12723,13 +12723,13 @@ const VBanner = genericComponent()({
         default: () => [hasPrepend && _createElementVNode$1i("div", {
           "key": "prepend",
           "class": "v-banner__prepend"
-        }, [!slots.prepend ? _createVNode$1y(VAvatar, {
+        }, [!slots.prepend ? _createVNode$1x(VAvatar, {
           "key": "prepend-avatar",
           "color": color.value,
           "density": density.value,
           "icon": props.icon,
           "image": props.avatar
-        }, null) : _createVNode$1y(VDefaultsProvider, {
+        }, null) : _createVNode$1x(VDefaultsProvider, {
           "key": "prepend-defaults",
           "disabled": !hasPrependMedia,
           "defaults": {
@@ -12742,11 +12742,11 @@ const VBanner = genericComponent()({
           }
         }, slots.prepend)]), _createElementVNode$1i("div", {
           "class": "v-banner__content"
-        }, [hasText && _createVNode$1y(VBannerText, {
+        }, [hasText && _createVNode$1x(VBannerText, {
           "key": "text"
         }, {
           default: () => [slots.text?.() ?? props.text]
-        }), slots.default?.()]), slots.actions && _createVNode$1y(VBannerActions, {
+        }), slots.default?.()]), slots.actions && _createVNode$1x(VBannerActions, {
           "key": "actions"
         }, slots.actions)]
       });
@@ -12756,7 +12756,7 @@ const VBanner = genericComponent()({
 
 const VBottomNavigation$1 = '';
 
-const {createElementVNode:_createElementVNode$1h,normalizeClass:_normalizeClass$12,normalizeStyle:_normalizeStyle$U,createVNode:_createVNode$1x} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1h,normalizeClass:_normalizeClass$12,normalizeStyle:_normalizeStyle$U,createVNode:_createVNode$1w} = await importShared('vue');
 const {computed: computed$1l,toRef: toRef$A} = await importShared('vue');
 const makeVBottomNavigationProps = propsFactory({
   baseColor: String,
@@ -12850,7 +12850,7 @@ const VBottomNavigation = genericComponent()({
       scoped: true
     });
     useRender(() => {
-      return _createVNode$1x(props.tag, {
+      return _createVNode$1w(props.tag, {
         "class": _normalizeClass$12(['v-bottom-navigation', {
           'v-bottom-navigation--active': isActive.value,
           'v-bottom-navigation--grow': props.grow,
@@ -12873,7 +12873,7 @@ const VBottomSheet$1 = '';
 
 const VDialog$1 = '';
 
-const {createVNode:_createVNode$1w,mergeProps:_mergeProps$V} = await importShared('vue');
+const {createVNode:_createVNode$1v,mergeProps:_mergeProps$V} = await importShared('vue');
 const {mergeProps: mergeProps$6,nextTick: nextTick$j,ref: ref$I,watch: watch$s} = await importShared('vue');
 const makeVDialogProps = propsFactory({
   fullscreen: Boolean,
@@ -12934,7 +12934,7 @@ const VDialog = genericComponent()({
       const contentProps = mergeProps$6({
         tabindex: -1
       }, props.contentProps);
-      return _createVNode$1w(VOverlay, _mergeProps$V({
+      return _createVNode$1v(VOverlay, _mergeProps$V({
         "ref": overlay,
         "class": ['v-dialog', {
           'v-dialog--fullscreen': props.fullscreen,
@@ -12960,7 +12960,7 @@ const VDialog = genericComponent()({
           for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
             args[_key] = arguments[_key];
           }
-          return _createVNode$1w(VDefaultsProvider, {
+          return _createVNode$1v(VDefaultsProvider, {
             "root": "VDialog"
           }, {
             default: () => [slots.default?.(...args)]
@@ -12972,7 +12972,7 @@ const VDialog = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$U,createVNode:_createVNode$1v} = await importShared('vue');
+const {mergeProps:_mergeProps$U,createVNode:_createVNode$1u} = await importShared('vue');
 const makeVBottomSheetProps = propsFactory({
   inset: Boolean,
   ...makeVDialogProps({
@@ -12992,7 +12992,7 @@ const VBottomSheet = genericComponent()({
     const isActive = useProxiedModel(props, 'modelValue');
     useRender(() => {
       const dialogProps = VDialog.filterProps(props);
-      return _createVNode$1v(VDialog, _mergeProps$U(dialogProps, {
+      return _createVNode$1u(VDialog, _mergeProps$U(dialogProps, {
         "contentClass": ['v-bottom-sheet__content', props.contentClass],
         "modelValue": isActive.value,
         "onUpdate:modelValue": $event => isActive.value = $event,
@@ -13029,7 +13029,7 @@ const VBreadcrumbsDivider = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$T,createElementVNode:_createElementVNode$1f,normalizeClass:_normalizeClass$10,normalizeStyle:_normalizeStyle$S,createVNode:_createVNode$1u} = await importShared('vue');
+const {mergeProps:_mergeProps$T,createElementVNode:_createElementVNode$1f,normalizeClass:_normalizeClass$10,normalizeStyle:_normalizeStyle$S,createVNode:_createVNode$1t} = await importShared('vue');
 const {computed: computed$1k} = await importShared('vue');
 const makeVBreadcrumbsItemProps = propsFactory({
   active: Boolean,
@@ -13063,7 +13063,7 @@ const VBreadcrumbsItem = genericComponent()({
       textColorStyles
     } = useTextColor(() => isActive.value ? props.activeColor : props.color);
     useRender(() => {
-      return _createVNode$1u(props.tag, {
+      return _createVNode$1t(props.tag, {
         "class": _normalizeClass$10(['v-breadcrumbs-item', {
           'v-breadcrumbs-item--active': isActive.value,
           'v-breadcrumbs-item--disabled': props.disabled,
@@ -13082,7 +13082,7 @@ const VBreadcrumbsItem = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$1t,createElementVNode:_createElementVNode$1e,Fragment:_Fragment$y,mergeProps:_mergeProps$S,normalizeClass:_normalizeClass$$,normalizeStyle:_normalizeStyle$R} = await importShared('vue');
+const {createVNode:_createVNode$1s,createElementVNode:_createElementVNode$1e,Fragment:_Fragment$y,mergeProps:_mergeProps$S,normalizeClass:_normalizeClass$$,normalizeStyle:_normalizeStyle$R} = await importShared('vue');
 const {computed: computed$1j,toRef: toRef$z} = await importShared('vue');
 const makeVBreadcrumbsProps = propsFactory({
   activeClass: String,
@@ -13147,18 +13147,18 @@ const VBreadcrumbs = genericComponent()({
     }));
     useRender(() => {
       const hasPrepend = !!(slots.prepend || props.icon);
-      return _createVNode$1t(props.tag, {
+      return _createVNode$1s(props.tag, {
         "class": _normalizeClass$$(['v-breadcrumbs', backgroundColorClasses.value, densityClasses.value, roundedClasses.value, props.class]),
         "style": _normalizeStyle$R([backgroundColorStyles.value, props.style])
       }, {
         default: () => [hasPrepend && _createElementVNode$1e("li", {
           "key": "prepend",
           "class": "v-breadcrumbs__prepend"
-        }, [!slots.prepend ? _createVNode$1t(VIcon, {
+        }, [!slots.prepend ? _createVNode$1s(VIcon, {
           "key": "prepend-icon",
           "start": true,
           "icon": props.icon
-        }, null) : _createVNode$1t(VDefaultsProvider, {
+        }, null) : _createVNode$1s(VDefaultsProvider, {
           "key": "prepend-defaults",
           "disabled": !props.icon,
           "defaults": {
@@ -13175,7 +13175,7 @@ const VBreadcrumbs = genericComponent()({
           return _createElementVNode$1e(_Fragment$y, null, [slots.item?.({
             item,
             index
-          }) ?? _createVNode$1t(VBreadcrumbsItem, _mergeProps$S({
+          }) ?? _createVNode$1s(VBreadcrumbsItem, _mergeProps$S({
             "key": index,
             "disabled": index >= array.length - 1
           }, typeof item === 'string' ? {
@@ -13185,7 +13185,7 @@ const VBreadcrumbs = genericComponent()({
               item,
               index
             }) : undefined
-          }), index < array.length - 1 && _createVNode$1t(VBreadcrumbsDivider, null, {
+          }), index < array.length - 1 && _createVNode$1s(VBreadcrumbsDivider, null, {
             default: slots.divider ? () => slots.divider?.({
               item: raw,
               index
@@ -13206,7 +13206,7 @@ const VCalendarWeekly$1 = '';
 
 const VIconBtn$1 = '';
 
-const {mergeProps:_mergeProps$R,createVNode:_createVNode$1s,createElementVNode:_createElementVNode$1d,normalizeClass:_normalizeClass$_,normalizeStyle:_normalizeStyle$Q} = await importShared('vue');
+const {mergeProps:_mergeProps$R,createVNode:_createVNode$1r,createElementVNode:_createElementVNode$1d,normalizeClass:_normalizeClass$_,normalizeStyle:_normalizeStyle$Q} = await importShared('vue');
 const {toDisplayString: toDisplayString$2} = await importShared('vue');
 const makeVIconBtnProps = propsFactory({
   active: {
@@ -13320,7 +13320,7 @@ const VIconBtn = genericComponent()({
         color: props.iconColor,
         opacity: props.opacity
       };
-      return _createVNode$1s(props.tag, {
+      return _createVNode$1r(props.tag, {
         "type": props.tag === 'button' ? 'button' : undefined,
         "class": _normalizeClass$_([{
           'v-icon-btn': true,
@@ -13341,9 +13341,9 @@ const VIconBtn = genericComponent()({
         default: () => [genOverlays(!props.hideOverlay, 'v-icon-btn'), _createElementVNode$1d("div", {
           "class": "v-icon-btn__content",
           "data-no-activator": ""
-        }, [!slots.default && icon ? _createVNode$1s(VIcon, _mergeProps$R({
+        }, [!slots.default && icon ? _createVNode$1r(VIcon, _mergeProps$R({
           "key": "content-icon"
-        }, iconProps), null) : _createVNode$1s(VDefaultsProvider, {
+        }, iconProps), null) : _createVNode$1r(VDefaultsProvider, {
           "key": "content-defaults",
           "disabled": !icon,
           "defaults": {
@@ -13356,7 +13356,7 @@ const VIconBtn = genericComponent()({
         })]), !!props.loading && _createElementVNode$1d("span", {
           "key": "loader",
           "class": "v-icon-btn__loader"
-        }, [slots.loader?.() ?? _createVNode$1s(VProgressCircular, {
+        }, [slots.loader?.() ?? _createVNode$1r(VProgressCircular, {
           "color": typeof props.loading === 'boolean' ? undefined : props.loading,
           "indeterminate": "disable-shrink",
           "width": "2",
@@ -13818,9 +13818,9 @@ function validateWeekdays(input) {
 }
 
 // Utilities
-const {computed: computed$1i,reactive: reactive$2,watch: watch$r} = await importShared('vue');
+const {computed: computed$1i,reactive: reactive$1,watch: watch$r} = await importShared('vue');
 function useTimes(props) {
-  const times = reactive$2({
+  const times = reactive$1({
     now: parseTimestamp('0000-00-00 00:00', true),
     today: parseTimestamp('0000-00-00', true)
   });
@@ -14259,9 +14259,9 @@ const Resize = {
   unmounted: unmounted$3
 };
 
-const {createElementVNode:_createElementVNode$1c,mergeProps:_mergeProps$Q,createVNode:_createVNode$1r,normalizeStyle:_normalizeStyle$P,normalizeClass:_normalizeClass$Z,withDirectives:_withDirectives$d} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1c,mergeProps:_mergeProps$Q,createVNode:_createVNode$1q,normalizeStyle:_normalizeStyle$P,normalizeClass:_normalizeClass$Z,withDirectives:_withDirectives$d} = await importShared('vue');
 const {nextTick: nextTick$i,onMounted: onMounted$a,ref: ref$H} = await importShared('vue');
-const VCalendarDaily = defineComponent({
+const VCalendarDaily = defineComponent$1({
   name: 'VCalendarDaily',
   directives: {
     vResize: Resize
@@ -14352,7 +14352,7 @@ const VCalendarDaily = defineComponent({
         nativeEvent,
         ...day
       }));
-      return _createVNode$1r(VIconBtn, _mergeProps$Q({
+      return _createVNode$1q(VIconBtn, _mergeProps$Q({
         "active": day.present,
         "activeColor": props.color,
         "variant": "outlined",
@@ -14487,9 +14487,9 @@ function getParsedCategories(categories, categoryText) {
   return [];
 }
 
-const {createElementVNode:_createElementVNode$1b,mergeProps:_mergeProps$P,normalizeStyle:_normalizeStyle$O,createVNode:_createVNode$1q} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1b,mergeProps:_mergeProps$P,normalizeStyle:_normalizeStyle$O,createVNode:_createVNode$1p} = await importShared('vue');
 const {computed: computed$1f} = await importShared('vue');
-const VCalendarCategory = defineComponent({
+const VCalendarCategory = defineComponent$1({
   name: 'VCalendarCategory',
   props: {
     categories: {
@@ -14590,7 +14590,7 @@ const VCalendarCategory = defineComponent({
         "class": "v-calendar-category__column"
       }, events), [slots['day-body']?.(getCategoryScope(base.getSlotScope(day), category))]);
     }
-    useRender(() => _createVNode$1q(VCalendarDaily, _mergeProps$P({
+    useRender(() => _createVNode$1p(VCalendarDaily, _mergeProps$P({
       "class": ['v-calendar-daily', 'v-calendar-category']
     }, props), {
       ...slots,
@@ -14604,9 +14604,9 @@ const VCalendarCategory = defineComponent({
   }
 });
 
-const {createElementVNode:_createElementVNode$1a,mergeProps:_mergeProps$O,createVNode:_createVNode$1p,normalizeClass:_normalizeClass$Y} = await importShared('vue');
+const {createElementVNode:_createElementVNode$1a,mergeProps:_mergeProps$O,createVNode:_createVNode$1o,normalizeClass:_normalizeClass$Y} = await importShared('vue');
 const {computed: computed$1e} = await importShared('vue');
-const VCalendarWeekly = defineComponent({
+const VCalendarWeekly = defineComponent$1({
   name: 'VCalendarWeekly',
   props: {
     minWeeks: {
@@ -14751,7 +14751,7 @@ const VCalendarWeekly = defineComponent({
         nativeEvent,
         ...day
       }));
-      return _createVNode$1p(VIconBtn, _mergeProps$O({
+      return _createVNode$1o(VIconBtn, _mergeProps$O({
         "active": day.present,
         "activeColor": props.color,
         "variant": "outlined",
@@ -15161,7 +15161,7 @@ function isEventOverlapping(event, startIdentifier, endIdentifier) {
   return startIdentifier <= event.endIdentifier && endIdentifier >= event.startIdentifier;
 }
 
-const {createElementVNode:_createElementVNode$19,createTextVNode:_createTextVNode$8,mergeProps:_mergeProps$N,withDirectives:_withDirectives$c} = await importShared('vue');
+const {createElementVNode:_createElementVNode$19,createTextVNode:_createTextVNode$7,mergeProps:_mergeProps$N,withDirectives:_withDirectives$c} = await importShared('vue');
 const {computed: computed$1d,ref: ref$G} = await importShared('vue');
 // Constants
 const WIDTH_FULL = 100;
@@ -15436,7 +15436,7 @@ function useCalendarWithEvents(props, slots, attrs) {
           const time = formatTime(event.start);
           return _createElementVNode$19("span", {
             "class": "v-event-summary"
-          }, [_createElementVNode$19("strong", null, [time]), _createTextVNode$8(" "), name]);
+          }, [_createElementVNode$19("strong", null, [time]), _createTextVNode$7(" "), name]);
         }
       }
       return _createElementVNode$19("span", {
@@ -15622,7 +15622,7 @@ function useCalendarWithEvents(props, slots, attrs) {
   };
 }
 
-const {mergeProps:_mergeProps$M,createVNode:_createVNode$1o,withDirectives:_withDirectives$b} = await importShared('vue');
+const {mergeProps:_mergeProps$M,createVNode:_createVNode$1n,withDirectives:_withDirectives$b} = await importShared('vue');
 const {computed: computed$1c,onMounted: onMounted$9,onUpdated,ref: ref$F,watch: watch$q} = await importShared('vue');
 // Types
 const VCalendar = genericComponent()({
@@ -15900,7 +15900,7 @@ const VCalendar = genericComponent()({
         component: Component,
         categories
       } = renderProps.value;
-      return _withDirectives$b(_createVNode$1o(Component, _mergeProps$M({
+      return _withDirectives$b(_createVNode$1n(Component, _mergeProps$M({
         "ref": root,
         "class": ['v-calendar', {
           'v-calendar-events': !base.noEvents.value
@@ -15942,7 +15942,7 @@ const VCalendar = genericComponent()({
 
 const VCard$1 = '';
 
-const {normalizeClass:_normalizeClass$X,normalizeStyle:_normalizeStyle$N,createVNode:_createVNode$1n} = await importShared('vue');
+const {normalizeClass:_normalizeClass$X,normalizeStyle:_normalizeStyle$N,createVNode:_createVNode$1m} = await importShared('vue');
 const makeVCardActionsProps = propsFactory({
   ...makeComponentProps(),
   ...makeTagProps()
@@ -15960,7 +15960,7 @@ const VCardActions = genericComponent()({
         variant: 'text'
       }
     });
-    useRender(() => _createVNode$1n(props.tag, {
+    useRender(() => _createVNode$1m(props.tag, {
       "class": _normalizeClass$X(['v-card-actions', props.class]),
       "style": _normalizeStyle$N(props.style)
     }, slots));
@@ -15968,7 +15968,7 @@ const VCardActions = genericComponent()({
   }
 });
 
-const {normalizeClass:_normalizeClass$W,normalizeStyle:_normalizeStyle$M,createVNode:_createVNode$1m} = await importShared('vue');
+const {normalizeClass:_normalizeClass$W,normalizeStyle:_normalizeStyle$M,createVNode:_createVNode$1l} = await importShared('vue');
 const makeVCardSubtitleProps = propsFactory({
   opacity: [Number, String],
   ...makeComponentProps(),
@@ -15981,7 +15981,7 @@ const VCardSubtitle = genericComponent()({
     let {
       slots
     } = _ref;
-    useRender(() => _createVNode$1m(props.tag, {
+    useRender(() => _createVNode$1l(props.tag, {
       "class": _normalizeClass$W(['v-card-subtitle', props.class]),
       "style": _normalizeStyle$M([{
         '--v-card-subtitle-opacity': props.opacity
@@ -15994,7 +15994,7 @@ const VCardSubtitle = genericComponent()({
 // Utilities
 const VCardTitle = createSimpleFunctional('v-card-title');
 
-const {Fragment:_Fragment$x,createVNode:_createVNode$1l,createElementVNode:_createElementVNode$18,normalizeClass:_normalizeClass$V,normalizeStyle:_normalizeStyle$L} = await importShared('vue');
+const {Fragment:_Fragment$x,createVNode:_createVNode$1k,createElementVNode:_createElementVNode$18,normalizeClass:_normalizeClass$V,normalizeStyle:_normalizeStyle$L} = await importShared('vue');
 const {toDisplayString: toDisplayString$1} = await importShared('vue');
 const makeCardItemProps = propsFactory({
   appendAvatar: String,
@@ -16027,22 +16027,22 @@ const VCardItem = genericComponent()({
       const hasAppend = !!(hasAppendMedia || slots.append);
       const hasTitle = !!(props.title != null || slots.title);
       const hasSubtitle = !!(props.subtitle != null || slots.subtitle);
-      return _createVNode$1l(props.tag, {
+      return _createVNode$1k(props.tag, {
         "class": _normalizeClass$V(['v-card-item', props.class]),
         "style": _normalizeStyle$L(props.style)
       }, {
         default: () => [hasPrepend && _createElementVNode$18("div", {
           "key": "prepend",
           "class": "v-card-item__prepend"
-        }, [!slots.prepend ? _createElementVNode$18(_Fragment$x, null, [props.prependAvatar && _createVNode$1l(VAvatar, {
+        }, [!slots.prepend ? _createElementVNode$18(_Fragment$x, null, [props.prependAvatar && _createVNode$1k(VAvatar, {
           "key": "prepend-avatar",
           "density": props.density,
           "image": props.prependAvatar
-        }, null), props.prependIcon && _createVNode$1l(VIcon, {
+        }, null), props.prependIcon && _createVNode$1k(VIcon, {
           "key": "prepend-icon",
           "density": props.density,
           "icon": props.prependIcon
-        }, null)]) : _createVNode$1l(VDefaultsProvider, {
+        }, null)]) : _createVNode$1k(VDefaultsProvider, {
           "key": "prepend-defaults",
           "disabled": !hasPrependMedia,
           "defaults": {
@@ -16057,26 +16057,26 @@ const VCardItem = genericComponent()({
           }
         }, slots.prepend)]), _createElementVNode$18("div", {
           "class": "v-card-item__content"
-        }, [hasTitle && _createVNode$1l(VCardTitle, {
+        }, [hasTitle && _createVNode$1k(VCardTitle, {
           "key": "title"
         }, {
           default: () => [slots.title?.() ?? toDisplayString$1(props.title)]
-        }), hasSubtitle && _createVNode$1l(VCardSubtitle, {
+        }), hasSubtitle && _createVNode$1k(VCardSubtitle, {
           "key": "subtitle"
         }, {
           default: () => [slots.subtitle?.() ?? toDisplayString$1(props.subtitle)]
         }), slots.default?.()]), hasAppend && _createElementVNode$18("div", {
           "key": "append",
           "class": "v-card-item__append"
-        }, [!slots.append ? _createElementVNode$18(_Fragment$x, null, [props.appendIcon && _createVNode$1l(VIcon, {
+        }, [!slots.append ? _createElementVNode$18(_Fragment$x, null, [props.appendIcon && _createVNode$1k(VIcon, {
           "key": "append-icon",
           "density": props.density,
           "icon": props.appendIcon
-        }, null), props.appendAvatar && _createVNode$1l(VAvatar, {
+        }, null), props.appendAvatar && _createVNode$1k(VAvatar, {
           "key": "append-avatar",
           "density": props.density,
           "image": props.appendAvatar
-        }, null)]) : _createVNode$1l(VDefaultsProvider, {
+        }, null)]) : _createVNode$1k(VDefaultsProvider, {
           "key": "append-defaults",
           "disabled": !hasAppendMedia,
           "defaults": {
@@ -16096,7 +16096,7 @@ const VCardItem = genericComponent()({
   }
 });
 
-const {normalizeClass:_normalizeClass$U,normalizeStyle:_normalizeStyle$K,createVNode:_createVNode$1k} = await importShared('vue');
+const {normalizeClass:_normalizeClass$U,normalizeStyle:_normalizeStyle$K,createVNode:_createVNode$1j} = await importShared('vue');
 const makeVCardTextProps = propsFactory({
   opacity: [Number, String],
   ...makeComponentProps(),
@@ -16109,7 +16109,7 @@ const VCardText = genericComponent()({
     let {
       slots
     } = _ref;
-    useRender(() => _createVNode$1k(props.tag, {
+    useRender(() => _createVNode$1j(props.tag, {
       "class": _normalizeClass$U(['v-card-text', props.class]),
       "style": _normalizeStyle$K([{
         '--v-card-text-opacity': props.opacity
@@ -16119,7 +16119,7 @@ const VCardText = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$1j,createElementVNode:_createElementVNode$17,mergeProps:_mergeProps$L,withDirectives:_withDirectives$a} = await importShared('vue');
+const {createVNode:_createVNode$1i,createElementVNode:_createElementVNode$17,mergeProps:_mergeProps$L,withDirectives:_withDirectives$a} = await importShared('vue');
 const {shallowRef: shallowRef$s,watch: watch$p} = await importShared('vue');
 const makeVCardProps = propsFactory({
   appendAvatar: String,
@@ -16228,7 +16228,7 @@ const VCard = genericComponent()({
       const hasImage = !!(slots.image || props.image);
       const hasCardItem = hasHeader || hasPrepend || hasAppend;
       const hasText = !!(slots.text || props.text != null);
-      return _withDirectives$a(_createVNode$1j(Tag, _mergeProps$L(link.linkProps, {
+      return _withDirectives$a(_createVNode$1i(Tag, _mergeProps$L(link.linkProps, {
         "class": ['v-card', {
           'v-card--disabled': props.disabled,
           'v-card--flat': props.flat,
@@ -16244,11 +16244,11 @@ const VCard = genericComponent()({
         default: () => [hasImage && _createElementVNode$17("div", {
           "key": "image",
           "class": "v-card__image"
-        }, [!slots.image ? _createVNode$1j(VImg, {
+        }, [!slots.image ? _createVNode$1i(VImg, {
           "key": "image-img",
           "cover": true,
           "src": props.image
-        }, null) : _createVNode$1j(VDefaultsProvider, {
+        }, null) : _createVNode$1i(VDefaultsProvider, {
           "key": "image-defaults",
           "disabled": !props.image,
           "defaults": {
@@ -16257,13 +16257,13 @@ const VCard = genericComponent()({
               src: props.image
             }
           }
-        }, slots.image)]), _createVNode$1j(LoaderSlot, {
+        }, slots.image)]), _createVNode$1i(LoaderSlot, {
           "name": "v-card",
           "active": !!props.loading,
           "color": loadingColor.value
         }, {
           default: slots.loader
-        }), hasCardItem && _createVNode$1j(VCardItem, {
+        }), hasCardItem && _createVNode$1i(VCardItem, {
           "key": "item",
           "prependAvatar": props.prependAvatar,
           "prependIcon": props.prependIcon,
@@ -16277,11 +16277,11 @@ const VCard = genericComponent()({
           title: slots.title,
           subtitle: slots.subtitle,
           append: slots.append
-        }), hasText && _createVNode$1j(VCardText, {
+        }), hasText && _createVNode$1i(VCardText, {
           "key": "text"
         }, {
           default: () => [slots.text?.() ?? props.text]
-        }), slots.default?.(), slots.actions && _createVNode$1j(VCardActions, null, {
+        }), slots.default?.(), slots.actions && _createVNode$1i(VCardActions, null, {
           default: slots.actions
         }), genOverlays(isClickable, 'v-card')]
       }), [[Ripple, isClickable && props.ripple]]);
@@ -16399,7 +16399,7 @@ const Touch = {
   unmounted: unmounted$2
 };
 
-const {createVNode:_createVNode$1i,createElementVNode:_createElementVNode$16,normalizeClass:_normalizeClass$T,normalizeStyle:_normalizeStyle$J,withDirectives:_withDirectives$9} = await importShared('vue');
+const {createVNode:_createVNode$1h,createElementVNode:_createElementVNode$16,normalizeClass:_normalizeClass$T,normalizeStyle:_normalizeStyle$J,withDirectives:_withDirectives$9} = await importShared('vue');
 const {computed: computed$1b,nextTick: nextTick$h,provide: provide$a,ref: ref$E,shallowRef: shallowRef$r,toRef: toRef$y,watch: watch$o} = await importShared('vue');
 const VWindowSymbol = Symbol.for('vuetify:v-window');
 const VWindowGroupSymbol = Symbol.for('vuetify:v-window-group');
@@ -16557,7 +16557,7 @@ const VWindow = genericComponent()({
       };
       arrows.push(canMoveBack.value ? slots.prev ? slots.prev({
         props: prevProps
-      }) : _createVNode$1i(VBtn, prevProps, null) : _createElementVNode$16("div", null, null));
+      }) : _createVNode$1h(VBtn, prevProps, null) : _createElementVNode$16("div", null, null));
       const nextProps = {
         icon: isRtl.value ? props.prevIcon : props.nextIcon,
         class: `v-window__${isRtlReverse.value ? 'left' : 'right'}`,
@@ -16566,7 +16566,7 @@ const VWindow = genericComponent()({
       };
       arrows.push(canMoveForward.value ? slots.next ? slots.next({
         props: nextProps
-      }) : _createVNode$1i(VBtn, nextProps, null) : _createElementVNode$16("div", null, null));
+      }) : _createVNode$1h(VBtn, nextProps, null) : _createElementVNode$16("div", null, null));
       return arrows;
     });
     const touchOptions = computed$1b(() => {
@@ -16612,7 +16612,7 @@ const VWindow = genericComponent()({
       const arrowEl = Array.isArray(arrow) ? arrow[0] : arrow;
       arrowEl.el?.focus();
     }
-    useRender(() => _withDirectives$9(_createVNode$1i(props.tag, {
+    useRender(() => _withDirectives$9(_createVNode$1h(props.tag, {
       "ref": rootRef,
       "class": _normalizeClass$T(['v-window', {
         'v-window--show-arrows-on-hover': props.showArrows === 'hover',
@@ -16647,7 +16647,7 @@ const VWindow = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$w,mergeProps:_mergeProps$K,createVNode:_createVNode$1h,createElementVNode:_createElementVNode$15} = await importShared('vue');
+const {Fragment:_Fragment$w,mergeProps:_mergeProps$K,createVNode:_createVNode$1g,createElementVNode:_createElementVNode$15} = await importShared('vue');
 const {nextTick: nextTick$g,onMounted: onMounted$8,ref: ref$D,watch: watch$n} = await importShared('vue');
 const makeVCarouselProps = propsFactory({
   color: String,
@@ -16719,7 +16719,7 @@ const VCarousel = genericComponent()({
     }
     useRender(() => {
       const windowProps = VWindow.filterProps(props);
-      return _createVNode$1h(VWindow, _mergeProps$K({
+      return _createVNode$1g(VWindow, _mergeProps$K({
         "ref": windowRef
       }, windowProps, {
         "modelValue": model.value,
@@ -16743,7 +16743,7 @@ const VCarousel = genericComponent()({
               left: props.verticalDelimiters === 'left' && props.verticalDelimiters ? 0 : 'auto',
               right: props.verticalDelimiters === 'right' ? 0 : 'auto'
             }
-          }, [group.items.value.length > 0 && _createVNode$1h(VDefaultsProvider, {
+          }, [group.items.value.length > 0 && _createVNode$1g(VDefaultsProvider, {
             "defaults": {
               VBtn: {
                 color: props.color,
@@ -16765,9 +16765,9 @@ const VCarousel = genericComponent()({
               return slots.item ? slots.item({
                 props,
                 item
-              }) : _createVNode$1h(VBtn, _mergeProps$K(item, props), null);
+              }) : _createVNode$1g(VBtn, _mergeProps$K(item, props), null);
             })]
-          })]), props.progress && _createVNode$1h(VProgressLinear, {
+          })]), props.progress && _createVNode$1g(VProgressLinear, {
             "absolute": true,
             "class": "v-carousel__progress",
             "color": typeof props.progress === 'string' ? props.progress : undefined,
@@ -16782,7 +16782,7 @@ const VCarousel = genericComponent()({
   }
 });
 
-const {vShow:_vShow$3,normalizeClass:_normalizeClass$S,normalizeStyle:_normalizeStyle$I,createElementVNode:_createElementVNode$14,withDirectives:_withDirectives$8,createVNode:_createVNode$1g} = await importShared('vue');
+const {vShow:_vShow$3,normalizeClass:_normalizeClass$S,normalizeStyle:_normalizeStyle$I,createElementVNode:_createElementVNode$14,withDirectives:_withDirectives$8,createVNode:_createVNode$1f} = await importShared('vue');
 const {computed: computed$1a,inject: inject$e,nextTick: nextTick$f,shallowRef: shallowRef$q} = await importShared('vue');
 const makeVWindowItemProps = propsFactory({
   reverseTransition: {
@@ -16880,7 +16880,7 @@ const VWindowItem = genericComponent()({
     const {
       hasContent
     } = useLazy(props, groupItem.isSelected);
-    useRender(() => _createVNode$1g(MaybeTransition, {
+    useRender(() => _createVNode$1f(MaybeTransition, {
       "transition": transition.value,
       "disabled": !isBooted.value
     }, {
@@ -16895,7 +16895,7 @@ const VWindowItem = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$J,createVNode:_createVNode$1f} = await importShared('vue');
+const {mergeProps:_mergeProps$J,createVNode:_createVNode$1e} = await importShared('vue');
 const makeVCarouselItemProps = propsFactory({
   ...makeVImgProps(),
   ...makeVWindowItemProps()
@@ -16912,10 +16912,10 @@ const VCarouselItem = genericComponent()({
     useRender(() => {
       const imgProps = VImg.filterProps(props);
       const windowItemProps = VWindowItem.filterProps(props);
-      return _createVNode$1f(VWindowItem, _mergeProps$J({
+      return _createVNode$1e(VWindowItem, _mergeProps$J({
         "class": ['v-carousel-item', props.class]
       }, windowItemProps), {
-        default: () => [_createVNode$1f(VImg, _mergeProps$J(attrs, imgProps), slots)]
+        default: () => [_createVNode$1e(VImg, _mergeProps$J(attrs, imgProps), slots)]
       });
     });
   }
@@ -16952,7 +16952,7 @@ const makeVColorPickerCanvasProps = propsFactory({
   },
   ...makeComponentProps()
 }, 'VColorPickerCanvas');
-const VColorPickerCanvas = defineComponent({
+const VColorPickerCanvas = defineComponent$1({
   name: 'VColorPickerCanvas',
   props: makeVColorPickerCanvasProps(),
   emits: {
@@ -17309,7 +17309,7 @@ const modes = {
   hexa
 };
 
-const {normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps,createElementVNode:_createElementVNode$12,createVNode:_createVNode$1e,normalizeClass:_normalizeClass$Q,normalizeStyle:_normalizeStyle$G} = await importShared('vue');
+const {normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps,createElementVNode:_createElementVNode$12,createVNode:_createVNode$1d,normalizeClass:_normalizeClass$Q,normalizeStyle:_normalizeStyle$G} = await importShared('vue');
 const {computed: computed$18} = await importShared('vue');
 const VColorPickerInput = _ref => {
   let {
@@ -17336,7 +17336,7 @@ const makeVColorPickerEditProps = propsFactory({
   },
   ...makeComponentProps()
 }, 'VColorPickerEdit');
-const VColorPickerEdit = defineComponent({
+const VColorPickerEdit = defineComponent$1({
   name: 'VColorPickerEdit',
   props: makeVColorPickerEditProps(),
   emits: {
@@ -17385,7 +17385,7 @@ const VColorPickerEdit = defineComponent({
     useRender(() => _createElementVNode$12("div", {
       "class": _normalizeClass$Q(['v-color-picker-edit', props.class]),
       "style": _normalizeStyle$G(props.style)
-    }, [inputs.value?.map(props => _createVNode$1e(VColorPickerInput, props, null)), enabledModes.value.length > 1 && _createVNode$1e(VBtn, {
+    }, [inputs.value?.map(props => _createVNode$1d(VColorPickerInput, props, null)), enabledModes.value.length > 1 && _createVNode$1d(VBtn, {
       "icon": "$unfold",
       "size": "x-small",
       "variant": "plain",
@@ -17712,7 +17712,7 @@ const useSlider = _ref => {
   return data;
 };
 
-const {normalizeClass:_normalizeClass$P,normalizeStyle:_normalizeStyle$F,createElementVNode:_createElementVNode$11,withDirectives:_withDirectives$7,vShow:_vShow$2,createVNode:_createVNode$1d} = await importShared('vue');
+const {normalizeClass:_normalizeClass$P,normalizeStyle:_normalizeStyle$F,createElementVNode:_createElementVNode$11,withDirectives:_withDirectives$7,vShow:_vShow$2,createVNode:_createVNode$1c} = await importShared('vue');
 const {computed: computed$16,inject: inject$d,shallowRef: shallowRef$n,watch: watch$l} = await importShared('vue');
 const makeVSliderThumbProps = propsFactory({
   focused: Boolean,
@@ -17880,7 +17880,7 @@ const VSliderThumb = genericComponent()({
       }, null), [[Ripple, props.ripple, null, {
         circle: true,
         center: true
-      }]]), _createVNode$1d(VScaleTransition, {
+      }]]), _createVNode$1c(VScaleTransition, {
         "origin": "bottom center"
       }, {
         default: () => [_withDirectives$7(_createElementVNode$11("div", {
@@ -18018,7 +18018,7 @@ const VSliderTrack = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$v,createVNode:_createVNode$1c,createElementVNode:_createElementVNode$$,mergeProps:_mergeProps$I} = await importShared('vue');
+const {Fragment:_Fragment$v,createVNode:_createVNode$1b,createElementVNode:_createElementVNode$$,mergeProps:_mergeProps$I} = await importShared('vue');
 const {computed: computed$14,ref: ref$A} = await importShared('vue');
 const makeVSliderProps = propsFactory({
   ...makeFocusProps(),
@@ -18105,7 +18105,7 @@ const VSlider = genericComponent()({
       const inputProps = VInput.filterProps(props);
       const [rootAttrs, inputAttrs] = filterInputAttrs(attrs);
       const hasPrepend = !!(props.label || slots.label || slots.prepend);
-      return _createVNode$1c(VInput, _mergeProps$I({
+      return _createVNode$1b(VInput, _mergeProps$I({
         "ref": inputRef,
         "class": ['v-slider', {
           'v-slider--has-labels': !!slots['tick-label'] || hasLabels.value,
@@ -18118,7 +18118,7 @@ const VSlider = genericComponent()({
         "focused": isFocused.value
       }), {
         ...slots,
-        prepend: hasPrepend ? slotProps => _createElementVNode$$(_Fragment$v, null, [slots.label?.(slotProps) ?? (props.label ? _createVNode$1c(VLabel, {
+        prepend: hasPrepend ? slotProps => _createElementVNode$$(_Fragment$v, null, [slots.label?.(slotProps) ?? (props.label ? _createVNode$1b(VLabel, {
           "id": slotProps.id.value,
           "class": "v-slider__label",
           "text": props.label
@@ -18139,13 +18139,13 @@ const VSlider = genericComponent()({
             "readonly": readonly.value,
             "tabindex": "-1",
             "value": model.value
-          }, null), _createVNode$1c(VSliderTrack, {
+          }, null), _createVNode$1b(VSliderTrack, {
             "ref": trackContainerRef,
             "start": 0,
             "stop": trackStop.value
           }, {
             'tick-label': slots['tick-label']
-          }), _createVNode$1c(VSliderThumb, _mergeProps$I({
+          }), _createVNode$1b(VSliderThumb, _mergeProps$I({
             "ref": thumbContainerRef,
             "aria-describedby": messagesId.value,
             "focused": isFocused.value,
@@ -18172,7 +18172,7 @@ const VSlider = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$1b,createElementVNode:_createElementVNode$_,normalizeClass:_normalizeClass$N,normalizeStyle:_normalizeStyle$D} = await importShared('vue');
+const {createVNode:_createVNode$1a,createElementVNode:_createElementVNode$_,normalizeClass:_normalizeClass$N,normalizeStyle:_normalizeStyle$D} = await importShared('vue');
 const {onUnmounted,toRef: toRef$v} = await importShared('vue');
 const makeVColorPickerPreviewProps = propsFactory({
   color: {
@@ -18188,7 +18188,7 @@ const makeVColorPickerPreviewProps = propsFactory({
   },
   ...makeComponentProps()
 }, 'VColorPickerPreview');
-const VColorPickerPreview = defineComponent({
+const VColorPickerPreview = defineComponent$1({
   name: 'VColorPickerPreview',
   props: makeVColorPickerPreviewProps(),
   emits: {
@@ -18226,7 +18226,7 @@ const VColorPickerPreview = defineComponent({
     }, [SUPPORTS_EYE_DROPPER && !props.hideEyeDropper && _createElementVNode$_("div", {
       "class": "v-color-picker-preview__eye-dropper",
       "key": "eyeDropper"
-    }, [_createVNode$1b(VBtn, {
+    }, [_createVNode$1a(VBtn, {
       "aria-label": t('$vuetify.colorPicker.ariaLabel.eyedropper'),
       "density": "comfortable",
       "disabled": props.disabled,
@@ -18242,7 +18242,7 @@ const VColorPickerPreview = defineComponent({
       }
     }, null)]), _createElementVNode$_("div", {
       "class": "v-color-picker-preview__sliders"
-    }, [_createVNode$1b(VSlider, {
+    }, [_createVNode$1a(VSlider, {
       "class": "v-color-picker-preview__track v-color-picker-preview__hue",
       "aria-label": t('$vuetify.colorPicker.ariaLabel.hueSlider'),
       "modelValue": props.color?.h,
@@ -18259,7 +18259,7 @@ const VColorPickerPreview = defineComponent({
       "trackSize": 8,
       "trackFillColor": "white",
       "hideDetails": true
-    }, null), !props.hideAlpha && _createVNode$1b(VSlider, {
+    }, null), !props.hideAlpha && _createVNode$1a(VSlider, {
       "class": "v-color-picker-preview__track v-color-picker-preview__alpha",
       "aria-label": t('$vuetify.colorPicker.ariaLabel.alphaSlider'),
       "modelValue": props.color?.a ?? 1,
@@ -18603,7 +18603,7 @@ const colors = {
   shades
 };
 
-const {createVNode:_createVNode$1a,createElementVNode:_createElementVNode$Z,normalizeClass:_normalizeClass$M,normalizeStyle:_normalizeStyle$C} = await importShared('vue');
+const {createVNode:_createVNode$19,createElementVNode:_createElementVNode$Z,normalizeClass:_normalizeClass$M,normalizeStyle:_normalizeStyle$C} = await importShared('vue');
 const {toRef: toRef$u} = await importShared('vue');
 const makeVColorPickerSwatchesProps = propsFactory({
   swatches: {
@@ -18622,7 +18622,7 @@ function parseDefaultColors(colors) {
     return color.base ? [color.base, color.darken4, color.darken3, color.darken2, color.darken1, color.lighten1, color.lighten2, color.lighten3, color.lighten4, color.lighten5] : [color.black, color.white, color.transparent];
   });
 }
-const VColorPickerSwatches = defineComponent({
+const VColorPickerSwatches = defineComponent$1({
   name: 'VColorPickerSwatches',
   props: makeVColorPickerSwatchesProps(),
   emits: {
@@ -18659,7 +18659,7 @@ const VColorPickerSwatches = defineComponent({
         "style": {
           background
         }
-      }, [props.color && deepEqual(props.color, hsva) ? _createVNode$1a(VIcon, {
+      }, [props.color && deepEqual(props.color, hsva) ? _createVNode$19(VIcon, {
         "size": "x-small",
         "icon": "$success",
         "color": getContrast(color, '#FFFFFF') > 2 ? 'white' : 'black'
@@ -18674,7 +18674,7 @@ const VPicker$1 = '';
 // Utilities
 const VPickerTitle = createSimpleFunctional('v-picker-title');
 
-const {createVNode:_createVNode$19,createElementVNode:_createElementVNode$Y,normalizeClass:_normalizeClass$L,normalizeStyle:_normalizeStyle$B,mergeProps:_mergeProps$H} = await importShared('vue');
+const {createVNode:_createVNode$18,createElementVNode:_createElementVNode$Y,normalizeClass:_normalizeClass$L,normalizeStyle:_normalizeStyle$B,mergeProps:_mergeProps$H} = await importShared('vue');
 const makeVPickerProps = propsFactory({
   bgColor: String,
   divided: Boolean,
@@ -18698,7 +18698,7 @@ const VPicker = genericComponent()({
     useRender(() => {
       const sheetProps = VSheet.filterProps(props);
       const hasTitle = !props.hideTitle && !!(props.title || slots.title);
-      return _createVNode$19(VSheet, _mergeProps$H(sheetProps, {
+      return _createVNode$18(VSheet, _mergeProps$H(sheetProps, {
         "color": props.bgColor,
         "class": ['v-picker', {
           'v-picker--divided': props.divided,
@@ -18711,7 +18711,7 @@ const VPicker = genericComponent()({
           "key": "header",
           "class": _normalizeClass$L(['v-picker__header-wrapper', backgroundColorClasses.value]),
           "style": _normalizeStyle$B([backgroundColorStyles.value])
-        }, [hasTitle && _createVNode$19(VPickerTitle, {
+        }, [hasTitle && _createVNode$18(VPickerTitle, {
           "key": "picker-title"
         }, {
           default: () => [slots.title?.() ?? props.title]
@@ -18719,7 +18719,7 @@ const VPicker = genericComponent()({
           "class": "v-picker__header"
         }, [slots.header()])]), _createElementVNode$Y("div", {
           "class": "v-picker__body"
-        }, [slots.default?.()]), slots.actions && _createVNode$19(VDefaultsProvider, {
+        }, [slots.default?.()]), slots.actions && _createVNode$18(VDefaultsProvider, {
           "defaults": {
             VBtn: {
               slim: true,
@@ -18737,7 +18737,7 @@ const VPicker = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$u,createVNode:_createVNode$18,createElementVNode:_createElementVNode$X,mergeProps:_mergeProps$G} = await importShared('vue');
+const {Fragment:_Fragment$u,createVNode:_createVNode$17,createElementVNode:_createElementVNode$X,mergeProps:_mergeProps$G} = await importShared('vue');
 const {computed: computed$13,onBeforeMount,ref: ref$z,watch: watch$k} = await importShared('vue');
 const makeVColorPickerProps = propsFactory({
   canvasHeight: {
@@ -18777,7 +18777,7 @@ const makeVColorPickerProps = propsFactory({
   }),
   ...pick(makeVColorPickerPreviewProps(), ['hideEyeDropper', 'eyeDropperIcon'])
 }, 'VColorPicker');
-const VColorPicker = defineComponent({
+const VColorPicker = defineComponent$1({
   name: 'VColorPicker',
   props: makeVColorPickerProps(),
   emits: {
@@ -18842,7 +18842,7 @@ const VColorPicker = defineComponent({
     });
     useRender(() => {
       const pickerProps = VPicker.filterProps(props);
-      return _createVNode$18(VPicker, _mergeProps$G(pickerProps, {
+      return _createVNode$17(VPicker, _mergeProps$G(pickerProps, {
         "class": ['v-color-picker', rtlClasses.value, props.class],
         "style": [{
           '--v-color-picker-color-hsv': HSVtoCSS({
@@ -18852,7 +18852,7 @@ const VColorPicker = defineComponent({
         }, props.style]
       }), {
         ...slots,
-        default: () => _createElementVNode$X(_Fragment$u, null, [!props.hideCanvas && _createVNode$18(VColorPickerCanvas, {
+        default: () => _createElementVNode$X(_Fragment$u, null, [!props.hideCanvas && _createVNode$17(VColorPickerCanvas, {
           "key": "canvas",
           "color": currentColor.value,
           "onUpdate:color": updateColor,
@@ -18864,7 +18864,7 @@ const VColorPicker = defineComponent({
         }, null), (!props.hideSliders || !props.hideInputs) && _createElementVNode$X("div", {
           "key": "controls",
           "class": "v-color-picker__controls"
-        }, [!props.hideSliders && _createVNode$18(VColorPickerPreview, {
+        }, [!props.hideSliders && _createVNode$17(VColorPickerPreview, {
           "key": "preview",
           "color": currentColor.value,
           "onUpdate:color": updateColor,
@@ -18873,7 +18873,7 @@ const VColorPicker = defineComponent({
           "readonly": props.readonly,
           "hideEyeDropper": props.hideEyeDropper,
           "eyeDropperIcon": props.eyeDropperIcon
-        }, null), !props.hideInputs && _createVNode$18(VColorPickerEdit, {
+        }, null), !props.hideInputs && _createVNode$17(VColorPickerEdit, {
           "key": "edit",
           "modes": props.modes,
           "mode": mode.value,
@@ -18882,7 +18882,7 @@ const VColorPicker = defineComponent({
           "onUpdate:color": updateColor,
           "disabled": props.disabled,
           "readonly": props.readonly
-        }, null)]), props.showSwatches && _createVNode$18(VColorPickerSwatches, {
+        }, null)]), props.showSwatches && _createVNode$17(VColorPickerSwatches, {
           "key": "swatches",
           "color": currentColor.value,
           "onUpdate:color": updateColor,
@@ -18899,7 +18899,7 @@ const VColorPicker = defineComponent({
 
 const VCombobox$1 = '';
 
-const {Fragment:_Fragment$t,createElementVNode:_createElementVNode$W,createVNode:_createVNode$17,mergeProps:_mergeProps$F,createTextVNode:_createTextVNode$7,normalizeClass:_normalizeClass$K,normalizeStyle:_normalizeStyle$A} = await importShared('vue');
+const {Fragment:_Fragment$t,createElementVNode:_createElementVNode$W,createVNode:_createVNode$16,mergeProps:_mergeProps$F,createTextVNode:_createTextVNode$6,normalizeClass:_normalizeClass$K,normalizeStyle:_normalizeStyle$A} = await importShared('vue');
 const {computed: computed$12,mergeProps: mergeProps$5,nextTick: nextTick$d,ref: ref$y,shallowRef: shallowRef$m,toRef: toRef$t,watch: watch$j} = await importShared('vue');
 const makeVComboboxProps = propsFactory({
   alwaysFilter: Boolean,
@@ -19287,7 +19287,7 @@ const VCombobox = genericComponent()({
         search,
         filteredItems: filteredItems.value
       };
-      return _createVNode$17(VTextField, _mergeProps$F({
+      return _createVNode$16(VTextField, _mergeProps$F({
         "ref": vTextFieldRef
       }, textFieldProps, {
         "modelValue": search.value,
@@ -19320,7 +19320,7 @@ const VCombobox = genericComponent()({
           let {
             id
           } = _ref4;
-          return _createElementVNode$W(_Fragment$t, null, [_createVNode$17(VMenu, _mergeProps$F({
+          return _createElementVNode$W(_Fragment$t, null, [_createVNode$16(VMenu, _mergeProps$F({
             "id": menuId.value,
             "ref": vMenuRef,
             "modelValue": menu.value,
@@ -19335,13 +19335,13 @@ const VCombobox = genericComponent()({
             "onAfterEnter": onAfterEnter,
             "onAfterLeave": onAfterLeave
           }, props.menuProps), {
-            default: () => [_createVNode$17(VSheet, {
+            default: () => [_createVNode$16(VSheet, {
               "onFocusin": onFocusin,
               "onKeydown": onMenuKeydown
             }, {
               default: () => [slots['menu-header'] && _createElementVNode$W("header", {
                 "ref": headerRef
-              }, [slots['menu-header'](menuSlotProps)]), hasList && _createVNode$17(VList, _mergeProps$F({
+              }, [slots['menu-header'](menuSlotProps)]), hasList && _createVNode$16(VList, _mergeProps$F({
                 "key": "combobox-list",
                 "ref": listRef,
                 "filterable": true,
@@ -19356,10 +19356,10 @@ const VCombobox = genericComponent()({
                 "aria-multiselectable": props.multiple,
                 "color": props.itemColor ?? props.color
               }, listEvents, props.listProps), {
-                default: () => [slots['prepend-item']?.(), !displayItems.value.length && !props.hideNoData && (slots['no-data']?.() ?? _createVNode$17(VListItem, {
+                default: () => [slots['prepend-item']?.(), !displayItems.value.length && !props.hideNoData && (slots['no-data']?.() ?? _createVNode$16(VListItem, {
                   "key": "no-data",
                   "title": t(props.noDataText)
-                }, null)), _createVNode$17(VVirtualScroll, {
+                }, null)), _createVNode$16(VVirtualScroll, {
                   "ref": vVirtualScrollRef,
                   "renderless": true,
                   "items": displayItems.value,
@@ -19383,7 +19383,7 @@ const VCombobox = genericComponent()({
                       return slots.divider?.({
                         props: item.raw,
                         index
-                      }) ?? _createVNode$17(VDivider, _mergeProps$F(item.props, {
+                      }) ?? _createVNode$16(VDivider, _mergeProps$F(item.props, {
                         "key": `divider-${index}`
                       }), null);
                     }
@@ -19391,7 +19391,7 @@ const VCombobox = genericComponent()({
                       return slots.subheader?.({
                         props: item.raw,
                         index
-                      }) ?? _createVNode$17(VListSubheader, _mergeProps$F(item.props, {
+                      }) ?? _createVNode$16(VListSubheader, _mergeProps$F(item.props, {
                         "key": `subheader-${index}`
                       }), null);
                     }
@@ -19399,23 +19399,23 @@ const VCombobox = genericComponent()({
                       item,
                       index,
                       props: itemProps
-                    }) ?? _createVNode$17(VListItem, _mergeProps$F(itemProps, {
+                    }) ?? _createVNode$16(VListItem, _mergeProps$F(itemProps, {
                       "role": "option"
                     }), {
                       prepend: _ref6 => {
                         let {
                           isSelected
                         } = _ref6;
-                        return _createElementVNode$W(_Fragment$t, null, [props.multiple && !props.hideSelected ? _createVNode$17(VCheckboxBtn, {
+                        return _createElementVNode$W(_Fragment$t, null, [props.multiple && !props.hideSelected ? _createVNode$16(VCheckboxBtn, {
                           "key": item.value,
                           "modelValue": isSelected,
                           "ripple": false,
                           "tabindex": "-1",
                           "aria-hidden": true,
                           "onClick": event => event.preventDefault()
-                        }, null) : undefined, item.props.prependAvatar && _createVNode$17(VAvatar, {
+                        }, null) : undefined, item.props.prependAvatar && _createVNode$16(VAvatar, {
                           "image": item.props.prependAvatar
-                        }, null), item.props.prependIcon && _createVNode$17(VIcon, {
+                        }, null), item.props.prependIcon && _createVNode$16(VIcon, {
                           "icon": item.props.prependIcon
                         }, null)]);
                       },
@@ -19464,13 +19464,13 @@ const VCombobox = genericComponent()({
               "key": item.value,
               "class": _normalizeClass$K(['v-combobox__selection', index === selectionIndex.value && ['v-combobox__selection--selected', textColorClasses.value]]),
               "style": _normalizeStyle$A(index === selectionIndex.value ? textColorStyles.value : {})
-            }, [hasChips.value ? !slots.chip ? _createVNode$17(VChip, _mergeProps$F({
+            }, [hasChips.value ? !slots.chip ? _createVNode$16(VChip, _mergeProps$F({
               "key": "chip",
               "closable": closableChips.value,
               "size": "small",
               "text": item.title,
               "disabled": item.props.disabled
-            }, slotProps), null) : _createVNode$17(VDefaultsProvider, {
+            }, slotProps), null) : _createVNode$16(VDefaultsProvider, {
               "key": "chip-defaults",
               "defaults": {
                 VChip: {
@@ -19485,14 +19485,14 @@ const VCombobox = genericComponent()({
               "class": "v-combobox__selection-text"
             }, [item.title, props.multiple && index < model.value.length - 1 && _createElementVNode$W("span", {
               "class": "v-combobox__selection-comma"
-            }, [_createTextVNode$7(",")])])]);
+            }, [_createTextVNode$6(",")])])]);
           })]);
         },
         'append-inner': function () {
           for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
             args[_key] = arguments[_key];
           }
-          return _createElementVNode$W(_Fragment$t, null, [slots['append-inner']?.(...args), (!props.hideNoData || props.items.length) && props.menuIcon ? _createVNode$17(VIcon, {
+          return _createElementVNode$W(_Fragment$t, null, [slots['append-inner']?.(...args), (!props.hideNoData || props.items.length) && props.menuIcon ? _createVNode$16(VIcon, {
             "class": "v-combobox__menu-icon",
             "color": vTextFieldRef.value?.fieldIconColor,
             "icon": props.menuIcon,
@@ -19500,7 +19500,7 @@ const VCombobox = genericComponent()({
             "onClick": noop,
             "aria-hidden": true,
             "tabindex": "-1"
-          }, null) : undefined, props.appendInnerIcon && _createVNode$17(InputIcon, {
+          }, null) : undefined, props.appendInnerIcon && _createVNode$16(InputIcon, {
             "key": "append-icon",
             "name": "appendInner",
             "color": args[0].iconColor.value
@@ -19520,7 +19520,7 @@ const VCombobox = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$s,mergeProps:_mergeProps$E,createVNode:_createVNode$16,createElementVNode:_createElementVNode$V} = await importShared('vue');
+const {Fragment:_Fragment$s,mergeProps:_mergeProps$E,createVNode:_createVNode$15,createElementVNode:_createElementVNode$V} = await importShared('vue');
 const {computed: computed$11,ref: ref$x,watchEffect: watchEffect$b} = await importShared('vue');
 const makeVConfirmEditProps = propsFactory({
   modelValue: null,
@@ -19583,13 +19583,13 @@ const VConfirmEdit = genericComponent()({
       emit('cancel');
     }
     function actions(actionsProps) {
-      return _createElementVNode$V(_Fragment$s, null, [_createVNode$16(VBtn, _mergeProps$E({
+      return _createElementVNode$V(_Fragment$s, null, [_createVNode$15(VBtn, _mergeProps$E({
         "disabled": isCancelDisabled.value,
         "variant": "text",
         "color": props.color,
         "onClick": cancel,
         "text": t(props.cancelText)
-      }, actionsProps), null), _createVNode$16(VBtn, _mergeProps$E({
+      }, actionsProps), null), _createVNode$15(VBtn, _mergeProps$E({
         "disabled": isSaveDisabled.value,
         "variant": "text",
         "color": props.color,
@@ -20443,7 +20443,7 @@ function useDataIteratorItems(props) {
   };
 }
 
-const {createVNode:_createVNode$15,createElementVNode:_createElementVNode$U,normalizeClass:_normalizeClass$J,normalizeStyle:_normalizeStyle$z} = await importShared('vue');
+const {createVNode:_createVNode$14,createElementVNode:_createElementVNode$U,normalizeClass:_normalizeClass$J,normalizeStyle:_normalizeStyle$z} = await importShared('vue');
 const {computed: computed$X,shallowRef: shallowRef$k,toRef: toRef$p,watchEffect: watchEffect$a} = await importShared('vue');
 const makeVDataIteratorProps = propsFactory({
   search: String,
@@ -20604,16 +20604,16 @@ const VDataIterator = genericComponent()({
       itemsCount: filteredItems.value.length,
       groupedItems: currentItems.value
     }));
-    useRender(() => _createVNode$15(props.tag, {
+    useRender(() => _createVNode$14(props.tag, {
       "class": _normalizeClass$J(['v-data-iterator', {
         'v-data-iterator--loading': props.loading
       }, props.class]),
       "style": _normalizeStyle$z(props.style)
     }, {
-      default: () => [slots.header?.(slotProps.value), _createVNode$15(MaybeTransition, {
+      default: () => [slots.header?.(slotProps.value), _createVNode$14(MaybeTransition, {
         "transition": props.transition
       }, {
-        default: () => [props.loading ? _createVNode$15(LoaderSlot, {
+        default: () => [props.loading ? _createVNode$14(LoaderSlot, {
           "key": "loader",
           "name": "v-data-iterator",
           "active": true
@@ -20652,7 +20652,7 @@ function useRefs() {
   };
 }
 
-const {mergeProps:_mergeProps$D,createVNode:_createVNode$14,createElementVNode:_createElementVNode$T,normalizeClass:_normalizeClass$I,normalizeStyle:_normalizeStyle$y} = await importShared('vue');
+const {mergeProps:_mergeProps$D,createVNode:_createVNode$13,createElementVNode:_createElementVNode$T,normalizeClass:_normalizeClass$I,normalizeStyle:_normalizeStyle$y} = await importShared('vue');
 const {computed: computed$W,nextTick: nextTick$c,shallowRef: shallowRef$j,toRef: toRef$o} = await importShared('vue');
 const makeVPaginationProps = propsFactory({
   activeColor: String,
@@ -20919,7 +20919,7 @@ const VPagination = genericComponent()({
         nextTick$c(updateFocus);
       }
     }
-    useRender(() => _createVNode$14(props.tag, {
+    useRender(() => _createVNode$13(props.tag, {
       "ref": resizeRef,
       "class": _normalizeClass$I(['v-pagination', themeClasses.value, props.class]),
       "style": _normalizeStyle$y(props.style),
@@ -20934,13 +20934,13 @@ const VPagination = genericComponent()({
         "key": "first",
         "class": "v-pagination__first",
         "data-test": "v-pagination-first"
-      }, [slots.first ? slots.first(controls.value.first) : _createVNode$14(VBtn, _mergeProps$D({
+      }, [slots.first ? slots.first(controls.value.first) : _createVNode$13(VBtn, _mergeProps$D({
         "_as": "VPaginationBtn"
       }, controls.value.first), null)]), _createElementVNode$T("li", {
         "key": "prev",
         "class": "v-pagination__prev",
         "data-test": "v-pagination-prev"
-      }, [slots.prev ? slots.prev(controls.value.prev) : _createVNode$14(VBtn, _mergeProps$D({
+      }, [slots.prev ? slots.prev(controls.value.prev) : _createVNode$13(VBtn, _mergeProps$D({
         "_as": "VPaginationBtn"
       }, controls.value.prev), null)]), items.value.map((item, index) => _createElementVNode$T("li", {
         "key": item.key,
@@ -20948,7 +20948,7 @@ const VPagination = genericComponent()({
           'v-pagination__item--is-active': item.isActive
         }]),
         "data-test": "v-pagination-item"
-      }, [slots.item ? slots.item(item) : _createVNode$14(VBtn, _mergeProps$D({
+      }, [slots.item ? slots.item(item) : _createVNode$13(VBtn, _mergeProps$D({
         "_as": "VPaginationBtn"
       }, item.props), {
         default: () => [item.page]
@@ -20956,13 +20956,13 @@ const VPagination = genericComponent()({
         "key": "next",
         "class": "v-pagination__next",
         "data-test": "v-pagination-next"
-      }, [slots.next ? slots.next(controls.value.next) : _createVNode$14(VBtn, _mergeProps$D({
+      }, [slots.next ? slots.next(controls.value.next) : _createVNode$13(VBtn, _mergeProps$D({
         "_as": "VPaginationBtn"
       }, controls.value.next), null)]), props.showFirstLastPage && _createElementVNode$T("li", {
         "key": "last",
         "class": "v-pagination__last",
         "data-test": "v-pagination-last"
-      }, [slots.last ? slots.last(controls.value.last) : _createVNode$14(VBtn, _mergeProps$D({
+      }, [slots.last ? slots.last(controls.value.last) : _createVNode$13(VBtn, _mergeProps$D({
         "_as": "VPaginationBtn"
       }, controls.value.last), null)])])]
     }));
@@ -20970,7 +20970,7 @@ const VPagination = genericComponent()({
   }
 });
 
-const {createElementVNode:_createElementVNode$S,createVNode:_createVNode$13,mergeProps:_mergeProps$C} = await importShared('vue');
+const {createElementVNode:_createElementVNode$S,createVNode:_createVNode$12,mergeProps:_mergeProps$C} = await importShared('vue');
 const {computed: computed$V} = await importShared('vue');
 const makeVDataTableFooterProps = propsFactory({
   color: String,
@@ -21072,7 +21072,7 @@ const VDataTableFooter = genericComponent()({
         "class": "v-data-table-footer"
       }, [slots.prepend?.(), _createElementVNode$S("div", {
         "class": "v-data-table-footer__items-per-page"
-      }, [_createElementVNode$S("span", null, [t(props.itemsPerPageText)]), _createVNode$13(VSelect, {
+      }, [_createElementVNode$S("span", null, [t(props.itemsPerPageText)]), _createVNode$12(VSelect, {
         "items": itemsPerPageOptions.value,
         "itemColor": props.color,
         "modelValue": itemsPerPage.value,
@@ -21085,7 +21085,7 @@ const VDataTableFooter = genericComponent()({
         "class": "v-data-table-footer__info"
       }, [_createElementVNode$S("div", null, [t(props.pageText, !itemsLength.value ? 0 : startIndex.value + 1, stopIndex.value, itemsLength.value)])]), _createElementVNode$S("div", {
         "class": "v-data-table-footer__pagination"
-      }, [_createVNode$13(VPagination, _mergeProps$C({
+      }, [_createVNode$12(VPagination, _mergeProps$C({
         "modelValue": page.value,
         "onUpdate:modelValue": $event => page.value = $event,
         "density": "comfortable",
@@ -21104,7 +21104,7 @@ const VDataTableFooter = genericComponent()({
   }
 });
 
-const {normalizeClass:_normalizeClass$H,createVNode:_createVNode$12} = await importShared('vue');
+const {normalizeClass:_normalizeClass$H,createVNode:_createVNode$11} = await importShared('vue');
 const VDataTableColumn = defineFunctionalComponent({
   align: {
     type: String,
@@ -21132,7 +21132,7 @@ const VDataTableColumn = defineFunctionalComponent({
   } = _ref;
   const Tag = props.tag ?? 'td';
   const fixedSide = typeof props.fixed === 'string' ? props.fixed : props.fixed ? 'start' : 'none';
-  return _createVNode$12(Tag, {
+  return _createVNode$11(Tag, {
     "class": _normalizeClass$H(['v-data-table__td', {
       'v-data-table-column--fixed': fixedSide === 'start',
       'v-data-table-column--fixed-end': fixedSide === 'end',
@@ -21461,7 +21461,7 @@ function useHeaders() {
   return data;
 }
 
-const {createVNode:_createVNode$11,createElementVNode:_createElementVNode$R,normalizeClass:_normalizeClass$G,normalizeStyle:_normalizeStyle$x,mergeProps:_mergeProps$B,Fragment:_Fragment$r} = await importShared('vue');
+const {createVNode:_createVNode$10,createElementVNode:_createElementVNode$R,normalizeClass:_normalizeClass$G,normalizeStyle:_normalizeStyle$x,mergeProps:_mergeProps$B,Fragment:_Fragment$r} = await importShared('vue');
 const {computed: computed$U,mergeProps: mergeProps$4,nextTick: nextTick$b} = await importShared('vue');
 const makeVDataTableHeadersProps = propsFactory({
   color: String,
@@ -21575,7 +21575,7 @@ const VDataTableHeaders = genericComponent()({
       const noPadding = column.key === 'data-table-select' || column.key === 'data-table-expand';
       const isEmpty = column.key === 'data-table-group' && column.width === 0 && !column.title;
       const headerProps = mergeProps$4(props.headerProps ?? {}, column.headerProps ?? {});
-      return _createVNode$11(VDataTableColumn, _mergeProps$B({
+      return _createVNode$10(VDataTableColumn, _mergeProps$B({
         "tag": "th",
         "align": column.align,
         "class": [{
@@ -21616,7 +21616,7 @@ const VDataTableHeaders = genericComponent()({
           if (slots[columnSlotName]) return slots[columnSlotName](columnSlotProps);
           if (isEmpty) return '';
           if (column.key === 'data-table-select') {
-            return slots['header.data-table-select']?.(columnSlotProps) ?? (showSelectAll.value && _createVNode$11(VCheckboxBtn, {
+            return slots['header.data-table-select']?.(columnSlotProps) ?? (showSelectAll.value && _createVNode$10(VCheckboxBtn, {
               "color": props.color,
               "density": props.density,
               "modelValue": allSelected.value,
@@ -21626,7 +21626,7 @@ const VDataTableHeaders = genericComponent()({
           }
           return _createElementVNode$R("div", {
             "class": "v-data-table-header__content"
-          }, [_createElementVNode$R("span", null, [column.title]), column.sortable && !props.disableSort && _createVNode$11(VIcon, {
+          }, [_createElementVNode$R("span", null, [column.title]), column.sortable && !props.disableSort && _createVNode$10(VIcon, {
             "key": "icon",
             "class": "v-data-table-header__sort-icon",
             "icon": getSortIcon(column)
@@ -21669,14 +21669,14 @@ const VDataTableHeaders = genericComponent()({
           }));
         }
       });
-      return _createVNode$11(VDataTableColumn, _mergeProps$B({
+      return _createVNode$10(VDataTableColumn, _mergeProps$B({
         "tag": "th",
         "class": [...headerCellClasses.value],
         "colspan": headers.value.length + 1
       }, props.headerProps), {
         default: () => [_createElementVNode$R("div", {
           "class": "v-data-table-header__content"
-        }, [_createVNode$11(VSelect, {
+        }, [_createVNode$10(VSelect, {
           "modelValue": sortingChips.value,
           "onUpdate:modelValue": $event => sortingChips.value = $event,
           "chips": true,
@@ -21691,7 +21691,7 @@ const VDataTableHeaders = genericComponent()({
           "returnObject": true,
           "onClick:clear": () => sortBy.value = []
         }, {
-          append: showSelectColumn ? () => _createVNode$11(VCheckboxBtn, {
+          append: showSelectColumn ? () => _createVNode$10(VCheckboxBtn, {
             "color": props.color,
             "density": "compact",
             "modelValue": allSelected.value,
@@ -21702,14 +21702,14 @@ const VDataTableHeaders = genericComponent()({
             let {
               item
             } = _ref6;
-            return _createVNode$11(VChip, {
+            return _createVNode$10(VChip, {
               "onClick": item.raw.sortable ? () => toggleSort(item.raw, undefined, true) : undefined,
               "onMousedown": e => {
                 e.preventDefault();
                 e.stopPropagation();
               }
             }, {
-              default: () => [item.title, _createVNode$11(VIcon, {
+              default: () => [item.title, _createVNode$10(VIcon, {
                 "class": _normalizeClass$G(['v-data-table__td-sort-icon', isSorted(item.raw) && 'v-data-table__td-sort-icon-active']),
                 "icon": getSortIcon(item.raw),
                 "size": "small"
@@ -21720,7 +21720,7 @@ const VDataTableHeaders = genericComponent()({
       });
     };
     useRender(() => {
-      return mobile.value ? _createElementVNode$R("tr", null, [_createVNode$11(VDataTableMobileHeaderCell, null, null)]) : _createElementVNode$R(_Fragment$r, null, [slots.headers ? slots.headers(slotProps.value) : headers.value.map((row, y) => _createElementVNode$R("tr", null, [row.map((column, x) => _createVNode$11(VDataTableHeaderCell, {
+      return mobile.value ? _createElementVNode$R("tr", null, [_createVNode$10(VDataTableMobileHeaderCell, null, null)]) : _createElementVNode$R(_Fragment$r, null, [slots.headers ? slots.headers(slotProps.value) : headers.value.map((row, y) => _createElementVNode$R("tr", null, [row.map((column, x) => _createVNode$10(VDataTableHeaderCell, {
         "column": column,
         "x": x,
         "y": y
@@ -21728,7 +21728,7 @@ const VDataTableHeaders = genericComponent()({
         "class": "v-data-table-progress"
       }, [_createElementVNode$R("th", {
         "colspan": columns.value.length
-      }, [_createVNode$11(LoaderSlot, {
+      }, [_createVNode$10(LoaderSlot, {
         "name": "v-data-table-progress",
         "absolute": true,
         "active": true,
@@ -21741,7 +21741,7 @@ const VDataTableHeaders = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$10,createElementVNode:_createElementVNode$Q,createTextVNode:_createTextVNode$6} = await importShared('vue');
+const {createVNode:_createVNode$$,createElementVNode:_createElementVNode$Q,createTextVNode:_createTextVNode$5} = await importShared('vue');
 const {computed: computed$T,toRef: toRef$n} = await importShared('vue');
 const makeVDataTableGroupHeaderRowProps = propsFactory({
   item: {
@@ -21798,16 +21798,16 @@ const VDataTableGroupHeaderRow = genericComponent()({
             icon,
             onClick
           }
-        }) ?? _createVNode$10(VDataTableColumn, {
+        }) ?? _createVNode$$(VDataTableColumn, {
           "class": "v-data-table-group-header-row__column",
           "colspan": colspan.value
         }, {
-          default: () => [_createVNode$10(VBtn, {
+          default: () => [_createVNode$$(VBtn, {
             "size": "small",
             "variant": "text",
             "icon": icon,
             "onClick": onClick
-          }, null), _createElementVNode$Q("span", null, [props.item.value]), _createElementVNode$Q("span", null, [_createTextVNode$6("("), rows.value.length, _createTextVNode$6(")")])]
+          }, null), _createElementVNode$Q("span", null, [props.item.value]), _createElementVNode$Q("span", null, [_createTextVNode$5("("), rows.value.length, _createTextVNode$5(")")])]
         });
       } else if (column.key === 'data-table-select') {
         const selectableRows = rows.value.filter(x => x.selectable);
@@ -21820,11 +21820,11 @@ const VDataTableGroupHeaderRow = genericComponent()({
             indeterminate,
             'onUpdate:modelValue': selectGroup
           }
-        }) ?? _createVNode$10(VDataTableColumn, {
+        }) ?? _createVNode$$(VDataTableColumn, {
           "class": "v-data-table__td--select-row",
           "noPadding": true
         }, {
-          default: () => [_createVNode$10(VCheckboxBtn, {
+          default: () => [_createVNode$$(VCheckboxBtn, {
             "density": props.density,
             "disabled": selectableRows.length === 0,
             "modelValue": modelValue,
@@ -21838,7 +21838,7 @@ const VDataTableGroupHeaderRow = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$$,Fragment:_Fragment$q,createElementVNode:_createElementVNode$P,mergeProps:_mergeProps$A,normalizeClass:_normalizeClass$F} = await importShared('vue');
+const {createVNode:_createVNode$_,Fragment:_Fragment$q,createElementVNode:_createElementVNode$P,mergeProps:_mergeProps$A,normalizeClass:_normalizeClass$F} = await importShared('vue');
 const {toDisplayString,withModifiers} = await importShared('vue');
 const makeVDataTableRowProps = propsFactory({
   color: String,
@@ -21936,7 +21936,7 @@ const VDataTableRow = genericComponent()({
       }) : column.cellProps;
       const noPadding = column.key === 'data-table-select' || column.key === 'data-table-expand';
       const isEmpty = column.key === 'data-table-group' && column.width === 0 && !column.title;
-      return _createVNode$$(VDataTableColumn, _mergeProps$A({
+      return _createVNode$_(VDataTableColumn, _mergeProps$A({
         "align": column.align,
         "indent": column.indent,
         "class": {
@@ -21964,7 +21964,7 @@ const VDataTableRow = genericComponent()({
                 modelValue: isSelected([item]),
                 onClick: withModifiers(() => toggleSelect(item), ['stop'])
               }
-            }) ?? _createVNode$$(VCheckboxBtn, {
+            }) ?? _createVNode$_(VCheckboxBtn, {
               "color": props.color,
               "disabled": !item.selectable,
               "density": props.density,
@@ -21981,7 +21981,7 @@ const VDataTableRow = genericComponent()({
                 variant: 'text',
                 onClick: withModifiers(() => toggleExpand(item), ['stop'])
               }
-            }) ?? _createVNode$$(VBtn, {
+            }) ?? _createVNode$_(VBtn, {
               "icon": isExpanded(item) ? props.collapseIcon : props.expandIcon,
               "size": "small",
               "variant": "text",
@@ -22001,7 +22001,7 @@ const VDataTableRow = genericComponent()({
   }
 });
 
-const {createElementVNode:_createElementVNode$O,Fragment:_Fragment$p,mergeProps:_mergeProps$z,createVNode:_createVNode$_} = await importShared('vue');
+const {createElementVNode:_createElementVNode$O,Fragment:_Fragment$p,mergeProps:_mergeProps$z,createVNode:_createVNode$Z} = await importShared('vue');
 const {Fragment,mergeProps: mergeProps$3} = await importShared('vue');
 const makeVDataTableRowsProps = propsFactory({
   color: String,
@@ -22087,7 +22087,7 @@ const VDataTableRows = genericComponent()({
             toggleGroup,
             isGroupOpen
           };
-          return slots['group-header'] ? slots['group-header'](slotProps) : _createVNode$_(VDataTableGroupHeaderRow, _mergeProps$z({
+          return slots['group-header'] ? slots['group-header'](slotProps) : _createVNode$Z(VDataTableGroupHeaderRow, _mergeProps$z({
             "key": `group-header_${item.id}`,
             "item": item
           }, getPrefixedEventHandlers(attrs, ':groupHeader', () => slotProps), groupHeaderRowProps), slots);
@@ -22134,7 +22134,7 @@ const VDataTableRows = genericComponent()({
         };
         return _createElementVNode$O(_Fragment$p, {
           "key": itemSlotProps.props.key
-        }, [slots.item ? slots.item(itemSlotProps) : _createVNode$_(VDataTableRow, itemSlotProps.props, slots), isExpanded(item) && slots['expanded-row']?.(slotProps)]);
+        }, [slots.item ? slots.item(itemSlotProps) : _createVNode$Z(VDataTableRow, itemSlotProps.props, slots), isExpanded(item) && slots['expanded-row']?.(slotProps)]);
       })]);
     });
     return {};
@@ -22143,7 +22143,7 @@ const VDataTableRows = genericComponent()({
 
 const VTable$1 = '';
 
-const {createElementVNode:_createElementVNode$N,normalizeClass:_normalizeClass$E,normalizeStyle:_normalizeStyle$w,createVNode:_createVNode$Z} = await importShared('vue');
+const {createElementVNode:_createElementVNode$N,normalizeClass:_normalizeClass$E,normalizeStyle:_normalizeStyle$w,createVNode:_createVNode$Y} = await importShared('vue');
 const makeVTableProps = propsFactory({
   fixedHeader: Boolean,
   fixedFooter: Boolean,
@@ -22173,7 +22173,7 @@ const VTable = genericComponent()({
     const {
       densityClasses
     } = useDensity(props);
-    useRender(() => _createVNode$Z(props.tag, {
+    useRender(() => _createVNode$Y(props.tag, {
       "class": _normalizeClass$E(['v-table', {
         'v-table--fixed-height': !!props.height,
         'v-table--fixed-header': props.fixedHeader,
@@ -22244,7 +22244,7 @@ function useDataTableItems(props, columns) {
   };
 }
 
-const {Fragment:_Fragment$o,mergeProps:_mergeProps$y,createVNode:_createVNode$Y,createElementVNode:_createElementVNode$M} = await importShared('vue');
+const {Fragment:_Fragment$o,mergeProps:_mergeProps$y,createVNode:_createVNode$X,createElementVNode:_createElementVNode$M} = await importShared('vue');
 const {computed: computed$R,toRef: toRef$m,toRefs: toRefs$3,toValue} = await importShared('vue');
 const makeDataTableProps = propsFactory({
   ...makeVDataTableRowsProps(),
@@ -22453,7 +22453,7 @@ const VDataTable = genericComponent()({
       const dataTableHeadersProps = VDataTableHeaders.filterProps(omit(props, ['multiSort']));
       const dataTableRowsProps = VDataTableRows.filterProps(props);
       const tableProps = VTable.filterProps(props);
-      return _createVNode$Y(VTable, _mergeProps$y({
+      return _createVNode$X(VTable, _mergeProps$y({
         "class": ['v-data-table', {
           'v-data-table--show-select': props.showSelect,
           'v-data-table--loading': props.loading
@@ -22465,12 +22465,12 @@ const VDataTable = genericComponent()({
         top: () => slots.top?.(slotProps.value),
         default: () => slots.default ? slots.default(slotProps.value) : _createElementVNode$M(_Fragment$o, null, [slots.colgroup?.(slotProps.value), !props.hideDefaultHeader && _createElementVNode$M("thead", {
           "key": "thead"
-        }, [_createVNode$Y(VDataTableHeaders, _mergeProps$y(dataTableHeadersProps, {
+        }, [_createVNode$X(VDataTableHeaders, _mergeProps$y(dataTableHeadersProps, {
           "multiSort": !!props.multiSort
-        }), slots)]), slots.thead?.(slotProps.value), !props.hideDefaultBody && _createElementVNode$M("tbody", null, [slots['body.prepend']?.(slotProps.value), slots.body ? slots.body(slotProps.value) : _createVNode$Y(VDataTableRows, _mergeProps$y(attrs, dataTableRowsProps, {
+        }), slots)]), slots.thead?.(slotProps.value), !props.hideDefaultBody && _createElementVNode$M("tbody", null, [slots['body.prepend']?.(slotProps.value), slots.body ? slots.body(slotProps.value) : _createVNode$X(VDataTableRows, _mergeProps$y(attrs, dataTableRowsProps, {
           "items": paginatedItems.value
         }), slots), slots['body.append']?.(slotProps.value)]), slots.tbody?.(slotProps.value), slots.tfoot?.(slotProps.value)]),
-        bottom: () => slots.bottom ? slots.bottom(slotProps.value) : !props.hideDefaultFooter && _createElementVNode$M(_Fragment$o, null, [_createVNode$Y(VDivider, null, null), _createVNode$Y(VDataTableFooter, dataTableFooterProps, {
+        bottom: () => slots.bottom ? slots.bottom(slotProps.value) : !props.hideDefaultFooter && _createElementVNode$M(_Fragment$o, null, [_createVNode$X(VDivider, null, null), _createVNode$X(VDataTableFooter, dataTableFooterProps, {
           prepend: slots['footer.prepend']
         })])
       });
@@ -22479,7 +22479,7 @@ const VDataTable = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$x,createVNode:_createVNode$X,createElementVNode:_createElementVNode$L} = await importShared('vue');
+const {mergeProps:_mergeProps$x,createVNode:_createVNode$W,createElementVNode:_createElementVNode$L} = await importShared('vue');
 const {computed: computed$Q,shallowRef: shallowRef$i,toRef: toRef$l,toRefs: toRefs$2} = await importShared('vue');
 const makeVDataTableVirtualProps = propsFactory({
   ...omit(makeDataTableProps(), ['hideDefaultFooter']),
@@ -22637,7 +22637,7 @@ const VDataTableVirtual = genericComponent()({
       const dataTableHeadersProps = VDataTableHeaders.filterProps(omit(props, ['multiSort']));
       const dataTableRowsProps = VDataTableRows.filterProps(props);
       const tableProps = VTable.filterProps(props);
-      return _createVNode$X(VTable, _mergeProps$x({
+      return _createVNode$W(VTable, _mergeProps$x({
         "class": ['v-data-table', {
           'v-data-table--loading': props.loading
         }, props.class],
@@ -22656,7 +22656,7 @@ const VDataTableVirtual = genericComponent()({
           }
         }, [_createElementVNode$L("table", null, [slots.colgroup?.(slotProps.value), !props.hideDefaultHeader && _createElementVNode$L("thead", {
           "key": "thead"
-        }, [_createVNode$X(VDataTableHeaders, _mergeProps$x(dataTableHeadersProps, {
+        }, [_createVNode$W(VDataTableHeaders, _mergeProps$x(dataTableHeadersProps, {
           "multiSort": !!props.multiSort
         }), slots)]), slots.thead?.(slotProps.value), !props.hideDefaultBody && _createElementVNode$L("tbody", {
           "key": "tbody"
@@ -22672,11 +22672,11 @@ const VDataTableVirtual = genericComponent()({
             height: 0,
             border: 0
           }
-        }, null)]), slots['body.prepend']?.(slotProps.value), _createVNode$X(VDataTableRows, _mergeProps$x(attrs, dataTableRowsProps, {
+        }, null)]), slots['body.prepend']?.(slotProps.value), _createVNode$W(VDataTableRows, _mergeProps$x(attrs, dataTableRowsProps, {
           "items": displayItems.value
         }), {
           ...slots,
-          item: itemSlotProps => _createVNode$X(VVirtualScrollItem, {
+          item: itemSlotProps => _createVNode$W(VVirtualScrollItem, {
             "key": itemSlotProps.internalItem.index,
             "renderless": true,
             "onUpdate:height": height => handleItemResize(itemSlotProps.internalItem.index, height)
@@ -22688,7 +22688,7 @@ const VDataTableVirtual = genericComponent()({
               return slots.item?.({
                 ...itemSlotProps,
                 itemRef
-              }) ?? _createVNode$X(VDataTableRow, _mergeProps$x(itemSlotProps.props, {
+              }) ?? _createVNode$W(VDataTableRow, _mergeProps$x(itemSlotProps.props, {
                 "ref": itemRef,
                 "key": itemSlotProps.internalItem.index,
                 "index": itemSlotProps.index
@@ -22717,7 +22717,7 @@ const VDataTableVirtual = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$n,mergeProps:_mergeProps$w,createVNode:_createVNode$W,createElementVNode:_createElementVNode$K} = await importShared('vue');
+const {Fragment:_Fragment$n,mergeProps:_mergeProps$w,createVNode:_createVNode$V,createElementVNode:_createElementVNode$K} = await importShared('vue');
 const {computed: computed$P,provide: provide$2,toRef: toRef$k,toRefs: toRefs$1} = await importShared('vue');
 const makeVDataTableServerProps = propsFactory({
   itemsLength: {
@@ -22866,7 +22866,7 @@ const VDataTableServer = genericComponent()({
       const dataTableHeadersProps = VDataTableHeaders.filterProps(omit(props, ['multiSort']));
       const dataTableRowsProps = VDataTableRows.filterProps(props);
       const tableProps = VTable.filterProps(props);
-      return _createVNode$W(VTable, _mergeProps$w({
+      return _createVNode$V(VTable, _mergeProps$w({
         "class": ['v-data-table', {
           'v-data-table--loading': props.loading
         }, props.class],
@@ -22879,15 +22879,15 @@ const VDataTableServer = genericComponent()({
           "key": "thead",
           "class": "v-data-table__thead",
           "role": "rowgroup"
-        }, [_createVNode$W(VDataTableHeaders, _mergeProps$w(dataTableHeadersProps, {
+        }, [_createVNode$V(VDataTableHeaders, _mergeProps$w(dataTableHeadersProps, {
           "multiSort": !!props.multiSort
         }), slots)]), slots.thead?.(slotProps.value), !props.hideDefaultBody && _createElementVNode$K("tbody", {
           "class": "v-data-table__tbody",
           "role": "rowgroup"
-        }, [slots['body.prepend']?.(slotProps.value), slots.body ? slots.body(slotProps.value) : _createVNode$W(VDataTableRows, _mergeProps$w(attrs, dataTableRowsProps, {
+        }, [slots['body.prepend']?.(slotProps.value), slots.body ? slots.body(slotProps.value) : _createVNode$V(VDataTableRows, _mergeProps$w(attrs, dataTableRowsProps, {
           "items": flatItems.value
         }), slots), slots['body.append']?.(slotProps.value)]), slots.tbody?.(slotProps.value), slots.tfoot?.(slotProps.value)]),
-        bottom: () => slots.bottom ? slots.bottom(slotProps.value) : !props.hideDefaultFooter && _createElementVNode$K(_Fragment$n, null, [_createVNode$W(VDivider, null, null), _createVNode$W(VDataTableFooter, dataTableFooterProps, {
+        bottom: () => slots.bottom ? slots.bottom(slotProps.value) : !props.hideDefaultFooter && _createElementVNode$K(_Fragment$n, null, [_createVNode$V(VDivider, null, null), _createVNode$V(VDataTableFooter, dataTableFooterProps, {
           prepend: slots['footer.prepend']
         })])
       });
@@ -22901,7 +22901,7 @@ const VDatePickerControls$1 = '';
 
 const VContainer$1 = '';
 
-const {normalizeClass:_normalizeClass$D,normalizeStyle:_normalizeStyle$v,createVNode:_createVNode$V} = await importShared('vue');
+const {normalizeClass:_normalizeClass$D,normalizeStyle:_normalizeStyle$v,createVNode:_createVNode$U} = await importShared('vue');
 const makeVContainerProps = propsFactory({
   fluid: {
     type: Boolean,
@@ -22924,7 +22924,7 @@ const VContainer = genericComponent()({
     const {
       dimensionStyles
     } = useDimension(props);
-    useRender(() => _createVNode$V(props.tag, {
+    useRender(() => _createVNode$U(props.tag, {
       "class": _normalizeClass$D(['v-container', {
         'v-container--fluid': props.fluid
       }, rtlClasses.value, props.class]),
@@ -22936,7 +22936,7 @@ const VContainer = genericComponent()({
 
 const VGrid = '';
 
-const {capitalize: capitalize$1,computed: computed$O,h: h$2} = await importShared('vue');
+const {capitalize: capitalize$1,computed: computed$O,h: h$3} = await importShared('vue');
 const breakpointProps = (() => {
   return breakpoints.reduce((props, val) => {
     props[val] = {
@@ -23049,14 +23049,14 @@ const VCol = genericComponent()({
       });
       return classList;
     });
-    return () => h$2(props.tag, {
+    return () => h$3(props.tag, {
       class: [classes.value, props.class],
       style: props.style
     }, slots.default?.());
   }
 });
 
-const {capitalize,computed: computed$N,h: h$1} = await importShared('vue');
+const {capitalize,computed: computed$N,h: h$2} = await importShared('vue');
 const ALIGNMENT = ['start', 'end', 'center'];
 const SPACE = ['space-between', 'space-around', 'space-evenly'];
 function makeRowProps(prefix, def) {
@@ -23163,7 +23163,7 @@ const VRow = genericComponent()({
       });
       return classList;
     });
-    return () => h$1(props.tag, {
+    return () => h$2(props.tag, {
       class: ['v-row', classes.value, props.class],
       style: props.style
     }, slots.default?.());
@@ -23175,7 +23175,7 @@ const VSpacer$1 = '';
 // Styles
 const VSpacer = createSimpleFunctional('v-spacer', 'div', 'VSpacer');
 
-const {createVNode:_createVNode$U,Fragment:_Fragment$m,createElementVNode:_createElementVNode$J,normalizeClass:_normalizeClass$C} = await importShared('vue');
+const {createVNode:_createVNode$T,Fragment:_Fragment$m,createElementVNode:_createElementVNode$J,normalizeClass:_normalizeClass$C} = await importShared('vue');
 const {computed: computed$M} = await importShared('vue');
 const makeVDatePickerControlsProps = propsFactory({
   active: {
@@ -23274,35 +23274,35 @@ const VDatePickerControls = genericComponent()({
           variant: 'text'
         }
       };
-      const prevMonth = _createVNode$U(VBtn, {
+      const prevMonth = _createVNode$T(VBtn, {
         "data-testid": "prev-month",
         "disabled": disablePrevMonth.value,
         "icon": props.prevIcon,
         "aria-label": t('$vuetify.datePicker.ariaLabel.previousMonth'),
         "onClick": onClickPrevMonth
       }, null);
-      const nextMonth = _createVNode$U(VBtn, {
+      const nextMonth = _createVNode$T(VBtn, {
         "data-testid": "next-month",
         "disabled": disableNextMonth.value,
         "icon": props.nextIcon,
         "aria-label": t('$vuetify.datePicker.ariaLabel.nextMonth'),
         "onClick": onClickNextMonth
       }, null);
-      const prevYear = _createVNode$U(VBtn, {
+      const prevYear = _createVNode$T(VBtn, {
         "data-testid": "prev-year",
         "disabled": disablePrevYear.value,
         "icon": props.prevIcon,
         "aria-label": t('$vuetify.datePicker.ariaLabel.previousYear'),
         "onClick": onClickPrevYear
       }, null);
-      const nextYear = _createVNode$U(VBtn, {
+      const nextYear = _createVNode$T(VBtn, {
         "data-testid": "next-year",
         "disabled": disableNextYear.value,
         "icon": props.nextIcon,
         "aria-label": t('$vuetify.datePicker.ariaLabel.nextYear'),
         "onClick": onClickNextYear
       }, null);
-      const onlyMonthBtn = _createVNode$U(VBtn, {
+      const onlyMonthBtn = _createVNode$T(VBtn, {
         "class": "v-date-picker-controls__only-month-btn",
         "data-testid": "month-btn",
         "density": "default",
@@ -23313,7 +23313,7 @@ const VDatePickerControls = genericComponent()({
         "aria-label": t('$vuetify.datePicker.ariaLabel.selectMonth'),
         "onClick": onClickMonth
       }, null);
-      const onlyYearBtn = _createVNode$U(VBtn, {
+      const onlyYearBtn = _createVNode$T(VBtn, {
         "class": "v-date-picker-controls__only-year-btn",
         "data-testid": "year-btn",
         "density": "default",
@@ -23324,7 +23324,7 @@ const VDatePickerControls = genericComponent()({
         "aria-label": t('$vuetify.datePicker.ariaLabel.selectYear'),
         "onClick": onClickYear
       }, null);
-      const monthYearBtn = _createVNode$U(VBtn, {
+      const monthYearBtn = _createVNode$T(VBtn, {
         "class": "v-date-picker-controls__year-btn",
         "data-testid": "year-btn",
         "density": "default",
@@ -23335,7 +23335,7 @@ const VDatePickerControls = genericComponent()({
         "aria-label": t('$vuetify.datePicker.ariaLabel.selectYear'),
         "onClick": onClickYear
       }, null);
-      const monthYearSplit = _createElementVNode$J(_Fragment$m, null, [_createVNode$U(VBtn, {
+      const monthYearSplit = _createElementVNode$J(_Fragment$m, null, [_createVNode$T(VBtn, {
         "class": "v-date-picker-controls__month-btn",
         "data-testid": "month-btn",
         "height": "36",
@@ -23344,7 +23344,7 @@ const VDatePickerControls = genericComponent()({
         "rounded": true,
         "aria-label": t('$vuetify.datePicker.ariaLabel.selectMonth'),
         "onClick": onClickMonth
-      }, null), _createVNode$U(VBtn, {
+      }, null), _createVNode$T(VBtn, {
         "class": "v-date-picker-controls__mode-btn",
         "data-testid": "year-btn",
         "disabled": disableYear.value,
@@ -23365,15 +23365,15 @@ const VDatePickerControls = genericComponent()({
         prevYear: onClickPrevYear,
         nextYear: onClickNextYear
       };
-      const modalControls = _createElementVNode$J(_Fragment$m, null, [props.noMonthPicker ? monthYearBtn : monthYearSplit, _createVNode$U(VSpacer, null, null), _createElementVNode$J("div", {
+      const modalControls = _createElementVNode$J(_Fragment$m, null, [props.noMonthPicker ? monthYearBtn : monthYearSplit, _createVNode$T(VSpacer, null, null), _createElementVNode$J("div", {
         "class": "v-date-picker-controls__month"
       }, [prevMonth, nextMonth])]);
       const dockedControls = _createElementVNode$J(_Fragment$m, null, [_createElementVNode$J("div", {
         "class": "v-date-picker-controls__month"
-      }, [prevMonth, onlyMonthBtn, nextMonth]), _createVNode$U(VSpacer, null, null), _createElementVNode$J("div", {
+      }, [prevMonth, onlyMonthBtn, nextMonth]), _createVNode$T(VSpacer, null, null), _createElementVNode$J("div", {
         "class": "v-date-picker-controls__year"
       }, [prevYear, onlyYearBtn, nextYear])]);
-      return _createVNode$U(VDefaultsProvider, {
+      return _createVNode$T(VDefaultsProvider, {
         "defaults": innerDefaults
       }, {
         default: () => [_createElementVNode$J("div", {
@@ -23390,7 +23390,7 @@ const VDatePickerControls = genericComponent()({
 
 const VDatePickerHeader$1 = '';
 
-const {createElementVNode:_createElementVNode$I,createVNode:_createVNode$T,normalizeClass:_normalizeClass$B,normalizeStyle:_normalizeStyle$u} = await importShared('vue');
+const {createElementVNode:_createElementVNode$I,createVNode:_createVNode$S,normalizeClass:_normalizeClass$B,normalizeStyle:_normalizeStyle$u} = await importShared('vue');
 const makeVDatePickerHeaderProps = propsFactory({
   appendIcon: IconValue,
   color: String,
@@ -23432,7 +23432,7 @@ const VDatePickerHeader = genericComponent()({
       }, [slots.prepend && _createElementVNode$I("div", {
         "key": "prepend",
         "class": "v-date-picker-header__prepend"
-      }, [slots.prepend()]), hasContent && _createVNode$T(MaybeTransition, {
+      }, [slots.prepend()]), hasContent && _createVNode$S(MaybeTransition, {
         "key": "content",
         "name": props.transition
       }, {
@@ -23442,12 +23442,12 @@ const VDatePickerHeader = genericComponent()({
         }, [slots.default?.() ?? props.header])]
       }), hasAppend && _createElementVNode$I("div", {
         "class": "v-date-picker-header__append"
-      }, [!slots.append ? _createVNode$T(VBtn, {
+      }, [!slots.append ? _createVNode$S(VBtn, {
         "key": "append-btn",
         "icon": props.appendIcon,
         "variant": "text",
         "onClick": onClickAppend
-      }, null) : _createVNode$T(VDefaultsProvider, {
+      }, null) : _createVNode$S(VDefaultsProvider, {
         "key": "append-defaults",
         "disabled": !props.appendIcon,
         "defaults": {
@@ -23652,7 +23652,7 @@ function useCalendarRange(props) {
   };
 }
 
-const {createVNode:_createVNode$S,createElementVNode:_createElementVNode$H,createTextVNode:_createTextVNode$5,normalizeClass:_normalizeClass$A} = await importShared('vue');
+const {createVNode:_createVNode$R,createElementVNode:_createElementVNode$H,createTextVNode:_createTextVNode$4,normalizeClass:_normalizeClass$A} = await importShared('vue');
 const {computed: computed$K,ref: ref$t,shallowRef: shallowRef$h,toRef: toRef$j,watch: watch$g} = await importShared('vue');
 const makeVDatePickerMonthProps = propsFactory({
   color: String,
@@ -23813,7 +23813,7 @@ const VDatePickerMonth = genericComponent()({
       if (!eventColors.length) return null;
       return _createElementVNode$H("div", {
         "class": "v-date-picker-month__events"
-      }, [eventColors.map(color => _createVNode$S(VBadge, {
+      }, [eventColors.map(color => _createVNode$R(VBadge, {
         "dot": true,
         "color": color
       }, null))]);
@@ -23829,9 +23829,9 @@ const VDatePickerMonth = genericComponent()({
     }, [!props.hideWeekdays && _createElementVNode$H("div", {
       "key": "hide-week-days",
       "class": "v-date-picker-month__day"
-    }, [_createTextVNode$5("\xA0")]), weekNumbers.value.map(week => _createElementVNode$H("div", {
+    }, [_createTextVNode$4("\xA0")]), weekNumbers.value.map(week => _createElementVNode$H("div", {
       "class": _normalizeClass$A(['v-date-picker-month__day', 'v-date-picker-month__day--adjacent'])
-    }, [week]))]), _createVNode$S(MaybeTransition, {
+    }, [week]))]), _createVNode$R(MaybeTransition, {
       "name": transition.value
     }, {
       default: () => [_createElementVNode$H("div", {
@@ -23869,7 +23869,7 @@ const VDatePickerMonth = genericComponent()({
             'v-date-picker-month__day--week-start': item.isWeekStart
           }]),
           "data-v-date": !item.isDisabled ? item.isoDate : undefined
-        }, [(props.showAdjacentMonths || !item.isAdjacent) && (slots.day?.(slotProps) ?? _createVNode$S(VBtn, slotProps.props, {
+        }, [(props.showAdjacentMonths || !item.isAdjacent) && (slots.day?.(slotProps) ?? _createVNode$R(VBtn, slotProps.props, {
           default: () => [item.localized, genEvents(item.isoDate)]
         }))]);
       })])]
@@ -23879,7 +23879,7 @@ const VDatePickerMonth = genericComponent()({
 
 const VDatePickerMonths$1 = '';
 
-const {mergeProps:_mergeProps$v,createVNode:_createVNode$R,createElementVNode:_createElementVNode$G} = await importShared('vue');
+const {mergeProps:_mergeProps$v,createVNode:_createVNode$Q,createElementVNode:_createElementVNode$G} = await importShared('vue');
 const {computed: computed$J,watchEffect: watchEffect$8} = await importShared('vue');
 const makeVDatePickerMonthsProps = propsFactory({
   color: String,
@@ -23962,7 +23962,7 @@ const VDatePickerMonths = genericComponent()({
         month,
         i,
         props: btnProps
-      }) ?? _createVNode$R(VBtn, _mergeProps$v({
+      }) ?? _createVNode$Q(VBtn, _mergeProps$v({
         "key": "month"
       }, btnProps), null);
     })])]));
@@ -23972,7 +23972,7 @@ const VDatePickerMonths = genericComponent()({
 
 const VDatePickerYears$1 = '';
 
-const {mergeProps:_mergeProps$u,createVNode:_createVNode$Q,createElementVNode:_createElementVNode$F,withDirectives:_withDirectives$6} = await importShared('vue');
+const {mergeProps:_mergeProps$u,createVNode:_createVNode$P,createElementVNode:_createElementVNode$F,withDirectives:_withDirectives$6} = await importShared('vue');
 const {computed: computed$I,shallowRef: shallowRef$g,watchEffect: watchEffect$7} = await importShared('vue');
 // Types
 const makeVDatePickerYearsProps = propsFactory({
@@ -24077,7 +24077,7 @@ const VDatePickerYears = genericComponent()({
         year,
         i,
         props: btnProps
-      }) ?? _createVNode$Q(VBtn, _mergeProps$u({
+      }) ?? _createVNode$P(VBtn, _mergeProps$u({
         "key": "month"
       }, btnProps), null);
     })])]), [[Intersect, {
@@ -24089,7 +24089,7 @@ const VDatePickerYears = genericComponent()({
   }
 });
 
-const {createElementVNode:_createElementVNode$E,createVNode:_createVNode$P,mergeProps:_mergeProps$t,Fragment:_Fragment$l} = await importShared('vue');
+const {createElementVNode:_createElementVNode$E,createVNode:_createVNode$O,mergeProps:_mergeProps$t,Fragment:_Fragment$l} = await importShared('vue');
 const {computed: computed$H,shallowRef: shallowRef$f,toRef: toRef$i,watch: watch$f} = await importShared('vue');
 // Types
 const makeVDatePickerProps = propsFactory({
@@ -24363,7 +24363,7 @@ const VDatePicker = genericComponent()({
         header: header.value,
         transition: headerTransition.value
       };
-      return _createVNode$P(VPicker, _mergeProps$t(pickerProps, {
+      return _createVNode$O(VPicker, _mergeProps$t(pickerProps, {
         "color": headerColor.value,
         "class": ['v-date-picker', `v-date-picker--${viewMode.value}`, {
           'v-date-picker--show-week': props.showWeek
@@ -24375,7 +24375,7 @@ const VDatePicker = genericComponent()({
         title: () => slots.title?.() ?? _createElementVNode$E("div", {
           "class": "v-date-picker__title"
         }, [t(props.title)]),
-        header: () => slots.header ? _createVNode$P(VDefaultsProvider, {
+        header: () => slots.header ? _createVNode$O(VDefaultsProvider, {
           "defaults": {
             VDatePickerHeader: {
               ...headerProps
@@ -24383,7 +24383,7 @@ const VDatePicker = genericComponent()({
           }
         }, {
           default: () => [slots.header?.(headerProps)]
-        }) : _createVNode$P(VDatePickerHeader, _mergeProps$t({
+        }) : _createVNode$O(VDatePickerHeader, _mergeProps$t({
           "key": "header"
         }, datePickerHeaderProps, headerProps, {
           "onClick": viewMode.value !== 'month' ? onClickDate : undefined
@@ -24391,7 +24391,7 @@ const VDatePicker = genericComponent()({
           prepend: slots.prepend,
           append: slots.append
         }),
-        default: () => _createElementVNode$E(_Fragment$l, null, [_createVNode$P(VDatePickerControls, _mergeProps$t(datePickerControlsProps, {
+        default: () => _createElementVNode$E(_Fragment$l, null, [_createVNode$O(VDatePickerControls, _mergeProps$t(datePickerControlsProps, {
           "disabled": disabled.value,
           "viewMode": viewMode.value,
           "text": monthYearText.value,
@@ -24405,10 +24405,10 @@ const VDatePicker = genericComponent()({
           "onClick:year": onClickYear
         }), {
           default: slots.controls
-        }), _createVNode$P(VFadeTransition, {
+        }), _createVNode$O(VFadeTransition, {
           "hideOnLeave": true
         }, {
-          default: () => [viewMode.value === 'months' ? _createVNode$P(VDatePickerMonths, _mergeProps$t({
+          default: () => [viewMode.value === 'months' ? _createVNode$O(VDatePickerMonths, _mergeProps$t({
             "key": "date-picker-months"
           }, datePickerMonthsProps, {
             "modelValue": month.value,
@@ -24419,7 +24419,7 @@ const VDatePicker = genericComponent()({
             "allowedMonths": allowedMonths.value
           }), {
             month: slots.month
-          }) : viewMode.value === 'year' ? _createVNode$P(VDatePickerYears, _mergeProps$t({
+          }) : viewMode.value === 'year' ? _createVNode$O(VDatePickerYears, _mergeProps$t({
             "key": "date-picker-years"
           }, datePickerYearsProps, {
             "modelValue": year.value,
@@ -24429,7 +24429,7 @@ const VDatePicker = genericComponent()({
             "allowedYears": allowedYears.value
           }), {
             year: slots.year
-          }) : _createVNode$P(VDatePickerMonth, _mergeProps$t({
+          }) : _createVNode$O(VDatePickerMonth, _mergeProps$t({
             "key": "date-picker-month"
           }, datePickerMonthProps, {
             "modelValue": model.value,
@@ -24453,7 +24453,7 @@ const VDatePicker = genericComponent()({
 
 const VEmptyState$1 = '';
 
-const {Fragment:_Fragment$k,createVNode:_createVNode$O,createElementVNode:_createElementVNode$D,normalizeClass:_normalizeClass$z,normalizeStyle:_normalizeStyle$t} = await importShared('vue');
+const {Fragment:_Fragment$k,createVNode:_createVNode$N,createElementVNode:_createElementVNode$D,normalizeClass:_normalizeClass$z,normalizeStyle:_normalizeStyle$t} = await importShared('vue');
 // Types
 const makeVEmptyStateProps = propsFactory({
   actionText: String,
@@ -24523,16 +24523,16 @@ const VEmptyState = genericComponent()({
       }, [hasMedia && _createElementVNode$D("div", {
         "key": "media",
         "class": "v-empty-state__media"
-      }, [!slots.media ? _createElementVNode$D(_Fragment$k, null, [props.image ? _createVNode$O(VImg, {
+      }, [!slots.media ? _createElementVNode$D(_Fragment$k, null, [props.image ? _createVNode$N(VImg, {
         "key": "image",
         "src": props.image,
         "height": size
-      }, null) : props.icon ? _createVNode$O(VIcon, {
+      }, null) : props.icon ? _createVNode$N(VIcon, {
         "key": "icon",
         "color": props.color,
         "size": size,
         "icon": props.icon
-      }, null) : undefined]) : _createVNode$O(VDefaultsProvider, {
+      }, null) : undefined]) : _createVNode$N(VDefaultsProvider, {
         "key": "media-defaults",
         "defaults": {
           VImg: {
@@ -24564,7 +24564,7 @@ const VEmptyState = genericComponent()({
       }, [slots.default()]), hasActions && _createElementVNode$D("div", {
         "key": "actions",
         "class": "v-empty-state__actions"
-      }, [_createVNode$O(VDefaultsProvider, {
+      }, [_createVNode$N(VDefaultsProvider, {
         "defaults": {
           VBtn: {
             class: 'v-empty-state__action-btn',
@@ -24579,7 +24579,7 @@ const VEmptyState = genericComponent()({
           props: {
             onClick: onClickAction
           }
-        }) ?? _createVNode$O(VBtn, {
+        }) ?? _createVNode$N(VBtn, {
           "onClick": onClickAction
         }, null)]
       })])]);
@@ -24594,7 +24594,7 @@ const VExpansionPanel$1 = '';
 
 const VExpansionPanelSymbol = Symbol.for('vuetify:v-expansion-panel');
 
-const {createElementVNode:_createElementVNode$C,vShow:_vShow$1,normalizeClass:_normalizeClass$y,normalizeStyle:_normalizeStyle$s,withDirectives:_withDirectives$5,createVNode:_createVNode$N} = await importShared('vue');
+const {createElementVNode:_createElementVNode$C,vShow:_vShow$1,normalizeClass:_normalizeClass$y,normalizeStyle:_normalizeStyle$s,withDirectives:_withDirectives$5,createVNode:_createVNode$M} = await importShared('vue');
 const {inject: inject$5} = await importShared('vue');
 const makeVExpansionPanelTextProps = propsFactory({
   ...makeComponentProps(),
@@ -24613,7 +24613,7 @@ const VExpansionPanelText = genericComponent()({
       hasContent,
       onAfterLeave
     } = useLazy(props, expansionPanel.isSelected);
-    useRender(() => _createVNode$N(VExpandTransition, {
+    useRender(() => _createVNode$M(VExpandTransition, {
       "onAfterLeave": onAfterLeave
     }, {
       default: () => [_withDirectives$5(_createElementVNode$C("div", {
@@ -24627,7 +24627,7 @@ const VExpansionPanelText = genericComponent()({
   }
 });
 
-const {createElementVNode:_createElementVNode$B,createVNode:_createVNode$M,normalizeClass:_normalizeClass$x,normalizeStyle:_normalizeStyle$r,withDirectives:_withDirectives$4} = await importShared('vue');
+const {createElementVNode:_createElementVNode$B,createVNode:_createVNode$L,normalizeClass:_normalizeClass$x,normalizeStyle:_normalizeStyle$r,withDirectives:_withDirectives$4} = await importShared('vue');
 const {computed: computed$G,inject: inject$4,toRef: toRef$h} = await importShared('vue');
 const makeVExpansionPanelTitleProps = propsFactory({
   color: String,
@@ -24691,7 +24691,7 @@ const VExpansionPanelTitle = genericComponent()({
       "onClick": !props.readonly ? expansionPanel.toggle : undefined
     }, [_createElementVNode$B("span", {
       "class": "v-expansion-panel-title__overlay"
-    }, null), slots.default?.(slotProps.value), !props.hideActions && _createVNode$M(VDefaultsProvider, {
+    }, null), slots.default?.(slotProps.value), !props.hideActions && _createVNode$L(VDefaultsProvider, {
       "defaults": {
         VIcon: {
           icon: icon.value
@@ -24700,13 +24700,13 @@ const VExpansionPanelTitle = genericComponent()({
     }, {
       default: () => [_createElementVNode$B("span", {
         "class": "v-expansion-panel-title__icon"
-      }, [slots.actions?.(slotProps.value) ?? _createVNode$M(VIcon, null, null)])]
+      }, [slots.actions?.(slotProps.value) ?? _createVNode$L(VIcon, null, null)])]
     })]), [[Ripple, props.ripple]]));
     return {};
   }
 });
 
-const {normalizeClass:_normalizeClass$w,createElementVNode:_createElementVNode$A,createVNode:_createVNode$L,normalizeStyle:_normalizeStyle$q} = await importShared('vue');
+const {normalizeClass:_normalizeClass$w,createElementVNode:_createElementVNode$A,createVNode:_createVNode$K,normalizeStyle:_normalizeStyle$q} = await importShared('vue');
 const {computed: computed$F,provide: provide$1,toRef: toRef$g} = await importShared('vue');
 const makeVExpansionPanelProps = propsFactory({
   title: String,
@@ -24759,7 +24759,7 @@ const VExpansionPanel = genericComponent()({
       const hasTitle = !!(slots.title || props.title);
       const expansionPanelTitleProps = VExpansionPanelTitle.filterProps(props);
       const expansionPanelTextProps = VExpansionPanelText.filterProps(props);
-      return _createVNode$L(props.tag, {
+      return _createVNode$K(props.tag, {
         "class": _normalizeClass$w(['v-expansion-panel', {
           'v-expansion-panel--active': groupItem.isSelected.value,
           'v-expansion-panel--before-active': isBeforeSelected.value,
@@ -24770,7 +24770,7 @@ const VExpansionPanel = genericComponent()({
       }, {
         default: () => [_createElementVNode$A("div", {
           "class": _normalizeClass$w(['v-expansion-panel__shadow', ...elevationClasses.value])
-        }, null), _createVNode$L(VDefaultsProvider, {
+        }, null), _createVNode$K(VDefaultsProvider, {
           "defaults": {
             VExpansionPanelTitle: {
               ...expansionPanelTitleProps
@@ -24780,11 +24780,11 @@ const VExpansionPanel = genericComponent()({
             }
           }
         }, {
-          default: () => [hasTitle && _createVNode$L(VExpansionPanelTitle, {
+          default: () => [hasTitle && _createVNode$K(VExpansionPanelTitle, {
             "key": "title"
           }, {
             default: () => [slots.title ? slots.title() : props.title]
-          }), hasText && _createVNode$L(VExpansionPanelText, {
+          }), hasText && _createVNode$K(VExpansionPanelText, {
             "key": "text"
           }, {
             default: () => [slots.text ? slots.text() : props.text]
@@ -24798,7 +24798,7 @@ const VExpansionPanel = genericComponent()({
   }
 });
 
-const {normalizeClass:_normalizeClass$v,normalizeStyle:_normalizeStyle$p,createVNode:_createVNode$K} = await importShared('vue');
+const {normalizeClass:_normalizeClass$v,normalizeStyle:_normalizeStyle$p,createVNode:_createVNode$J} = await importShared('vue');
 const {toRef: toRef$f} = await importShared('vue');
 const allowedVariants = ['default', 'accordion', 'inset', 'popout'];
 const makeVExpansionPanelsProps = propsFactory({
@@ -24848,7 +24848,7 @@ const VExpansionPanels = genericComponent()({
         static: toRef$f(() => props.static)
       }
     });
-    useRender(() => _createVNode$K(props.tag, {
+    useRender(() => _createVNode$J(props.tag, {
       "class": _normalizeClass$v(['v-expansion-panels', {
         'v-expansion-panels--flat': props.flat,
         'v-expansion-panels--tile': props.tile
@@ -24869,7 +24869,7 @@ const VExpansionPanels = genericComponent()({
 
 const VFab$1 = '';
 
-const {vShow:_vShow,mergeProps:_mergeProps$s,createVNode:_createVNode$J,withDirectives:_withDirectives$3,createElementVNode:_createElementVNode$z,normalizeClass:_normalizeClass$u,normalizeStyle:_normalizeStyle$o} = await importShared('vue');
+const {vShow:_vShow,mergeProps:_mergeProps$s,createVNode:_createVNode$I,withDirectives:_withDirectives$3,createElementVNode:_createElementVNode$z,normalizeClass:_normalizeClass$u,normalizeStyle:_normalizeStyle$o} = await importShared('vue');
 const {computed: computed$E,ref: ref$s,shallowRef: shallowRef$e,toRef: toRef$e,watchEffect: watchEffect$6} = await importShared('vue');
 const makeVFabProps = propsFactory({
   app: Boolean,
@@ -24952,11 +24952,11 @@ const VFab = genericComponent()({
         }, props.style])
       }, [_createElementVNode$z("div", {
         "class": "v-fab__container"
-      }, [_createVNode$J(MaybeTransition, {
+      }, [_createVNode$I(MaybeTransition, {
         "appear": props.appear,
         "transition": props.transition
       }, {
-        default: () => [_withDirectives$3(_createVNode$J(VBtn, _mergeProps$s({
+        default: () => [_withDirectives$3(_createVNode$I(VBtn, _mergeProps$s({
           "ref": resizeRef
         }, btnProps, {
           "active": undefined,
@@ -25057,7 +25057,7 @@ function createFilter(v) {
   };
 }
 
-const {Fragment:_Fragment$j,mergeProps:_mergeProps$r,createElementVNode:_createElementVNode$y,createVNode:_createVNode$I,normalizeClass:_normalizeClass$t} = await importShared('vue');
+const {Fragment:_Fragment$j,mergeProps:_mergeProps$r,createElementVNode:_createElementVNode$y,createVNode:_createVNode$H,normalizeClass:_normalizeClass$t} = await importShared('vue');
 const {computed: computed$C,nextTick: nextTick$a,ref: ref$r,shallowRef: shallowRef$d,toRef: toRef$d,watch: watch$e} = await importShared('vue');
 const makeVFileInputProps = propsFactory({
   chips: Boolean,
@@ -25254,7 +25254,7 @@ const VFileInput = genericComponent()({
       const expectsDirectory = attrs.webkitdirectory !== undefined && attrs.webkitdirectory !== false;
       const acceptFallback = attrs.accept ? String(attrs.accept) : undefined;
       const inputAccept = expectsDirectory ? undefined : props.filterByType ?? acceptFallback;
-      return _createVNode$I(VInput, _mergeProps$r({
+      return _createVNode$H(VInput, _mergeProps$r({
         "ref": vInputRef,
         "modelValue": props.multiple ? model.value : model.value[0],
         "class": ['v-file-input', {
@@ -25279,7 +25279,7 @@ const VFileInput = genericComponent()({
             isValid,
             hasDetails
           } = _ref3;
-          return _createVNode$I(VField, _mergeProps$r({
+          return _createVNode$H(VField, _mergeProps$r({
             "ref": vFieldRef,
             "prependIcon": props.prependIcon,
             "onMousedown": onControlMousedown,
@@ -25329,7 +25329,7 @@ const VFileInput = genericComponent()({
                 fileNames: fileNames.value,
                 totalBytes: totalBytes.value,
                 totalBytesReadable: totalBytesReadable.value
-              }) : props.chips ? fileNames.value.map(text => _createVNode$I(VChip, {
+              }) : props.chips ? fileNames.value.map(text => _createVNode$H(VChip, {
                 "key": text,
                 "size": "small",
                 "text": text
@@ -25337,7 +25337,7 @@ const VFileInput = genericComponent()({
             }
           });
         },
-        details: hasDetails ? slotProps => _createElementVNode$y(_Fragment$j, null, [slots.details?.(slotProps), hasCounter && _createElementVNode$y(_Fragment$j, null, [_createElementVNode$y("span", null, null), _createVNode$I(VCounter, {
+        details: hasDetails ? slotProps => _createElementVNode$y(_Fragment$j, null, [slots.details?.(slotProps), hasCounter && _createElementVNode$y(_Fragment$j, null, [_createElementVNode$y("span", null, null), _createVNode$H(VCounter, {
           "active": !!model.value?.length,
           "value": counterValue.value,
           "disabled": props.disabled
@@ -25350,7 +25350,7 @@ const VFileInput = genericComponent()({
 
 const VFooter$1 = '';
 
-const {normalizeClass:_normalizeClass$s,normalizeStyle:_normalizeStyle$n,createVNode:_createVNode$H} = await importShared('vue');
+const {normalizeClass:_normalizeClass$s,normalizeStyle:_normalizeStyle$n,createVNode:_createVNode$G} = await importShared('vue');
 const {computed: computed$B,ref: ref$q,shallowRef: shallowRef$c,toRef: toRef$c,watchEffect: watchEffect$5} = await importShared('vue');
 const makeVFooterProps = propsFactory({
   app: Boolean,
@@ -25415,7 +25415,7 @@ const VFooter = genericComponent()({
         layoutItemStyles.value = layout.layoutItemStyles.value;
       });
     });
-    useRender(() => _createVNode$H(props.tag, {
+    useRender(() => _createVNode$G(props.tag, {
       "ref": resizeRef,
       "class": _normalizeClass$s(['v-footer', themeClasses.value, backgroundColorClasses.value, borderClasses.value, elevationClasses.value, roundedClasses.value, props.class]),
       "style": _normalizeStyle$n([backgroundColorStyles.value, props.app ? layoutItemStyles.value : {
@@ -25485,7 +25485,7 @@ const VHotkey$1 = '';
 
 const VKbd$1 = '';
 
-const {normalizeClass:_normalizeClass$q,normalizeStyle:_normalizeStyle$l,createVNode:_createVNode$G} = await importShared('vue');
+const {normalizeClass:_normalizeClass$q,normalizeStyle:_normalizeStyle$l,createVNode:_createVNode$F} = await importShared('vue');
 const makeVKbdProps = propsFactory({
   color: String,
   ...makeBorderProps(),
@@ -25520,7 +25520,7 @@ const VKbd = genericComponent()({
     const {
       elevationClasses
     } = useElevation(props);
-    useRender(() => _createVNode$G(props.tag, {
+    useRender(() => _createVNode$F(props.tag, {
       "class": _normalizeClass$q(['v-kbd', themeClasses.value, backgroundColorClasses.value, borderClasses.value, elevationClasses.value, roundedClasses.value, props.class]),
       "style": _normalizeStyle$l([backgroundColorStyles.value, props.style])
     }, slots));
@@ -25528,7 +25528,7 @@ const VKbd = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$F,normalizeClass:_normalizeClass$p,normalizeStyle:_normalizeStyle$k,createElementVNode:_createElementVNode$w,Fragment:_Fragment$i,createTextVNode:_createTextVNode$4} = await importShared('vue');
+const {createVNode:_createVNode$E,normalizeClass:_normalizeClass$p,normalizeStyle:_normalizeStyle$k,createElementVNode:_createElementVNode$w,Fragment:_Fragment$i,createTextVNode:_createTextVNode$3} = await importShared('vue');
 const {computed: computed$A} = await importShared('vue');
 // Display mode types for different visual representations
 // Extended variant type that includes our custom 'contained' variant
@@ -25828,14 +25828,14 @@ const VHotkey = genericComponent()({
       const isContained = props.variant === 'contained';
       const KeyComponent = isContained ? 'kbd' : VKbd;
       const keyClasses = ['v-hotkey__key', `v-hotkey__key-${key[0]}`, ...(isContained ? ['v-hotkey__key--nested'] : [borderClasses.value, roundedClasses.value, elevationClasses.value, colorClasses.value])];
-      return _createVNode$F(KeyComponent, {
+      return _createVNode$E(KeyComponent, {
         "key": keyIndex,
         "class": _normalizeClass$p(keyClasses),
         "style": _normalizeStyle$k(isContained ? undefined : colorStyles.value),
         "aria-hidden": "true",
         "title": getKeyTooltip(key)
       }, {
-        default: () => [key[0] === 'icon' ? _createVNode$F(VIcon, {
+        default: () => [key[0] === 'icon' ? _createVNode$E(VIcon, {
           "icon": key[1],
           "aria-hidden": "true"
         }, null) : translateKey(key[1])]
@@ -25857,7 +25857,7 @@ const VHotkey = genericComponent()({
         "key": comboIndex
       }, [combination.map((key, keyIndex) => Array.isArray(key) ? renderKey(key, keyIndex) : renderDivider(key, keyIndex)), comboIndex < keyCombinations.value.length - 1 && _createElementVNode$w("span", {
         "aria-hidden": "true"
-      }, [_createTextVNode$4("\xA0")])])), props.suffix && _createElementVNode$w("span", {
+      }, [_createTextVNode$3("\xA0")])])), props.suffix && _createElementVNode$w("span", {
         "key": "suffix",
         "class": "v-hotkey__suffix"
       }, [props.suffix])]);
@@ -25870,7 +25870,7 @@ const VHotkey = genericComponent()({
         "style": _normalizeStyle$k(props.style),
         "role": "img",
         "aria-label": accessibleLabel.value
-      }, [props.variant !== 'contained' ? content : _createVNode$F(VKbd, {
+      }, [props.variant !== 'contained' ? content : _createVNode$E(VKbd, {
         "key": "contained",
         "class": _normalizeClass$p(['v-hotkey__contained-wrapper', borderClasses.value, roundedClasses.value, elevationClasses.value, colorClasses.value]),
         "style": _normalizeStyle$k(colorStyles.value),
@@ -25918,7 +25918,7 @@ const VHover = genericComponent()({
 
 const VInfiniteScroll$1 = '';
 
-const {createTextVNode:_createTextVNode$3,createElementVNode:_createElementVNode$v,createVNode:_createVNode$E,normalizeClass:_normalizeClass$o,normalizeStyle:_normalizeStyle$j} = await importShared('vue');
+const {createTextVNode:_createTextVNode$2,createElementVNode:_createElementVNode$v,createVNode:_createVNode$D,normalizeClass:_normalizeClass$o,normalizeStyle:_normalizeStyle$j} = await importShared('vue');
 const {computed: computed$z,nextTick: nextTick$9,onMounted: onMounted$6,ref: ref$o,shallowRef: shallowRef$b,watch: watch$d} = await importShared('vue');
 const makeVInfiniteScrollProps = propsFactory({
   color: String,
@@ -25949,7 +25949,7 @@ const makeVInfiniteScrollProps = propsFactory({
   ...makeDimensionProps(),
   ...makeTagProps()
 }, 'VInfiniteScroll');
-const VInfiniteScrollIntersect = defineComponent({
+const VInfiniteScrollIntersect = defineComponent$1({
   name: 'VInfiniteScrollIntersect',
   props: {
     side: {
@@ -25978,7 +25978,7 @@ const VInfiniteScrollIntersect = defineComponent({
         '--v-infinite-margin-size': props.rootMargin
       },
       "ref": intersectionRef
-    }, [_createTextVNode$3("\xA0")]));
+    }, [_createTextVNode$2("\xA0")]));
     return {};
   }
 });
@@ -26097,12 +26097,12 @@ const VInfiniteScroll = genericComponent()({
       if (status === 'empty') return slots.empty?.(slotProps) ?? _createElementVNode$v("div", null, [t(props.emptyText)]);
       if (props.mode === 'manual') {
         if (status === 'loading') {
-          return slots.loading?.(slotProps) ?? _createVNode$E(VProgressCircular, {
+          return slots.loading?.(slotProps) ?? _createVNode$D(VProgressCircular, {
             "indeterminate": true,
             "color": props.color
           }, null);
         }
-        return slots['load-more']?.(slotProps) ?? _createVNode$E(VBtn, {
+        return slots['load-more']?.(slotProps) ?? _createVNode$D(VBtn, {
           "variant": "outlined",
           "color": props.color,
           "onClick": onClick
@@ -26110,7 +26110,7 @@ const VInfiniteScroll = genericComponent()({
           default: () => [t(props.loadMoreText)]
         });
       }
-      return slots.loading?.(slotProps) ?? _createVNode$E(VProgressCircular, {
+      return slots.loading?.(slotProps) ?? _createVNode$D(VProgressCircular, {
         "indeterminate": true,
         "color": props.color
       }, null);
@@ -26123,7 +26123,7 @@ const VInfiniteScroll = genericComponent()({
       const hasStartIntersect = props.side === 'start' || props.side === 'both';
       const hasEndIntersect = props.side === 'end' || props.side === 'both';
       const intersectMode = props.mode === 'intersect';
-      return _createVNode$E(Tag, {
+      return _createVNode$D(Tag, {
         "ref": rootEl,
         "class": _normalizeClass$o(['v-infinite-scroll', `v-infinite-scroll--${props.direction}`, {
           'v-infinite-scroll--start': hasStartIntersect,
@@ -26133,12 +26133,12 @@ const VInfiniteScroll = genericComponent()({
       }, {
         default: () => [_createElementVNode$v("div", {
           "class": "v-infinite-scroll__side"
-        }, [renderSide('start', startStatus.value)]), hasStartIntersect && intersectMode && _createVNode$E(VInfiniteScrollIntersect, {
+        }, [renderSide('start', startStatus.value)]), hasStartIntersect && intersectMode && _createVNode$D(VInfiniteScrollIntersect, {
           "key": "start",
           "side": "start",
           "onIntersect": handleIntersect,
           "rootMargin": margin.value
-        }, null), slots.default?.(), hasEndIntersect && intersectMode && _createVNode$E(VInfiniteScrollIntersect, {
+        }, null), slots.default?.(), hasEndIntersect && intersectMode && _createVNode$D(VInfiniteScrollIntersect, {
           "key": "end",
           "side": "end",
           "onIntersect": handleIntersect,
@@ -26182,7 +26182,7 @@ const VInfiniteScroll = genericComponent()({
 
 const VItemGroup$1 = '';
 
-const {normalizeClass:_normalizeClass$n,normalizeStyle:_normalizeStyle$i,createVNode:_createVNode$D} = await importShared('vue');
+const {normalizeClass:_normalizeClass$n,normalizeStyle:_normalizeStyle$i,createVNode:_createVNode$C} = await importShared('vue');
 const VItemGroupSymbol = Symbol.for('vuetify:v-item-group');
 const makeVItemGroupProps = propsFactory({
   ...makeComponentProps(),
@@ -26212,7 +26212,7 @@ const VItemGroup = genericComponent()({
       prev,
       selected
     } = useGroup(props, VItemGroupSymbol);
-    return () => _createVNode$D(props.tag, {
+    return () => _createVNode$C(props.tag, {
       "class": _normalizeClass$n(['v-item-group', themeClasses.value, props.class]),
       "style": _normalizeStyle$i(props.style)
     }, {
@@ -26336,7 +26336,7 @@ const VLayoutItem = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$C,normalizeClass:_normalizeClass$k,normalizeStyle:_normalizeStyle$f,withDirectives:_withDirectives$2} = await importShared('vue');
+const {createVNode:_createVNode$B,normalizeClass:_normalizeClass$k,normalizeStyle:_normalizeStyle$f,withDirectives:_withDirectives$2} = await importShared('vue');
 const makeVLazyProps = propsFactory({
   modelValue: Boolean,
   options: {
@@ -26377,11 +26377,11 @@ const VLazy = genericComponent()({
       if (isActive.value) return;
       isActive.value = isIntersecting;
     }
-    useRender(() => _withDirectives$2(_createVNode$C(props.tag, {
+    useRender(() => _withDirectives$2(_createVNode$B(props.tag, {
       "class": _normalizeClass$k(['v-lazy', props.class]),
       "style": _normalizeStyle$f([dimensionStyles.value, props.style])
     }, {
-      default: () => [isActive.value && _createVNode$C(MaybeTransition, {
+      default: () => [isActive.value && _createVNode$B(MaybeTransition, {
         "transition": props.transition,
         "appear": true
       }, {
@@ -26428,7 +26428,7 @@ const VLocaleProvider = genericComponent()({
 
 const VMain$1 = '';
 
-const {createElementVNode:_createElementVNode$r,normalizeClass:_normalizeClass$i,normalizeStyle:_normalizeStyle$d,createVNode:_createVNode$B} = await importShared('vue');
+const {createElementVNode:_createElementVNode$r,normalizeClass:_normalizeClass$i,normalizeStyle:_normalizeStyle$d,createVNode:_createVNode$A} = await importShared('vue');
 const makeVMainProps = propsFactory({
   scrollable: Boolean,
   ...makeComponentProps(),
@@ -26453,7 +26453,7 @@ const VMain = genericComponent()({
     const {
       ssrBootStyles
     } = useSsrBoot();
-    useRender(() => _createVNode$B(props.tag, {
+    useRender(() => _createVNode$A(props.tag, {
       "class": _normalizeClass$i(['v-main', {
         'v-main--scrollable': props.scrollable
       }, props.class]),
@@ -26782,7 +26782,7 @@ function oops() {
   throw new Error();
 }
 
-const {Fragment:_Fragment$h,createVNode:_createVNode$A,createElementVNode:_createElementVNode$q,mergeProps:_mergeProps$q} = await importShared('vue');
+const {Fragment:_Fragment$h,createVNode:_createVNode$z,createElementVNode:_createElementVNode$q,mergeProps:_mergeProps$q} = await importShared('vue');
 const {computed: computed$v,nextTick: nextTick$8,readonly,ref: ref$n,shallowRef: shallowRef$8,toRef: toRef$a,Transition,watch: watch$b} = await importShared('vue');
 const locations = ['start', 'end', 'left', 'right', 'top', 'bottom'];
 const makeVNavigationDrawerProps = propsFactory({
@@ -26973,7 +26973,7 @@ const VNavigationDrawer = genericComponent()({
     });
     useRender(() => {
       const hasImage = slots.image || props.image;
-      return _createElementVNode$q(_Fragment$h, null, [_createVNode$A(props.tag, _mergeProps$q({
+      return _createElementVNode$q(_Fragment$h, null, [_createVNode$z(props.tag, _mergeProps$q({
         "ref": rootEl,
         "onMouseenter": runOpenDelay,
         "onMouseleave": runCloseDelay,
@@ -26993,13 +26993,13 @@ const VNavigationDrawer = genericComponent()({
         default: () => [hasImage && _createElementVNode$q("div", {
           "key": "image",
           "class": "v-navigation-drawer__img"
-        }, [!slots.image ? _createVNode$A(VImg, {
+        }, [!slots.image ? _createVNode$z(VImg, {
           "key": "image-img",
           "alt": "",
           "cover": true,
           "height": "inherit",
           "src": props.image
-        }, null) : _createVNode$A(VDefaultsProvider, {
+        }, null) : _createVNode$z(VDefaultsProvider, {
           "key": "image-defaults",
           "disabled": !props.image,
           "defaults": {
@@ -27017,7 +27017,7 @@ const VNavigationDrawer = genericComponent()({
         }, [slots.default?.()]), slots.append && _createElementVNode$q("div", {
           "class": "v-navigation-drawer__append"
         }, [slots.append?.()])]
-      }), _createVNode$A(Transition, {
+      }), _createVNode$z(Transition, {
         "name": "fade-transition"
       }, {
         default: () => [isTemporary.value && (isDragging.value || isActive.value) && !!props.scrim && _createElementVNode$q("div", _mergeProps$q({
@@ -27037,7 +27037,7 @@ const VNavigationDrawer = genericComponent()({
 });
 
 // Composables
-const VNoSsr = defineComponent({
+const VNoSsr = defineComponent$1({
   name: 'VNoSsr',
   setup(_, _ref) {
     let {
@@ -27087,7 +27087,7 @@ function useHold(_ref) {
   };
 }
 
-const {createVNode:_createVNode$z,createElementVNode:_createElementVNode$p,Fragment:_Fragment$g,mergeProps:_mergeProps$p} = await importShared('vue');
+const {createVNode:_createVNode$y,createElementVNode:_createElementVNode$p,Fragment:_Fragment$g,mergeProps:_mergeProps$p} = await importShared('vue');
 const {computed: computed$u,nextTick: nextTick$7,onMounted: onMounted$3,ref: ref$m,shallowRef: shallowRef$7,toRef: toRef$9,watch: watch$a} = await importShared('vue');
 const makeVNumberInputProps = propsFactory({
   controlVariant: {
@@ -27374,7 +27374,7 @@ const VNumberInput = genericComponent()({
         ...textFieldProps
       } = VTextField.filterProps(props);
       function incrementControlNode() {
-        return !slots.increment ? _createVNode$z(VBtn, {
+        return !slots.increment ? _createVNode$y(VBtn, {
           "aria-hidden": "true",
           "data-testid": "increment",
           "disabled": !canIncrease.value,
@@ -27388,7 +27388,7 @@ const VNumberInput = genericComponent()({
           "size": controlNodeSize.value,
           "variant": "text",
           "tabindex": "-1"
-        }, null) : _createVNode$z(VDefaultsProvider, {
+        }, null) : _createVNode$y(VDefaultsProvider, {
           "key": "increment-defaults",
           "defaults": {
             VBtn: {
@@ -27404,7 +27404,7 @@ const VNumberInput = genericComponent()({
         });
       }
       function decrementControlNode() {
-        return !slots.decrement ? _createVNode$z(VBtn, {
+        return !slots.decrement ? _createVNode$y(VBtn, {
           "aria-hidden": "true",
           "data-testid": "decrement",
           "disabled": !canDecrease.value,
@@ -27418,7 +27418,7 @@ const VNumberInput = genericComponent()({
           "size": controlNodeSize.value,
           "variant": "text",
           "tabindex": "-1"
-        }, null) : _createVNode$z(VDefaultsProvider, {
+        }, null) : _createVNode$y(VDefaultsProvider, {
           "key": "decrement-defaults",
           "defaults": {
             VBtn: {
@@ -27436,28 +27436,28 @@ const VNumberInput = genericComponent()({
       function controlNode() {
         return _createElementVNode$p("div", {
           "class": "v-number-input__control"
-        }, [decrementControlNode(), _createVNode$z(VDivider, {
+        }, [decrementControlNode(), _createVNode$y(VDivider, {
           "vertical": controlVariant.value !== 'stacked'
         }, null), incrementControlNode()]);
       }
       function dividerNode() {
-        return !props.hideInput && !props.inset ? _createVNode$z(VDivider, {
+        return !props.hideInput && !props.inset ? _createVNode$y(VDivider, {
           "vertical": true
         }, null) : undefined;
       }
       const appendInnerControl = controlVariant.value === 'split' ? _createElementVNode$p("div", {
         "class": "v-number-input__control"
-      }, [_createVNode$z(VDivider, {
+      }, [_createVNode$y(VDivider, {
         "vertical": true
       }, null), incrementControlNode()]) : props.reverse || controlVariant.value === 'hidden' ? undefined : _createElementVNode$p(_Fragment$g, null, [dividerNode(), controlNode()]);
       const hasAppendInner = slots['append-inner'] || appendInnerControl;
       const prependInnerControl = controlVariant.value === 'split' ? _createElementVNode$p("div", {
         "class": "v-number-input__control"
-      }, [decrementControlNode(), _createVNode$z(VDivider, {
+      }, [decrementControlNode(), _createVNode$y(VDivider, {
         "vertical": true
       }, null)]) : props.reverse && controlVariant.value !== 'hidden' ? _createElementVNode$p(_Fragment$g, null, [controlNode(), dividerNode()]) : undefined;
       const hasPrependInner = slots['prepend-inner'] || prependInnerControl;
-      return _createVNode$z(VTextField, _mergeProps$p({
+      return _createVNode$y(VTextField, _mergeProps$p({
         "ref": vTextFieldRef
       }, textFieldProps, {
         "modelValue": inputText.value,
@@ -27502,7 +27502,7 @@ const VNumberInput = genericComponent()({
 
 const VOtpInput$1 = '';
 
-const {Fragment:_Fragment$f,createElementVNode:_createElementVNode$o,normalizeClass:_normalizeClass$h,createVNode:_createVNode$y,mergeProps:_mergeProps$o,normalizeStyle:_normalizeStyle$c} = await importShared('vue');
+const {Fragment:_Fragment$f,createElementVNode:_createElementVNode$o,normalizeClass:_normalizeClass$h,createVNode:_createVNode$x,mergeProps:_mergeProps$o,normalizeStyle:_normalizeStyle$c} = await importShared('vue');
 const {computed: computed$t,effectScope,nextTick: nextTick$6,ref: ref$l,toRef: toRef$8,watch: watch$9,watchEffect: watchEffect$3} = await importShared('vue');
 // Types
 const makeVOtpInputProps = propsFactory({
@@ -27700,7 +27700,7 @@ const VOtpInput = genericComponent()({
         "style": _normalizeStyle$c([dimensionStyles.value])
       }, [fields.value.map((_, i) => _createElementVNode$o(_Fragment$f, null, [props.divider && i !== 0 && _createElementVNode$o("span", {
         "class": "v-otp-input__divider"
-      }, [props.divider]), _createVNode$y(VField, {
+      }, [props.divider]), _createVNode$x(VField, {
         "focused": isFocused.value && props.focusAll || focusIndex.value === i,
         "key": i
       }, {
@@ -27734,13 +27734,13 @@ const VOtpInput = genericComponent()({
         "type": "hidden"
       }, inputAttrs, {
         "value": model.value.join('')
-      }), null), _createVNode$y(VOverlay, {
+      }), null), _createVNode$x(VOverlay, {
         "contained": true,
         "contentClass": "v-otp-input__loader",
         "modelValue": !!props.loading,
         "persistent": true
       }, {
-        default: () => [slots.loader?.() ?? _createVNode$y(VProgressCircular, {
+        default: () => [slots.loader?.() ?? _createVNode$x(VProgressCircular, {
           "color": typeof props.loading === 'boolean' ? undefined : props.loading,
           "indeterminate": true,
           "size": "24",
@@ -27763,7 +27763,7 @@ const VOtpInput = genericComponent()({
 
 const VParallax$1 = '';
 
-const {normalizeClass:_normalizeClass$g,normalizeStyle:_normalizeStyle$b,createVNode:_createVNode$x} = await importShared('vue');
+const {normalizeClass:_normalizeClass$g,normalizeStyle:_normalizeStyle$b,createVNode:_createVNode$w} = await importShared('vue');
 const {computed: computed$s,onBeforeUnmount: onBeforeUnmount$1,ref: ref$k,watch: watch$8,watchEffect: watchEffect$2} = await importShared('vue');
 function floor(val) {
   return Math.floor(Math.abs(val)) * Math.sign(val);
@@ -27835,7 +27835,7 @@ const VParallax = genericComponent()({
         el.style.setProperty('transform', `translateY(${translate}px) scale(${sizeScale})`);
       });
     }
-    useRender(() => _createVNode$x(VImg, {
+    useRender(() => _createVNode$w(VImg, {
       "class": _normalizeClass$g(['v-parallax', {
         'v-parallax--active': isIntersecting.value
       }, props.class]),
@@ -27849,7 +27849,7 @@ const VParallax = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$n,createVNode:_createVNode$w} = await importShared('vue');
+const {mergeProps:_mergeProps$n,createVNode:_createVNode$v} = await importShared('vue');
 const makeVRadioProps = propsFactory({
   ...makeVSelectionControlProps({
     falseIcon: '$radioOff',
@@ -27865,7 +27865,7 @@ const VRadio = genericComponent()({
     } = _ref;
     useRender(() => {
       const controlProps = VSelectionControl.filterProps(props);
-      return _createVNode$w(VSelectionControl, _mergeProps$n(controlProps, {
+      return _createVNode$v(VSelectionControl, _mergeProps$n(controlProps, {
         "class": ['v-radio', props.class],
         "style": props.style,
         "type": "radio"
@@ -27877,7 +27877,7 @@ const VRadio = genericComponent()({
 
 const VRadioGroup$1 = '';
 
-const {Fragment:_Fragment$e,createVNode:_createVNode$v,mergeProps:_mergeProps$m,createElementVNode:_createElementVNode$n} = await importShared('vue');
+const {Fragment:_Fragment$e,createVNode:_createVNode$u,mergeProps:_mergeProps$m,createElementVNode:_createElementVNode$n} = await importShared('vue');
 const {computed: computed$r,ref: ref$j,useId: useId$5} = await importShared('vue');
 const makeVRadioGroupProps = propsFactory({
   height: {
@@ -27925,7 +27925,7 @@ const VRadioGroup = genericComponent()({
           for: id.value
         }
       }) : props.label;
-      return _createVNode$v(VInput, _mergeProps$m({
+      return _createVNode$u(VInput, _mergeProps$m({
         "ref": inputRef,
         "class": ['v-radio-group', props.class],
         "style": props.style
@@ -27942,11 +27942,11 @@ const VRadioGroup = genericComponent()({
             isDisabled,
             isReadonly
           } = _ref2;
-          return _createElementVNode$n(_Fragment$e, null, [label && _createVNode$v(VLabel, {
+          return _createElementVNode$n(_Fragment$e, null, [label && _createVNode$u(VLabel, {
             "id": id.value
           }, {
             default: () => [label]
-          }), _createVNode$v(VSelectionControlGroup, _mergeProps$m(controlProps, {
+          }), _createVNode$u(VSelectionControlGroup, _mergeProps$m(controlProps, {
             "id": id.value,
             "aria-describedby": messagesId.value,
             "defaultsTarget": "VRadio",
@@ -27968,7 +27968,7 @@ const VRadioGroup = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$d,createVNode:_createVNode$u,createElementVNode:_createElementVNode$m,mergeProps:_mergeProps$l} = await importShared('vue');
+const {Fragment:_Fragment$d,createVNode:_createVNode$t,createElementVNode:_createElementVNode$m,mergeProps:_mergeProps$l} = await importShared('vue');
 const {computed: computed$q,ref: ref$i} = await importShared('vue');
 const makeVRangeSliderProps = propsFactory({
   ...makeFocusProps(),
@@ -28083,7 +28083,7 @@ const VRangeSlider = genericComponent()({
       const inputProps = VInput.filterProps(props);
       const [rootAttrs, inputAttrs] = filterInputAttrs(attrs);
       const hasPrepend = !!(props.label || slots.label || slots.prepend);
-      return _createVNode$u(VInput, _mergeProps$l({
+      return _createVNode$t(VInput, _mergeProps$l({
         "class": ['v-slider', 'v-range-slider', {
           'v-slider--has-labels': !!slots['tick-label'] || hasLabels.value,
           'v-slider--focused': isFocused.value,
@@ -28096,7 +28096,7 @@ const VRangeSlider = genericComponent()({
         "focused": isFocused.value
       }), {
         ...slots,
-        prepend: hasPrepend ? slotProps => _createElementVNode$m(_Fragment$d, null, [slots.label?.(slotProps) ?? (props.label ? _createVNode$u(VLabel, {
+        prepend: hasPrepend ? slotProps => _createElementVNode$m(_Fragment$d, null, [slots.label?.(slotProps) ?? (props.label ? _createVNode$t(VLabel, {
           "class": "v-slider__label",
           "text": props.label
         }, null) : undefined), slots.prepend?.(slotProps)]) : undefined,
@@ -28123,13 +28123,13 @@ const VRangeSlider = genericComponent()({
             "readonly": readonly.value,
             "tabindex": "-1",
             "value": model.value[1]
-          }, null), _createVNode$u(VSliderTrack, {
+          }, null), _createVNode$t(VSliderTrack, {
             "ref": trackContainerRef,
             "start": trackStart.value,
             "stop": trackStop.value
           }, {
             'tick-label': slots['tick-label']
-          }), _createVNode$u(VSliderThumb, _mergeProps$l({
+          }), _createVNode$t(VSliderThumb, _mergeProps$l({
             "ref": startThumbRef,
             "aria-describedby": messagesId.value,
             "focused": isFocused && activeThumbRef.value === startThumbRef.value?.$el,
@@ -28158,7 +28158,7 @@ const VRangeSlider = genericComponent()({
             "ripple": props.ripple
           }, inputAttrs), {
             'thumb-label': slots['thumb-label']
-          }), _createVNode$u(VSliderThumb, _mergeProps$l({
+          }), _createVNode$t(VSliderThumb, _mergeProps$l({
             "ref": stopThumbRef,
             "aria-describedby": messagesId.value,
             "focused": isFocused && activeThumbRef.value === stopThumbRef.value?.$el,
@@ -28199,7 +28199,7 @@ const VRangeSlider = genericComponent()({
 
 const VRating$1 = '';
 
-const {Fragment:_Fragment$c,createElementVNode:_createElementVNode$l,mergeProps:_mergeProps$k,createVNode:_createVNode$t,normalizeClass:_normalizeClass$f,createTextVNode:_createTextVNode$2,normalizeStyle:_normalizeStyle$a} = await importShared('vue');
+const {Fragment:_Fragment$c,createElementVNode:_createElementVNode$l,mergeProps:_mergeProps$k,createVNode:_createVNode$s,normalizeClass:_normalizeClass$f,createTextVNode:_createTextVNode$1,normalizeStyle:_normalizeStyle$a} = await importShared('vue');
 const {computed: computed$p,nextTick: nextTick$5,ref: ref$h,shallowRef: shallowRef$6,useId: useId$4} = await importShared('vue');
 const makeVRatingProps = propsFactory({
   name: String,
@@ -28362,7 +28362,7 @@ const VRating = genericComponent()({
         value,
         index,
         rating: normalizedValue.value
-      }) : _createVNode$t(VBtn, _mergeProps$k({
+      }) : _createVNode$s(VBtn, _mergeProps$k({
         "aria-label": t(props.itemAriaLabel, value, props.length)
       }, btnProps), null)]), _createElementVNode$l("input", {
         "class": "v-rating__hidden",
@@ -28379,11 +28379,11 @@ const VRating = genericComponent()({
     function createLabel(labelProps) {
       if (slots['item-label']) return slots['item-label'](labelProps);
       if (labelProps.label) return _createElementVNode$l("span", null, [labelProps.label]);
-      return _createElementVNode$l("span", null, [_createTextVNode$2("\xA0")]);
+      return _createElementVNode$l("span", null, [_createTextVNode$1("\xA0")]);
     }
     useRender(() => {
       const hasLabels = !!props.itemLabels?.length || slots['item-label'];
-      return _createVNode$t(props.tag, {
+      return _createVNode$s(props.tag, {
         "class": _normalizeClass$f(['v-rating', {
           'v-rating--hover': props.hover,
           'v-rating--readonly': props.readonly
@@ -28391,7 +28391,7 @@ const VRating = genericComponent()({
         "style": _normalizeStyle$a(props.style),
         "ref": root
       }, {
-        default: () => [_createVNode$t(VRatingItem, {
+        default: () => [_createVNode$s(VRatingItem, {
           "value": 0,
           "index": -1,
           "showStar": false
@@ -28403,13 +28403,13 @@ const VRating = genericComponent()({
           label: props.itemLabels?.[i]
         }) : undefined, _createElementVNode$l("div", {
           "class": "v-rating__item"
-        }, [props.halfIncrements ? _createElementVNode$l(_Fragment$c, null, [_createVNode$t(VRatingItem, {
+        }, [props.halfIncrements ? _createElementVNode$l(_Fragment$c, null, [_createVNode$s(VRatingItem, {
           "value": value - 0.5,
           "index": i * 2
-        }, null), _createVNode$t(VRatingItem, {
+        }, null), _createVNode$s(VRatingItem, {
           "value": value,
           "index": i * 2 + 1
-        }, null)]) : _createVNode$t(VRatingItem, {
+        }, null)]) : _createVNode$s(VRatingItem, {
           "value": value,
           "index": i
         }, null)]), hasLabels && props.itemLabelPosition === 'bottom' ? createLabel({
@@ -28585,7 +28585,7 @@ const VSlideGroupItem = genericComponent()({
 
 const VSnackbar$1 = '';
 
-const {createVNode:_createVNode$s,createElementVNode:_createElementVNode$j,mergeProps:_mergeProps$i} = await importShared('vue');
+const {createVNode:_createVNode$r,createElementVNode:_createElementVNode$j,mergeProps:_mergeProps$i} = await importShared('vue');
 const {computed: computed$n,inject: inject$3,mergeProps: mergeProps$2,nextTick: nextTick$4,onMounted: onMounted$2,onScopeDispose: onScopeDispose$1,ref: ref$g,shallowRef: shallowRef$5,watch: watch$7,watchEffect: watchEffect$1} = await importShared('vue');
 function useCountdown(milliseconds) {
   const time = shallowRef$5(milliseconds());
@@ -28730,7 +28730,7 @@ const VSnackbar = genericComponent()({
     useRender(() => {
       const overlayProps = VOverlay.filterProps(props);
       const hasContent = !!(slots.default || slots.text || props.text);
-      return _createVNode$s(VOverlay, _mergeProps$i({
+      return _createVNode$r(VOverlay, _mergeProps$i({
         "ref": overlay,
         "class": ['v-snackbar', {
           'v-snackbar--active': isActive.value,
@@ -28760,7 +28760,7 @@ const VSnackbar = genericComponent()({
         default: () => [genOverlays(false, 'v-snackbar'), props.timer && !isHovering.value && _createElementVNode$j("div", {
           "key": "timer",
           "class": "v-snackbar__timer"
-        }, [_createVNode$s(VProgressLinear, {
+        }, [_createVNode$r(VProgressLinear, {
           "ref": timerRef,
           "color": typeof props.timer === 'string' ? props.timer : 'info',
           "max": props.timeout,
@@ -28770,7 +28770,7 @@ const VSnackbar = genericComponent()({
           "class": "v-snackbar__content",
           "role": "status",
           "aria-live": "polite"
-        }, [slots.text?.() ?? props.text, slots.default?.()]), slots.actions && _createVNode$s(VDefaultsProvider, {
+        }, [slots.text?.() ?? props.text, slots.default?.()]), slots.actions && _createVNode$r(VDefaultsProvider, {
           "defaults": {
             VBtn: {
               variant: 'text',
@@ -28792,7 +28792,7 @@ const VSnackbar = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$a,createVNode:_createVNode$r,mergeProps:_mergeProps$h,createElementVNode:_createElementVNode$i} = await importShared('vue');
+const {Fragment:_Fragment$a,createVNode:_createVNode$q,mergeProps:_mergeProps$h,createElementVNode:_createElementVNode$i} = await importShared('vue');
 const {computed: computed$m,nextTick: nextTick$3,shallowRef: shallowRef$4,watch: watch$6} = await importShared('vue');
 const makeVSnackbarQueueProps = propsFactory({
   // TODO: Port this to Snackbar on dev
@@ -28863,7 +28863,7 @@ const VSnackbarQueue = genericComponent()({
         modelValue: _,
         ...snackbarProps
       } = VSnackbar.filterProps(props);
-      return _createElementVNode$i(_Fragment$a, null, [isVisible.value && !!current.value && (slots.default ? _createVNode$r(VDefaultsProvider, {
+      return _createElementVNode$i(_Fragment$a, null, [isVisible.value && !!current.value && (slots.default ? _createVNode$q(VDefaultsProvider, {
         "defaults": {
           VSnackbar: current.value
         }
@@ -28871,7 +28871,7 @@ const VSnackbarQueue = genericComponent()({
         default: () => [slots.default({
           item: current.value
         })]
-      }) : _createVNode$r(VSnackbar, _mergeProps$h(snackbarProps, current.value, {
+      }) : _createVNode$q(VSnackbar, _mergeProps$h(snackbarProps, current.value, {
         "modelValue": isActive.value,
         "onUpdate:modelValue": $event => isActive.value = $event,
         "onAfterLeave": onAfterLeave
@@ -28879,9 +28879,9 @@ const VSnackbarQueue = genericComponent()({
         text: slots.text ? () => slots.text?.({
           item: current.value
         }) : undefined,
-        actions: hasActions ? () => _createElementVNode$i(_Fragment$a, null, [!slots.actions ? _createVNode$r(VBtn, _mergeProps$h(btnProps.value, {
+        actions: hasActions ? () => _createElementVNode$i(_Fragment$a, null, [!slots.actions ? _createVNode$q(VBtn, _mergeProps$h(btnProps.value, {
           "onClick": onClickClose
-        }), null) : _createVNode$r(VDefaultsProvider, {
+        }), null) : _createVNode$q(VDefaultsProvider, {
           "defaults": {
             VBtn: btnProps.value
           }
@@ -29303,7 +29303,7 @@ const VTrendline = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$g,createVNode:_createVNode$q} = await importShared('vue');
+const {mergeProps:_mergeProps$g,createVNode:_createVNode$p} = await importShared('vue');
 const {computed: computed$j} = await importShared('vue');
 // Types
 
@@ -29337,7 +29337,7 @@ const VSparkline = genericComponent()({
     useRender(() => {
       const Tag = props.type === 'trend' ? VTrendline : VBarline;
       const lineProps = props.type === 'trend' ? VTrendline.filterProps(props) : VBarline.filterProps(props);
-      return _createVNode$q(Tag, _mergeProps$g({
+      return _createVNode$p(Tag, _mergeProps$g({
         "key": props.type,
         "class": textColorClasses.value,
         "style": textColorStyles.value,
@@ -29349,7 +29349,7 @@ const VSparkline = genericComponent()({
 
 const VSpeedDial$1 = '';
 
-const {createVNode:_createVNode$p,mergeProps:_mergeProps$f} = await importShared('vue');
+const {createVNode:_createVNode$o,mergeProps:_mergeProps$f} = await importShared('vue');
 const {computed: computed$i,ref: ref$e} = await importShared('vue');
 const makeVSpeedDialProps = propsFactory({
   ...makeComponentProps(),
@@ -29383,7 +29383,7 @@ const VSpeedDial = genericComponent()({
     }));
     useRender(() => {
       const menuProps = VMenu.filterProps(props);
-      return _createVNode$p(VMenu, _mergeProps$f(menuProps, {
+      return _createVNode$o(VMenu, _mergeProps$f(menuProps, {
         "modelValue": model.value,
         "onUpdate:modelValue": $event => model.value = $event,
         "class": props.class,
@@ -29394,14 +29394,14 @@ const VSpeedDial = genericComponent()({
         "transition": "fade-transition"
       }), {
         ...slots,
-        default: slotProps => _createVNode$p(VDefaultsProvider, {
+        default: slotProps => _createVNode$o(VDefaultsProvider, {
           "defaults": {
             VBtn: {
               size: 'small'
             }
           }
         }, {
-          default: () => [_createVNode$p(MaybeTransition, {
+          default: () => [_createVNode$o(MaybeTransition, {
             "appear": true,
             "group": true,
             "transition": props.transition
@@ -29421,7 +29421,7 @@ const VStepper$1 = '';
 
 const VStepperSymbol = Symbol.for('vuetify:v-stepper');
 
-const {createVNode:_createVNode$o,createElementVNode:_createElementVNode$f} = await importShared('vue');
+const {createVNode:_createVNode$n,createElementVNode:_createElementVNode$f} = await importShared('vue');
 const makeVStepperActionsProps = propsFactory({
   color: String,
   disabled: {
@@ -29467,7 +29467,7 @@ const VStepperActions = genericComponent()({
       };
       return _createElementVNode$f("div", {
         "class": "v-stepper-actions"
-      }, [_createVNode$o(VDefaultsProvider, {
+      }, [_createVNode$n(VDefaultsProvider, {
         "defaults": {
           VBtn: {
             disabled: ['prev', true].includes(props.disabled),
@@ -29478,8 +29478,8 @@ const VStepperActions = genericComponent()({
       }, {
         default: () => [slots.prev?.({
           props: prevSlotProps
-        }) ?? _createVNode$o(VBtn, prevSlotProps, null)]
-      }), _createVNode$o(VDefaultsProvider, {
+        }) ?? _createVNode$n(VBtn, prevSlotProps, null)]
+      }), _createVNode$n(VDefaultsProvider, {
         "defaults": {
           VBtn: {
             color: props.color,
@@ -29491,7 +29491,7 @@ const VStepperActions = genericComponent()({
       }, {
         default: () => [slots.next?.({
           props: nextSlotProps
-        }) ?? _createVNode$o(VBtn, nextSlotProps, null)]
+        }) ?? _createVNode$n(VBtn, nextSlotProps, null)]
       })]);
     });
     return {};
@@ -29503,7 +29503,7 @@ const VStepperHeader = createSimpleFunctional('v-stepper-header');
 
 const VStepperItem$1 = '';
 
-const {createVNode:_createVNode$n,createElementVNode:_createElementVNode$e,normalizeClass:_normalizeClass$d,withDirectives:_withDirectives$1} = await importShared('vue');
+const {createVNode:_createVNode$m,createElementVNode:_createElementVNode$e,normalizeClass:_normalizeClass$d,withDirectives:_withDirectives$1} = await importShared('vue');
 const {computed: computed$h} = await importShared('vue');
 const makeStepperItemProps = propsFactory({
   color: String,
@@ -29589,13 +29589,13 @@ const VStepperItem = genericComponent()({
         "disabled": !props.editable,
         "type": "button",
         "onClick": onClick
-      }, [isClickable.value && genOverlays(true, 'v-stepper-item'), _createVNode$n(VAvatar, {
+      }, [isClickable.value && genOverlays(true, 'v-stepper-item'), _createVNode$m(VAvatar, {
         "key": "stepper-avatar",
         "class": "v-stepper-item__avatar",
         "color": hasColor ? props.color : undefined,
         "size": 24
       }, {
-        default: () => [slots.icon?.(slotProps.value) ?? (icon.value ? _createVNode$n(VIcon, {
+        default: () => [slots.icon?.(slotProps.value) ?? (icon.value ? _createVNode$m(VIcon, {
           "icon": icon.value
         }, null) : step.value)]
       }), _createElementVNode$e("div", {
@@ -29612,7 +29612,7 @@ const VStepperItem = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$e,createVNode:_createVNode$m} = await importShared('vue');
+const {mergeProps:_mergeProps$e,createVNode:_createVNode$l} = await importShared('vue');
 const {computed: computed$g,inject: inject$2} = await importShared('vue');
 const makeVStepperWindowProps = propsFactory({
   ...omit(makeVWindowProps(), ['continuous', 'nextIcon', 'prevIcon', 'showArrows', 'touch', 'mandatory'])
@@ -29645,7 +29645,7 @@ const VStepperWindow = genericComponent()({
     });
     useRender(() => {
       const windowProps = VWindow.filterProps(props);
-      return _createVNode$m(VWindow, _mergeProps$e({
+      return _createVNode$l(VWindow, _mergeProps$e({
         "_as": "VStepperWindow"
       }, windowProps, {
         "modelValue": model.value,
@@ -29660,7 +29660,7 @@ const VStepperWindow = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$d,createVNode:_createVNode$l} = await importShared('vue');
+const {mergeProps:_mergeProps$d,createVNode:_createVNode$k} = await importShared('vue');
 const makeVStepperWindowItemProps = propsFactory({
   ...makeVWindowItemProps()
 }, 'VStepperWindowItem');
@@ -29673,7 +29673,7 @@ const VStepperWindowItem = genericComponent()({
     } = _ref;
     useRender(() => {
       const windowItemProps = VWindowItem.filterProps(props);
-      return _createVNode$l(VWindowItem, _mergeProps$d({
+      return _createVNode$k(VWindowItem, _mergeProps$d({
         "_as": "VStepperWindowItem"
       }, windowItemProps, {
         "class": ['v-stepper-window-item', props.class],
@@ -29684,7 +29684,7 @@ const VStepperWindowItem = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$8,createVNode:_createVNode$k,createElementVNode:_createElementVNode$d,mergeProps:_mergeProps$c} = await importShared('vue');
+const {Fragment:_Fragment$8,createVNode:_createVNode$j,createElementVNode:_createElementVNode$d,mergeProps:_mergeProps$c} = await importShared('vue');
 const {computed: computed$f,toRefs} = await importShared('vue');
 const makeStepperProps = propsFactory({
   altLabels: Boolean,
@@ -29798,7 +29798,7 @@ const VStepper = genericComponent()({
       const hasHeader = !!(slots.header || props.items.length);
       const hasWindow = props.items.length > 0;
       const hasActions = !props.hideActions && !!(hasWindow || slots.actions);
-      return _createVNode$k(VSheet, _mergeProps$c(sheetProps, {
+      return _createVNode$j(VSheet, _mergeProps$c(sheetProps, {
         "color": props.bgColor,
         "class": ['v-stepper', {
           'v-stepper--alt-labels': props.altLabels,
@@ -29808,7 +29808,7 @@ const VStepper = genericComponent()({
         }, displayClasses.value, props.class],
         "style": props.style
       }), {
-        default: () => [hasHeader && _createVNode$k(VStepperHeader, {
+        default: () => [hasHeader && _createVNode$j(VStepperHeader, {
           "key": "stepper-header"
         }, {
           default: () => [items.value.map((_ref2, index) => {
@@ -29816,17 +29816,17 @@ const VStepper = genericComponent()({
               raw,
               ...item
             } = _ref2;
-            return _createElementVNode$d(_Fragment$8, null, [!!index && _createVNode$k(VDivider, null, null), _createVNode$k(VStepperItem, item.props, {
+            return _createElementVNode$d(_Fragment$8, null, [!!index && _createVNode$j(VDivider, null, null), _createVNode$j(VStepperItem, item.props, {
               default: slots[`header-item.${item.value}`] ?? slots.header,
               icon: slots.icon,
               title: slots.title,
               subtitle: slots.subtitle
             })]);
           })]
-        }), hasWindow && _createVNode$k(VStepperWindow, {
+        }), hasWindow && _createVNode$j(VStepperWindow, {
           "key": "stepper-window"
         }, {
-          default: () => [items.value.map(item => _createVNode$k(VStepperWindowItem, {
+          default: () => [items.value.map(item => _createVNode$j(VStepperWindowItem, {
             "value": item.value
           }, {
             default: () => slots[`item.${item.value}`]?.(item) ?? slots.item?.(item)
@@ -29837,7 +29837,7 @@ const VStepper = genericComponent()({
         }), hasActions && (slots.actions?.({
           next,
           prev
-        }) ?? _createVNode$k(VStepperActions, {
+        }) ?? _createVNode$j(VStepperActions, {
           "key": "stepper-actions",
           "onClick:prev": prev,
           "onClick:next": next
@@ -29853,7 +29853,7 @@ const VStepper = genericComponent()({
 
 const VSwitch$1 = '';
 
-const {createElementVNode:_createElementVNode$c,normalizeClass:_normalizeClass$c,normalizeStyle:_normalizeStyle$9,Fragment:_Fragment$7,createVNode:_createVNode$j,mergeProps:_mergeProps$b} = await importShared('vue');
+const {createElementVNode:_createElementVNode$c,normalizeClass:_normalizeClass$c,normalizeStyle:_normalizeStyle$9,Fragment:_Fragment$7,createVNode:_createVNode$i,mergeProps:_mergeProps$b} = await importShared('vue');
 const {ref: ref$d,toRef: toRef$7,useId: useId$1} = await importShared('vue');
 const makeVSwitchProps = propsFactory({
   indeterminate: Boolean,
@@ -29912,7 +29912,7 @@ const VSwitch = genericComponent()({
       const [rootAttrs, controlAttrs] = filterInputAttrs(attrs);
       const inputProps = VInput.filterProps(props);
       const controlProps = VSelectionControl.filterProps(props);
-      return _createVNode$j(VInput, _mergeProps$b({
+      return _createVNode$i(VInput, _mergeProps$b({
         "ref": inputRef,
         "class": ['v-switch', {
           'v-switch--flat': props.flat
@@ -29941,7 +29941,7 @@ const VSwitch = genericComponent()({
             model,
             isValid
           };
-          return _createVNode$j(VSelectionControl, _mergeProps$b({
+          return _createVNode$i(VSelectionControl, _mergeProps$b({
             "ref": control
           }, controlProps, {
             "modelValue": model.value,
@@ -29985,7 +29985,7 @@ const VSwitch = genericComponent()({
                   'v-switch__thumb--filled': icon || props.loading
                 }, props.inset || isForcedColorsModeActive ? undefined : backgroundColorClasses.value]),
                 "style": _normalizeStyle$9(props.inset ? undefined : backgroundColorStyles.value)
-              }, [slots.thumb ? _createVNode$j(VDefaultsProvider, {
+              }, [slots.thumb ? _createVNode$i(VDefaultsProvider, {
                 "defaults": {
                   VIcon: {
                     icon,
@@ -29997,17 +29997,17 @@ const VSwitch = genericComponent()({
                   ...slotProps,
                   icon
                 })]
-              }) : _createVNode$j(VScaleTransition, null, {
-                default: () => [!props.loading ? icon && _createVNode$j(VIcon, {
+              }) : _createVNode$i(VScaleTransition, null, {
+                default: () => [!props.loading ? icon && _createVNode$i(VIcon, {
                   "key": String(icon),
                   "icon": icon,
                   "size": "x-small"
-                }, null) : _createVNode$j(LoaderSlot, {
+                }, null) : _createVNode$i(LoaderSlot, {
                   "name": "v-switch",
                   "active": true,
                   "color": isValid.value === false ? undefined : loaderColor.value
                 }, {
-                  default: slotProps => slots.loader ? slots.loader(slotProps) : _createVNode$j(VProgressCircular, {
+                  default: slotProps => slots.loader ? slots.loader(slotProps) : _createVNode$i(VProgressCircular, {
                     "active": slotProps.isActive,
                     "color": slotProps.color,
                     "indeterminate": true,
@@ -30027,7 +30027,7 @@ const VSwitch = genericComponent()({
 
 const VSystemBar$1 = '';
 
-const {normalizeClass:_normalizeClass$b,normalizeStyle:_normalizeStyle$8,createVNode:_createVNode$i} = await importShared('vue');
+const {normalizeClass:_normalizeClass$b,normalizeStyle:_normalizeStyle$8,createVNode:_createVNode$h} = await importShared('vue');
 const {computed: computed$e,shallowRef: shallowRef$3,toRef: toRef$6} = await importShared('vue');
 const makeVSystemBarProps = propsFactory({
   color: String,
@@ -30075,7 +30075,7 @@ const VSystemBar = genericComponent()({
       active: computed$e(() => true),
       absolute: toRef$6(() => props.absolute)
     });
-    useRender(() => _createVNode$i(props.tag, {
+    useRender(() => _createVNode$h(props.tag, {
       "class": _normalizeClass$b(['v-system-bar', {
         'v-system-bar--window': props.window
       }, themeClasses.value, backgroundColorClasses.value, elevationClasses.value, roundedClasses.value, props.class]),
@@ -30091,7 +30091,7 @@ const VTab$1 = '';
 
 const VTabsSymbol = Symbol.for('vuetify:v-tabs');
 
-const {Fragment:_Fragment$6,normalizeClass:_normalizeClass$a,normalizeStyle:_normalizeStyle$7,createElementVNode:_createElementVNode$b,mergeProps:_mergeProps$a,createVNode:_createVNode$h} = await importShared('vue');
+const {Fragment:_Fragment$6,normalizeClass:_normalizeClass$a,normalizeStyle:_normalizeStyle$7,createElementVNode:_createElementVNode$b,mergeProps:_mergeProps$a,createVNode:_createVNode$g} = await importShared('vue');
 const {computed: computed$d,ref: ref$c} = await importShared('vue');
 const makeVTabProps = propsFactory({
   fixed: Boolean,
@@ -30191,7 +30191,7 @@ const VTab = genericComponent()({
     }
     useRender(() => {
       const btnProps = VBtn.filterProps(props);
-      return _createVNode$h(VBtn, _mergeProps$a({
+      return _createVNode$g(VBtn, _mergeProps$a({
         "symbol": VTabsSymbol,
         "ref": rootEl,
         "class": ['v-tab', props.class, isSelected.value && props.inset ? insetColorClasses.value : []],
@@ -30221,7 +30221,7 @@ const VTab = genericComponent()({
 
 const VTabs$1 = '';
 
-const {mergeProps:_mergeProps$9,createVNode:_createVNode$g} = await importShared('vue');
+const {mergeProps:_mergeProps$9,createVNode:_createVNode$f} = await importShared('vue');
 const {computed: computed$c,inject: inject$1} = await importShared('vue');
 const makeVTabsWindowProps = propsFactory({
   ...omit(makeVWindowProps(), ['continuous', 'nextIcon', 'prevIcon', 'showArrows', 'touch', 'mandatory'])
@@ -30254,7 +30254,7 @@ const VTabsWindow = genericComponent()({
     });
     useRender(() => {
       const windowProps = VWindow.filterProps(props);
-      return _createVNode$g(VWindow, _mergeProps$9({
+      return _createVNode$f(VWindow, _mergeProps$9({
         "_as": "VTabsWindow"
       }, windowProps, {
         "modelValue": model.value,
@@ -30269,7 +30269,7 @@ const VTabsWindow = genericComponent()({
   }
 });
 
-const {mergeProps:_mergeProps$8,createVNode:_createVNode$f} = await importShared('vue');
+const {mergeProps:_mergeProps$8,createVNode:_createVNode$e} = await importShared('vue');
 const makeVTabsWindowItemProps = propsFactory({
   ...makeVWindowItemProps()
 }, 'VTabsWindowItem');
@@ -30282,7 +30282,7 @@ const VTabsWindowItem = genericComponent()({
     } = _ref;
     useRender(() => {
       const windowItemProps = VWindowItem.filterProps(props);
-      return _createVNode$f(VWindowItem, _mergeProps$8({
+      return _createVNode$e(VWindowItem, _mergeProps$8({
         "_as": "VTabsWindowItem"
       }, windowItemProps, {
         "class": ['v-tabs-window-item', props.class],
@@ -30293,7 +30293,7 @@ const VTabsWindowItem = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$5,mergeProps:_mergeProps$7,createVNode:_createVNode$e,createElementVNode:_createElementVNode$a} = await importShared('vue');
+const {Fragment:_Fragment$5,mergeProps:_mergeProps$7,createVNode:_createVNode$d,createElementVNode:_createElementVNode$a} = await importShared('vue');
 const {computed: computed$b,toRef: toRef$5} = await importShared('vue');
 function parseItems(items) {
   if (!items) return [];
@@ -30375,7 +30375,7 @@ const VTabs = genericComponent()({
     useRender(() => {
       const slideGroupProps = VSlideGroup.filterProps(props);
       const hasWindow = !!(slots.window || props.items.length > 0);
-      return _createElementVNode$a(_Fragment$5, null, [_createVNode$e(VSlideGroup, _mergeProps$7(slideGroupProps, {
+      return _createElementVNode$a(_Fragment$5, null, [_createVNode$d(VSlideGroup, _mergeProps$7(slideGroupProps, {
         "modelValue": model.value,
         "onUpdate:modelValue": $event => model.value = $event,
         "class": ['v-tabs', `v-tabs--${props.direction}`, `v-tabs--align-tabs-${props.alignTabs}`, {
@@ -30394,7 +30394,7 @@ const VTabs = genericComponent()({
       }, scopeId, attrs), {
         default: slots.default ?? (() => items.value.map(item => slots.tab?.({
           item
-        }) ?? _createVNode$e(VTab, _mergeProps$7(item, {
+        }) ?? _createVNode$d(VTab, _mergeProps$7(item, {
           "key": item.text,
           "value": item.value,
           "spaced": props.spaced
@@ -30405,14 +30405,14 @@ const VTabs = genericComponent()({
         }))),
         prev: slots.prev,
         next: slots.next
-      }), hasWindow && _createVNode$e(VTabsWindow, _mergeProps$7({
+      }), hasWindow && _createVNode$d(VTabsWindow, _mergeProps$7({
         "modelValue": model.value,
         "onUpdate:modelValue": $event => model.value = $event,
         "key": "tabs-window"
       }, scopeId), {
         default: () => [items.value.map(item => slots.item?.({
           item
-        }) ?? _createVNode$e(VTabsWindowItem, {
+        }) ?? _createVNode$d(VTabsWindowItem, {
           "value": item.value
         }, {
           default: () => slots[`item.${item.value}`]?.({
@@ -30427,7 +30427,7 @@ const VTabs = genericComponent()({
 
 const VTextarea$1 = '';
 
-const {Fragment:_Fragment$4,createElementVNode:_createElementVNode$9,mergeProps:_mergeProps$6,withDirectives:_withDirectives,vModelText:_vModelText,normalizeClass:_normalizeClass$9,createVNode:_createVNode$d} = await importShared('vue');
+const {Fragment:_Fragment$4,createElementVNode:_createElementVNode$9,mergeProps:_mergeProps$6,withDirectives:_withDirectives,vModelText:_vModelText,normalizeClass:_normalizeClass$9,createVNode:_createVNode$c} = await importShared('vue');
 const {computed: computed$a,nextTick: nextTick$1,onBeforeUnmount,onMounted: onMounted$1,ref: ref$b,shallowRef: shallowRef$2,watch: watch$4,watchEffect} = await importShared('vue');
 const makeVTextareaProps = propsFactory({
   autoGrow: Boolean,
@@ -30617,7 +30617,7 @@ const VTextarea = genericComponent()({
         ...VField.filterProps(props),
         'onClick:clear': onClear
       };
-      return _createVNode$d(VInput, _mergeProps$6({
+      return _createVNode$c(VInput, _mergeProps$6({
         "ref": vInputRef,
         "modelValue": model.value,
         "onUpdate:modelValue": $event => model.value = $event,
@@ -30648,7 +30648,7 @@ const VTextarea = genericComponent()({
             isValid,
             hasDetails
           } = _ref2;
-          return _createVNode$d(VField, _mergeProps$6({
+          return _createVNode$c(VField, _mergeProps$6({
             "ref": vFieldRef,
             "style": {
               '--v-textarea-control-height': controlHeight.value
@@ -30711,7 +30711,7 @@ const VTextarea = genericComponent()({
             }
           });
         },
-        details: hasDetails ? slotProps => _createElementVNode$9(_Fragment$4, null, [slots.details?.(slotProps), hasCounter && _createElementVNode$9(_Fragment$4, null, [_createElementVNode$9("span", null, null), _createVNode$d(VCounter, {
+        details: hasDetails ? slotProps => _createElementVNode$9(_Fragment$4, null, [slots.details?.(slotProps), hasCounter && _createElementVNode$9(_Fragment$4, null, [_createElementVNode$9("span", null, null), _createVNode$c(VCounter, {
           "active": props.persistentCounter || isFocused.value,
           "value": counterValue.value,
           "max": max.value,
@@ -30725,7 +30725,7 @@ const VTextarea = genericComponent()({
 
 const VThemeProvider$1 = '';
 
-const {normalizeClass:_normalizeClass$8,normalizeStyle:_normalizeStyle$6,createVNode:_createVNode$c} = await importShared('vue');
+const {normalizeClass:_normalizeClass$8,normalizeStyle:_normalizeStyle$6,createVNode:_createVNode$b} = await importShared('vue');
 const makeVThemeProviderProps = propsFactory({
   withBackground: Boolean,
   ...makeComponentProps(),
@@ -30744,7 +30744,7 @@ const VThemeProvider = genericComponent()({
     } = provideTheme(props);
     return () => {
       if (!props.withBackground) return slots.default?.();
-      return _createVNode$c(props.tag, {
+      return _createVNode$b(props.tag, {
         "class": _normalizeClass$8(['v-theme-provider', themeClasses.value, props.class]),
         "style": _normalizeStyle$6(props.style)
       }, {
@@ -30756,7 +30756,7 @@ const VThemeProvider = genericComponent()({
 
 const VTimeline$1 = '';
 
-const {normalizeClass:_normalizeClass$7,normalizeStyle:_normalizeStyle$5,createElementVNode:_createElementVNode$8,createVNode:_createVNode$b} = await importShared('vue');
+const {normalizeClass:_normalizeClass$7,normalizeStyle:_normalizeStyle$5,createElementVNode:_createElementVNode$8,createVNode:_createVNode$a} = await importShared('vue');
 const makeVTimelineDividerProps = propsFactory({
   dotColor: String,
   fillDot: Boolean,
@@ -30809,12 +30809,12 @@ const VTimelineDivider = genericComponent()({
     }, [_createElementVNode$8("div", {
       "class": _normalizeClass$7(['v-timeline-divider__inner-dot', backgroundColorClasses.value, roundedClasses.value]),
       "style": _normalizeStyle$5(backgroundColorStyles.value)
-    }, [!slots.default ? _createVNode$b(VIcon, {
+    }, [!slots.default ? _createVNode$a(VIcon, {
       "key": "icon",
       "color": props.iconColor,
       "icon": props.icon,
       "size": props.size
-    }, null) : _createVNode$b(VDefaultsProvider, {
+    }, null) : _createVNode$a(VDefaultsProvider, {
       "key": "icon-defaults",
       "disabled": !props.icon,
       "defaults": {
@@ -30832,7 +30832,7 @@ const VTimelineDivider = genericComponent()({
   }
 });
 
-const {normalizeStyle:_normalizeStyle$4,createElementVNode:_createElementVNode$7,createVNode:_createVNode$a,normalizeClass:_normalizeClass$6} = await importShared('vue');
+const {normalizeStyle:_normalizeStyle$4,createElementVNode:_createElementVNode$7,createVNode:_createVNode$9,normalizeClass:_normalizeClass$6} = await importShared('vue');
 const {ref: ref$a,shallowRef: shallowRef$1,watch: watch$3} = await importShared('vue');
 // Types
 const makeVTimelineItemProps = propsFactory({
@@ -30889,7 +30889,7 @@ const VTimelineItem = genericComponent()({
     }, [_createElementVNode$7("div", {
       "class": "v-timeline-item__body",
       "style": _normalizeStyle$4(dimensionStyles.value)
-    }, [slots.default?.()]), _createVNode$a(VTimelineDivider, {
+    }, [slots.default?.()]), _createVNode$9(VTimelineDivider, {
       "ref": dotRef,
       "hideDot": props.hideDot,
       "icon": props.icon,
@@ -30908,7 +30908,7 @@ const VTimelineItem = genericComponent()({
   }
 });
 
-const {normalizeClass:_normalizeClass$5,normalizeStyle:_normalizeStyle$3,createVNode:_createVNode$9} = await importShared('vue');
+const {normalizeClass:_normalizeClass$5,normalizeStyle:_normalizeStyle$3,createVNode:_createVNode$8} = await importShared('vue');
 const {computed: computed$9,toRef: toRef$4} = await importShared('vue');
 const makeVTimelineProps = propsFactory({
   align: {
@@ -30995,7 +30995,7 @@ const VTimeline = genericComponent()({
           return null;
       }
     });
-    useRender(() => _createVNode$9(props.tag, {
+    useRender(() => _createVNode$8(props.tag, {
       "class": _normalizeClass$5(['v-timeline', `v-timeline--${props.direction}`, `v-timeline--align-${props.align}`, `v-timeline--justify-${props.justify}`, truncateClasses.value, {
         'v-timeline--inset-line': !!props.lineInset
       }, themeClasses.value, densityClasses.value, sideClasses.value, rtlClasses.value, props.class]),
@@ -31259,7 +31259,7 @@ const VTimePickerClock = genericComponent()({
 
 const VTimePickerControls$1 = '';
 
-const {normalizeClass:_normalizeClass$3,normalizeStyle:_normalizeStyle$1,createVNode:_createVNode$8} = await importShared('vue');
+const {normalizeClass:_normalizeClass$3,normalizeStyle:_normalizeStyle$1,createVNode:_createVNode$7} = await importShared('vue');
 const {ref: ref$8,shallowRef} = await importShared('vue');
 const makeVTimePickerFieldProps = propsFactory({
   active: Boolean,
@@ -31296,7 +31296,7 @@ const VTimePickerField = genericComponent()({
       }
     }
     useRender(() => {
-      return _createVNode$8(VTextField, {
+      return _createVNode$7(VTextField, {
         "ref": vTextInputRef,
         "_as": "VTimePickerField",
         "autocomplete": "off",
@@ -31328,7 +31328,7 @@ const VTimePickerField = genericComponent()({
 
 // Types
 
-function pad(n) {
+function pad$1(n) {
   let length = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 2;
   return String(n).padStart(length, '0');
 }
@@ -31461,7 +31461,7 @@ function useTimeValidation(props) {
   };
 }
 
-const {createVNode:_createVNode$7,createTextVNode:_createTextVNode$1,createElementVNode:_createElementVNode$5,Fragment:_Fragment$3,normalizeClass:_normalizeClass$2} = await importShared('vue');
+const {createVNode:_createVNode$6,createTextVNode:_createTextVNode,createElementVNode:_createElementVNode$5,Fragment:_Fragment$3,normalizeClass:_normalizeClass$2} = await importShared('vue');
 const {computed: computed$6,nextTick,ref: ref$7,watch: watch$1} = await importShared('vue');
 const makeVTimePickerControlsProps = propsFactory({
   ampm: Boolean,
@@ -31519,7 +31519,7 @@ const VTimePickerControls = genericComponent()({
       in: v => {
         if (v == null || isNaN(Number(v))) return null;
         const val = Number(v);
-        return props.ampm ? pad(convert24to12(val)) : pad(val);
+        return props.ampm ? pad$1(convert24to12(val)) : pad$1(val);
       },
       out: v => {
         if (isNaN(Number(v)) || v == null || v === '') return null;
@@ -31530,7 +31530,7 @@ const VTimePickerControls = genericComponent()({
     };
     const hour = useProxiedModel(props, 'hour', undefined, transformHours.in, transformHours.out);
     const transformMinutesOrSeconds = {
-      in: v => v != null && !isNaN(Number(v)) ? pad(`${v}`) : null,
+      in: v => v != null && !isNaN(Number(v)) ? pad$1(`${v}`) : null,
       out: v => {
         if (isNaN(Number(v)) || v == null || v === '') return null;
         const val = typeof v === 'string' ? extractInteger(v) : Number(v);
@@ -31549,9 +31549,9 @@ const VTimePickerControls = genericComponent()({
       const togglePeriod = isAm && next >= 12 || !isAm && next < 12;
       if (props.ampm && togglePeriod) {
         emit('update:period', props.period === 'am' ? 'pm' : 'am');
-        nextTick(() => hour.value = pad(next));
+        nextTick(() => hour.value = pad$1(next));
       } else {
-        hour.value = pad(next);
+        hour.value = pad$1(next);
       }
     }
     function onMinuteFieldKeydown(e) {
@@ -31560,7 +31560,7 @@ const VTimePickerControls = genericComponent()({
       e.stopPropagation();
       const current = Number(minute.value ?? 0);
       const next = findNextAllowed('minute', current, e.key === 'ArrowUp', currentHour.value);
-      minute.value = pad(next);
+      minute.value = pad$1(next);
     }
     function onSecondFieldKeydown(e) {
       if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
@@ -31568,7 +31568,7 @@ const VTimePickerControls = genericComponent()({
       e.stopPropagation();
       const current = Number(second.value ?? 0);
       const next = findNextAllowed('second', current, e.key === 'ArrowUp', currentHour.value, currentMinute.value);
-      second.value = pad(next);
+      second.value = pad$1(next);
     }
     function createInputInterceptor(valueTransformOut, compare, apply) {
       return e => {
@@ -31604,7 +31604,7 @@ const VTimePickerControls = genericComponent()({
           const value = extractInteger(potentialNewInputVal);
           if (value > maxValue) {
             e.preventDefault();
-            inputElement.value = pad(String(extractInteger(e.data)).substring(0, 2));
+            inputElement.value = pad$1(String(extractInteger(e.data)).substring(0, 2));
             apply(inputElement.value);
             return;
           }
@@ -31648,7 +31648,7 @@ const VTimePickerControls = genericComponent()({
           'v-time-picker-controls__time--with-ampm': props.ampm,
           'v-time-picker-controls__time--with-seconds': props.useSeconds
         })
-      }, [_createVNode$7(VTimePickerField, {
+      }, [_createVNode$6(VTimePickerField, {
         "ref": hourInputRef,
         "active": props.viewMode === 'hour',
         "color": props.color,
@@ -31663,7 +31663,7 @@ const VTimePickerControls = genericComponent()({
         "onFocus": () => emit('update:viewMode', 'hour')
       }, null), _createElementVNode$5("span", {
         "class": "v-time-picker-controls__time__separator"
-      }, [_createTextVNode$1(":")]), _createVNode$7(VTimePickerField, {
+      }, [_createTextVNode(":")]), _createVNode$6(VTimePickerField, {
         "ref": minuteInputRef,
         "active": props.viewMode === 'minute',
         "color": props.color,
@@ -31679,7 +31679,7 @@ const VTimePickerControls = genericComponent()({
       }, null), props.useSeconds && _createElementVNode$5("span", {
         "key": "secondsDivider",
         "class": "v-time-picker-controls__time__separator"
-      }, [_createTextVNode$1(":")]), props.useSeconds && _createElementVNode$5(_Fragment$3, null, [_createVNode$7(VTimePickerField, {
+      }, [_createTextVNode(":")]), props.useSeconds && _createElementVNode$5(_Fragment$3, null, [_createVNode$6(VTimePickerField, {
         "key": "secondsVal",
         "ref": secondInputRef,
         "active": props.viewMode === 'second',
@@ -31695,7 +31695,7 @@ const VTimePickerControls = genericComponent()({
         "onFocus": () => emit('update:viewMode', 'second')
       }, null)]), props.ampm && _createElementVNode$5("div", {
         "class": "v-time-picker-controls__ampm"
-      }, [_createVNode$7(VBtn, {
+      }, [_createVNode$6(VBtn, {
         "active": props.period === 'am',
         "color": props.period === 'am' ? props.color : undefined,
         "class": _normalizeClass$2({
@@ -31707,7 +31707,7 @@ const VTimePickerControls = genericComponent()({
         "text": t('$vuetify.timePicker.am'),
         "variant": props.disabled && props.period === 'am' ? 'elevated' : 'tonal',
         "onClick": () => props.period !== 'am' ? setPeriod('am') : null
-      }, null), _createVNode$7(VBtn, {
+      }, null), _createVNode$6(VBtn, {
         "active": props.period === 'pm',
         "color": props.period === 'pm' ? props.color : undefined,
         "class": _normalizeClass$2({
@@ -31725,7 +31725,7 @@ const VTimePickerControls = genericComponent()({
   }
 });
 
-const {createElementVNode:_createElementVNode$4,mergeProps:_mergeProps$5,createVNode:_createVNode$6} = await importShared('vue');
+const {createElementVNode:_createElementVNode$4,mergeProps:_mergeProps$5,createVNode:_createVNode$5} = await importShared('vue');
 const {computed: computed$5,onMounted,ref: ref$6,toRef: toRef$3,watch} = await importShared('vue');
 const makeVTimePickerProps = propsFactory({
   disabled: Boolean,
@@ -31833,7 +31833,7 @@ const VTimePicker = genericComponent()({
     });
     function genValue() {
       if (inputHour.value != null && inputMinute.value != null && (!props.useSeconds || inputSecond.value != null)) {
-        return `${pad(inputHour.value)}:${pad(inputMinute.value)}` + (props.useSeconds ? `:${pad(inputSecond.value)}` : '');
+        return `${pad$1(inputHour.value)}:${pad$1(inputMinute.value)}` + (props.useSeconds ? `:${pad$1(inputSecond.value)}` : '');
       }
       return null;
     }
@@ -31894,7 +31894,7 @@ const VTimePicker = genericComponent()({
       const timePickerControlsProps = VTimePickerControls.filterProps(props);
       const timePickerClockProps = VTimePickerClock.filterProps(omit(props, ['format', 'modelValue', 'min', 'max']));
       const clockValidation = viewMode.value === 'hour' ? isAllowedHour.value : viewMode.value === 'minute' ? v => isAllowedMinute.value(inputHour.value, v) : v => isAllowedSecond.value(inputHour.value, inputMinute.value, v);
-      return _createVNode$6(VPicker, _mergeProps$5(pickerProps, {
+      return _createVNode$5(VPicker, _mergeProps$5(pickerProps, {
         "color": undefined,
         "class": ['v-time-picker', `v-time-picker--variant-${props.variant}`, props.class, densityClasses.value],
         "hideHeader": props.hideHeader && props.variant !== 'input',
@@ -31903,7 +31903,7 @@ const VTimePicker = genericComponent()({
         title: () => slots.title?.() ?? _createElementVNode$4("div", {
           "class": "v-time-picker__title"
         }, [t(props.title)]),
-        header: () => _createVNode$6(VTimePickerControls, _mergeProps$5(timePickerControlsProps, {
+        header: () => _createVNode$5(VTimePickerControls, _mergeProps$5(timePickerControlsProps, {
           "ampm": isAmPm.value,
           "hour": inputHour.value,
           "minute": inputMinute.value,
@@ -31918,10 +31918,10 @@ const VTimePicker = genericComponent()({
           "onUpdate:viewMode": value => viewMode.value = value,
           "ref": controlsRef
         }), null),
-        default: () => _createVNode$6(VTimePickerClock, _mergeProps$5(timePickerClockProps, {
+        default: () => _createVNode$5(VTimePickerClock, _mergeProps$5(timePickerClockProps, {
           "allowedValues": clockValidation,
           "double": viewMode.value === 'hour' && !isAmPm.value,
-          "format": viewMode.value === 'hour' ? isAmPm.value ? convert24to12 : val => val : val => pad(val, 2),
+          "format": viewMode.value === 'hour' ? isAmPm.value ? convert24to12 : val => val : val => pad$1(val, 2),
           "max": viewMode.value === 'hour' ? isAmPm.value && period.value === 'am' ? 11 : 23 : 59,
           "min": viewMode.value === 'hour' && isAmPm.value && period.value === 'pm' ? 12 : 0,
           "size": 20,
@@ -31969,7 +31969,7 @@ const VToolbarItems = genericComponent()({
 
 const VTooltip$1 = '';
 
-const {mergeProps:_mergeProps$4,createVNode:_createVNode$5} = await importShared('vue');
+const {mergeProps:_mergeProps$4,createVNode:_createVNode$4} = await importShared('vue');
 const {computed: computed$4,mergeProps: mergeProps$1,ref: ref$5,toRef: toRef$1,useId} = await importShared('vue');
 const makeVTooltipProps = propsFactory({
   id: String,
@@ -32022,7 +32022,7 @@ const VTooltip = genericComponent()({
     }, props.activatorProps));
     useRender(() => {
       const overlayProps = VOverlay.filterProps(props);
-      return _createVNode$5(VOverlay, _mergeProps$4({
+      return _createVNode$4(VOverlay, _mergeProps$4({
         "ref": overlay,
         "class": ['v-tooltip', {
           'v-tooltip--interactive': props.interactive
@@ -32053,7 +32053,7 @@ const VTooltip = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment$2,createVNode:_createVNode$4,createElementVNode:_createElementVNode$2,mergeProps:_mergeProps$3} = await importShared('vue');
+const {Fragment:_Fragment$2,createVNode:_createVNode$3,createElementVNode:_createElementVNode$2,mergeProps:_mergeProps$3} = await importShared('vue');
 const {computed: computed$3,ref: ref$4} = await importShared('vue');
 const makeVTreeviewGroupProps = propsFactory({
   ...omit(makeVListGroupProps({
@@ -32079,13 +32079,13 @@ const VTreeviewGroup = genericComponent()({
     }));
     useRender(() => {
       const listGroupProps = VListGroup.filterProps(props);
-      return _createVNode$4(VListGroup, _mergeProps$3(listGroupProps, {
+      return _createVNode$3(VListGroup, _mergeProps$3(listGroupProps, {
         "ref": vListGroupRef,
         "class": ['v-treeview-group', props.class],
         "subgroup": true
       }), {
         ...slots,
-        activator: slots.activator ? slotProps => _createElementVNode$2(_Fragment$2, null, [_createVNode$4(VDefaultsProvider, {
+        activator: slots.activator ? slotProps => _createElementVNode$2(_Fragment$2, null, [_createVNode$3(VDefaultsProvider, {
           "defaults": activatorDefaults.value
         }, {
           default: () => [slots.activator?.(slotProps)]
@@ -32102,7 +32102,7 @@ const VTreeviewItem$1 = '';
 
 const VTreeviewSymbol = Symbol.for('vuetify:v-treeview');
 
-const {Fragment:_Fragment$1,normalizeClass:_normalizeClass,createElementVNode:_createElementVNode$1,createVNode:_createVNode$3,mergeProps:_mergeProps$2} = await importShared('vue');
+const {Fragment:_Fragment$1,normalizeClass:_normalizeClass,createElementVNode:_createElementVNode$1,createVNode:_createVNode$2,mergeProps:_mergeProps$2} = await importShared('vue');
 const {computed: computed$2,inject,ref: ref$3,toRaw: toRaw$2} = await importShared('vue');
 const makeVTreeviewItemProps = propsFactory({
   loading: Boolean,
@@ -32146,7 +32146,7 @@ const VTreeviewItem = genericComponent()({
     useRender(() => {
       const listItemProps = VListItem.filterProps(props);
       const hasPrepend = slots.prepend || props.toggleIcon || props.indentLines || props.prependIcon || props.prependAvatar;
-      return _createVNode$3(VListItem, _mergeProps$2({
+      return _createVNode$2(VListItem, _mergeProps$2({
         "ref": vListItemRef
       }, listItemProps, {
         "active": vListItemRef.value?.isActivated || undefined,
@@ -32168,10 +32168,10 @@ const VTreeviewItem = genericComponent()({
             }
           }, [props.indentLines.map(type => _createElementVNode$1("div", {
             "class": _normalizeClass(`v-treeview-indent-line v-treeview-indent-line--${type}`)
-          }, null))]) : '', !props.hideActions && _createVNode$3(VListItemAction, {
+          }, null))]) : '', !props.hideActions && _createVNode$2(VListItemAction, {
             "start": true
           }, {
-            default: () => [props.toggleIcon ? _createElementVNode$1(_Fragment$1, null, [!slots.toggle ? _createVNode$3(VBtn, {
+            default: () => [props.toggleIcon ? _createElementVNode$1(_Fragment$1, null, [!slots.toggle ? _createVNode$2(VBtn, {
               "key": "prepend-toggle",
               "density": "compact",
               "icon": props.toggleIcon,
@@ -32179,12 +32179,12 @@ const VTreeviewItem = genericComponent()({
               "variant": "text",
               "onClick": onClickAction
             }, {
-              loader: () => _createVNode$3(VProgressCircular, {
+              loader: () => _createVNode$2(VProgressCircular, {
                 "indeterminate": "disable-shrink",
                 "size": "20",
                 "width": "2"
               }, null)
-            }) : _createVNode$3(VDefaultsProvider, {
+            }) : _createVNode$2(VDefaultsProvider, {
               "key": "prepend-defaults",
               "defaults": {
                 VBtn: {
@@ -32210,15 +32210,15 @@ const VTreeviewItem = genericComponent()({
             })]) : _createElementVNode$1("div", {
               "class": "v-treeview-item__level"
             }, null)]
-          }), !props.hasCustomPrepend ? _createElementVNode$1(_Fragment$1, null, [slots.prepend?.(slotProps), props.prependAvatar && _createVNode$3(VAvatar, {
+          }), !props.hasCustomPrepend ? _createElementVNode$1(_Fragment$1, null, [slots.prepend?.(slotProps), props.prependAvatar && _createVNode$2(VAvatar, {
             "key": "prepend-avatar",
             "density": props.density,
             "image": props.prependAvatar
-          }, null), props.prependIcon && _createVNode$3(VIcon, {
+          }, null), props.prependIcon && _createVNode$2(VIcon, {
             "key": "prepend-icon",
             "density": props.density,
             "icon": props.prependIcon
-          }, null)]) : _createVNode$3(VDefaultsProvider, {
+          }, null)]) : _createVNode$2(VDefaultsProvider, {
             "key": "prepend-defaults",
             "defaults": {
               VAvatar: {
@@ -32243,8 +32243,8 @@ const VTreeviewItem = genericComponent()({
   }
 });
 
-const {Fragment:_Fragment,createVNode:_createVNode$2,createElementVNode:_createElementVNode,mergeProps:_mergeProps$1} = await importShared('vue');
-const {computed: computed$1,reactive: reactive$1,ref: ref$2,toRaw: toRaw$1} = await importShared('vue');
+const {Fragment:_Fragment,createVNode:_createVNode$1,createElementVNode:_createElementVNode,mergeProps:_mergeProps$1} = await importShared('vue');
+const {computed: computed$1,reactive,ref: ref$2,toRaw: toRaw$1} = await importShared('vue');
 const makeVTreeviewChildrenProps = propsFactory({
   fluid: Boolean,
   disabled: Boolean,
@@ -32288,7 +32288,7 @@ const VTreeviewChildren = genericComponent()({
     let {
       slots
     } = _ref;
-    const isLoading = reactive$1(new Set());
+    const isLoading = reactive(new Set());
     const activatorItems = ref$2([]);
     const isClickOnOpen = computed$1(() => !props.disabled && (props.openOnClick != null ? props.openOnClick : props.selectable && !props.activatable));
     async function checkChildren(item) {
@@ -32341,10 +32341,10 @@ const VTreeviewChildren = genericComponent()({
           internalItem: item,
           loading
         }) : undefined,
-        prepend: slotProps => _createElementVNode(_Fragment, null, [props.selectable && (!children || children && !['leaf', 'single-leaf'].includes(props.selectStrategy)) && _createVNode$2(VListItemAction, {
+        prepend: slotProps => _createElementVNode(_Fragment, null, [props.selectable && (!children || children && !['leaf', 'single-leaf'].includes(props.selectStrategy)) && _createVNode$1(VListItemAction, {
           "start": true
         }, {
-          default: () => [_createVNode$2(VCheckboxBtn, {
+          default: () => [_createVNode$1(VCheckboxBtn, {
             "key": item.value,
             "modelValue": slotProps.isSelected,
             "disabled": props.disabled || itemProps.disabled,
@@ -32395,7 +32395,7 @@ const VTreeviewChildren = genericComponent()({
         hideActions: props.hideActions,
         indentLines: indentLines.footer
       };
-      return children ? _createVNode$2(VTreeviewGroup, _mergeProps$1(treeviewGroupProps, {
+      return children ? _createVNode$1(VTreeviewGroup, _mergeProps$1(treeviewGroupProps, {
         "value": props.returnObject ? item.raw : treeviewGroupProps?.value,
         "rawId": treeviewGroupProps?.value
       }), {
@@ -32419,7 +32419,7 @@ const VTreeviewChildren = genericComponent()({
             item: item.raw,
             internalItem: item,
             loading
-          }, () => _createVNode$2(VTreeviewItem, _mergeProps$1({
+          }, () => _createVNode$1(VTreeviewItem, _mergeProps$1({
             "ref": el => activatorItems.value[index] = el
           }, listItemProps, {
             "hasCustomPrepend": !!slots.prepend,
@@ -32427,7 +32427,7 @@ const VTreeviewChildren = genericComponent()({
             "loading": loading
           }), slotsWithItem));
         },
-        default: () => _createElementVNode(_Fragment, null, [_createVNode$2(VTreeviewChildren, _mergeProps$1(treeviewChildrenProps, {
+        default: () => _createElementVNode(_Fragment, null, [_createVNode$1(VTreeviewChildren, _mergeProps$1(treeviewChildrenProps, {
           "items": children,
           "indentLinesVariant": props.indentLinesVariant,
           "parentIndentLines": indentLines.children,
@@ -32447,14 +32447,14 @@ const VTreeviewChildren = genericComponent()({
         if (item.type === 'divider') {
           return renderSlot(slots.divider, {
             props: item.raw
-          }, () => _createVNode$2(VDivider, item.props, null));
+          }, () => _createVNode$1(VDivider, item.props, null));
         }
         if (item.type === 'subheader') {
           return renderSlot(slots.subheader, {
             props: item.raw
-          }, () => _createVNode$2(VListSubheader, item.props, null));
+          }, () => _createVNode$1(VListSubheader, item.props, null));
         }
-        return _createVNode$2(VTreeviewItem, _mergeProps$1(itemProps, {
+        return _createVNode$1(VTreeviewItem, _mergeProps$1(itemProps, {
           "hasCustomPrepend": !!slots.prepend,
           "hideActions": props.hideActions,
           "indentLines": indentLines.leaf,
@@ -32465,7 +32465,7 @@ const VTreeviewChildren = genericComponent()({
   }
 });
 
-const {createVNode:_createVNode$1,mergeProps:_mergeProps} = await importShared('vue');
+const {createVNode:_createVNode,mergeProps:_mergeProps} = await importShared('vue');
 const {computed,provide,ref: ref$1,toRaw,toRef} = await importShared('vue');
 function flatten(items) {
   let flat = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : [];
@@ -32595,7 +32595,7 @@ const VTreeview = genericComponent()({
       const listProps = VList.filterProps(props);
       const treeviewChildrenProps = VTreeviewChildren.filterProps(props);
       const indentLinesVariant = typeof props.indentLines === 'boolean' ? 'default' : props.indentLines;
-      return _createVNode$1(VList, _mergeProps({
+      return _createVNode(VList, _mergeProps({
         "ref": vListRef
       }, listProps, {
         "class": ['v-treeview', {
@@ -32613,10 +32613,10 @@ const VTreeview = genericComponent()({
         "selected": selected.value,
         "onUpdate:selected": $event => selected.value = $event
       }), {
-        default: () => [visibleIds.value?.size === 0 && !props.hideNoData && (slots['no-data']?.() ?? _createVNode$1(VListItem, {
+        default: () => [visibleIds.value?.size === 0 && !props.hideNoData && (slots['no-data']?.() ?? _createVNode(VListItem, {
           "key": "no-data",
           "title": t(props.noDataText)
-        }, null)), _createVNode$1(VTreeviewChildren, _mergeProps(treeviewChildrenProps, {
+        }, null)), _createVNode(VTreeviewChildren, _mergeProps(treeviewChildrenProps, {
           "density": props.density,
           "returnObject": props.returnObject,
           "items": items.value,
@@ -32914,7 +32914,7 @@ const Scroll = {
 };
 
 // Utilities
-const {h,mergeProps,render,resolveComponent} = await importShared('vue');
+const {h: h$1,mergeProps,render,resolveComponent} = await importShared('vue');
 function useDirectiveComponent(component, props) {
   const concreteComponent = typeof component === 'string' ? resolveComponent(component) : component;
   const hook = mountComponent(concreteComponent, props);
@@ -32938,7 +32938,7 @@ function mountComponent(component, props) {
     // If vnode.ctx is the same as the instance, then we're bound to a plain element
     // and need to find the nearest parent component instance to inherit provides from
     const provides = (vnode.ctx === binding.instance.$ ? findComponentParent(vnode, binding.instance.$)?.provides : vnode.ctx?.provides) ?? binding.instance.$.provides;
-    const node = h(component, mergeProps(_props, value), children);
+    const node = h$1(component, mergeProps(_props, value), children);
     node.appContext = Object.assign(Object.create(null), binding.instance.$.appContext, {
       provides
     });
@@ -33008,139 +33008,139 @@ const directives = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty
     Touch
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const {createTextVNode:_createTextVNode,resolveComponent:_resolveComponent,withCtx:_withCtx,createVNode:_createVNode,openBlock:_openBlock,createBlock:_createBlock} = await importShared('vue');
+const dev = '';
 
+// 独立开发预览入口（仅 vite dev 使用；生产由 MoviePilot 通过 remoteEntry.js 加载 Page/Config）。
+// 提供明/暗主题切换、Page/Config 切换，以及贴合后端真实形状的 mock 数据，便于可视化迭代。
+const {createApp,defineComponent,h,ref} = await importShared('vue');
 
-const {reactive,ref} = await importShared('vue');
+const {createVuetify} = await importShared('vuetify');
 
+const vuetify = createVuetify({ components, directives, theme: { defaultTheme: 'light' } });
 
-const _sfc_main = {
-  __name: 'App',
-  setup(__props) {
+// —— mock 数据（形状对齐后端 _get_status / 历史结构）——
+const pad = (n) => String(n).padStart(2, '0');
+const dayStr = (offset) => {
+  const d = new Date();
+  d.setDate(d.getDate() - offset);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const at = (offset, time = '08:10:12') => `${dayStr(offset)} ${time}`;
 
-const tab = ref('page');
-const config = reactive({
-  enabled: false,
+function detail(site, site_name, status, message, extra = {}) {
+  return { site, site_name, status, message, account: extra.account || '-', reward_mb: extra.reward_mb || '-', total_traffic: extra.total_traffic || '-', time: extra.time || '-' };
+}
+
+function entry(offset, status, message, details) {
+  const success_count = details.filter((d) => ['签到成功', '今日已签到'].includes(d.status)).length;
+  return { version: 2, time: at(offset), status, message, success_count, failure_count: details.length - success_count, site_count: details.length, details };
+}
+
+const MOCK_HISTORY = [
+  entry(0, '全部成功', '3 个站点全部签到成功', [
+    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.28TB' }),
+    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
+    detail('ypojie', '易破解', '签到成功', '签到成功，连续 30 天', { account: 'pojie***' }),
+  ]),
+  entry(1, '部分成功', '2 成功 / 1 失败', [
+    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.23TB' }),
+    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
+    detail('ypojie', '易破解', '执行失败', '登录超时，请检查账号', { account: 'pojie***' }),
+  ]),
+  entry(2, '全部成功', '3 个站点全部签到成功', [
+    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.18TB' }),
+    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
+    detail('ypojie', '易破解', '签到成功', '签到成功，连续 28 天', { account: 'pojie***' }),
+  ]),
+  entry(3, '全部成功', '3 个站点全部签到成功', [
+    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.13TB' }),
+    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
+    detail('ypojie', '易破解', '签到成功', '签到成功，连续 27 天', { account: 'pojie***' }),
+  ]),
+  entry(4, '执行失败', '网络异常，全部失败', [
+    detail('flzt', 'FLZT', '执行失败', '连接超时', { account: 'movie***@qq.com' }),
+    detail('right_forum', '恩山无线论坛', '执行失败', 'Cookie 已失效', { account: 'enshan_lee' }),
+    detail('ypojie', '易破解', '执行失败', '连接超时', { account: 'pojie***' }),
+  ]),
+];
+
+const MOCK_STATUS = {
+  enabled: true,
+  notify: true,
+  cron: '10 8 * * *',
+  configured: true,
+  enabled_site_count: 3,
+  configured_site_count: 3,
+  last_status: '全部成功',
+  last_run: at(0),
+  next_run_time: '13小时22分钟后',
+  history_count: MOCK_HISTORY.length,
+  task_status: '等待执行',
+  sites: [
+    { key: 'flzt', name: 'FLZT', mode: '账号密码', enabled: true, configured: true, use_proxy: false, account: 'movie***@qq.com', last_status: '签到成功', last_message: '签到成功，获得 50MB', last_run: at(0) },
+    { key: 'right_forum', name: '恩山无线论坛', mode: 'Cookie', enabled: true, configured: true, use_proxy: false, account: 'enshan_lee', last_status: '今日已签到', last_message: '今日已完成签到', last_run: at(0) },
+    { key: 'ypojie', name: '易破解', mode: '账号密码', enabled: true, configured: true, use_proxy: true, account: 'pojie***', last_status: '签到成功', last_message: '签到成功，连续 30 天', last_run: at(0) },
+  ],
+  history: MOCK_HISTORY,
+};
+
+const MOCK_CONFIG = {
+  enabled: true,
   notify: true,
   cron: '10 8 * * *',
   timeout: 10,
   retry_count: 3,
-  sites: {},
+  sites: {
+    flzt: { enabled: true, use_proxy: false, email: 'movie@qq.com', password: 'secret123' },
+    right_forum: { enabled: true, use_proxy: false, cookie: 'saltkey=abc123def; auth=longcookievalue0000' },
+    ypojie: { enabled: false, use_proxy: true, email: '', password: '' },
+  },
+};
+
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+const mockApi = {
+  async get(path) {
+    await delay(280);
+    if (path.endsWith('/status')) return { data: MOCK_STATUS };
+    if (path.endsWith('/config')) return { data: MOCK_CONFIG };
+    return { data: {} };
+  },
+  async post(path) {
+    await delay(650);
+    if (path.endsWith('/run')) return { success: true, message: '签到完成：3 个站点全部成功', data: {} };
+    if (path.endsWith('/test-login')) return { success: true, message: '3 个站点登录测试通过', data: {} };
+    if (path.endsWith('/history/clear')) { MOCK_STATUS.history = []; MOCK_STATUS.history_count = 0; return { success: true, message: '历史记录已清空' }; }
+    if (path.endsWith('/config')) return { success: true, message: '配置已保存' };
+    return { success: true, message: 'ok' };
+  },
+};
+
+// —— 开发外壳：主题 & 视图切换，容器模拟对话框（surface，max-width 80rem）——
+const DevShell = defineComponent({
+  setup() {
+    const view = ref('page');
+    const dark = ref(false);
+    const saving = ref(false);
+    const lastSavedAt = ref(0);
+    const onSave = async () => { saving.value = true; await mockApi.post('/config'); saving.value = false; lastSavedAt.value = Date.now(); };
+    return () =>
+      h('div', { class: `dev-root ${dark.value ? 'v-theme--dark' : 'v-theme--light'}` }, [
+        h('div', { class: 'dev-bar' }, [
+          h('span', { class: 'dev-brand' }, '朱砂签到 · 预览'),
+          h('div', { class: 'dev-actions' }, [
+            h('button', { class: 'dev-toggle', onClick: () => (view.value = view.value === 'page' ? 'config' : 'page') }, view.value === 'page' ? '→ 配置页' : '→ 数据页'),
+            h('button', { class: 'dev-toggle', onClick: () => (dark.value = !dark.value) }, dark.value ? '☾ 暗' : '☀ 明'),
+          ]),
+        ]),
+        h('div', { class: 'dev-stage' }, [
+          h('div', { class: 'dev-dialog' }, [
+            view.value === 'page'
+              ? h(Page, { api: mockApi, show_switch: true, onSwitch: () => (view.value = 'config'), onClose: () => {} })
+              : h(Config, { api: mockApi, initialConfig: MOCK_CONFIG, saving: saving.value, lastSavedAt: lastSavedAt.value, onSave, onSwitch: () => (view.value = 'page'), onClose: () => {} }),
+          ]),
+        ]),
+      ]);
+  },
 });
 
-const api = {
-  async get(path) {
-    if (path.endsWith('/status')) {
-      return {
-        success: true,
-        data: {
-          enabled: config.enabled,
-          notify: config.notify,
-          cron: config.cron,
-          enabled_site_count: Object.values(config.sites || {}).filter(site => site.enabled).length,
-          configured_site_count: 0,
-          last_status: '本地预览',
-          last_run: '-',
-          next_run_time: '-',
-          task_status: '未启用',
-          sites: [],
-          history: [],
-          history_count: 0,
-        },
-      }
-    }
-    return { success: true, data: config }
-  },
-  async post(_path, payload = {}) {
-    Object.assign(config, payload);
-    return { success: true, message: '本地预览请求已处理', data: config }
-  },
-};
-
-return (_ctx, _cache) => {
-  const _component_v_tab = _resolveComponent("v-tab");
-  const _component_v_tabs = _resolveComponent("v-tabs");
-  const _component_v_window_item = _resolveComponent("v-window-item");
-  const _component_v_window = _resolveComponent("v-window");
-  const _component_v_container = _resolveComponent("v-container");
-  const _component_v_main = _resolveComponent("v-main");
-  const _component_v_app = _resolveComponent("v-app");
-
-  return (_openBlock(), _createBlock(_component_v_app, null, {
-    default: _withCtx(() => [
-      _createVNode(_component_v_main, null, {
-        default: _withCtx(() => [
-          _createVNode(_component_v_container, { class: "py-6" }, {
-            default: _withCtx(() => [
-              _createVNode(_component_v_tabs, {
-                modelValue: tab.value,
-                "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => ((tab).value = $event)),
-                density: "comfortable",
-                class: "mb-4"
-              }, {
-                default: _withCtx(() => [
-                  _createVNode(_component_v_tab, { value: "page" }, {
-                    default: _withCtx(() => [...(_cache[5] || (_cache[5] = [
-                      _createTextVNode("状态页", -1)
-                    ]))]),
-                    _: 1
-                  }),
-                  _createVNode(_component_v_tab, { value: "config" }, {
-                    default: _withCtx(() => [...(_cache[6] || (_cache[6] = [
-                      _createTextVNode("配置页", -1)
-                    ]))]),
-                    _: 1
-                  })
-                ]),
-                _: 1
-              }, 8, ["modelValue"]),
-              _createVNode(_component_v_window, {
-                modelValue: tab.value,
-                "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((tab).value = $event))
-              }, {
-                default: _withCtx(() => [
-                  _createVNode(_component_v_window_item, { value: "page" }, {
-                    default: _withCtx(() => [
-                      _createVNode(_sfc_main$1, {
-                        api: api,
-                        onSwitch: _cache[1] || (_cache[1] = $event => (tab.value = 'config'))
-                      })
-                    ]),
-                    _: 1
-                  }),
-                  _createVNode(_component_v_window_item, { value: "config" }, {
-                    default: _withCtx(() => [
-                      _createVNode(Config, {
-                        "initial-config": config,
-                        api: api,
-                        onSave: _cache[2] || (_cache[2] = $event => (Object.assign(config, $event))),
-                        onSwitch: _cache[3] || (_cache[3] = $event => (tab.value = 'page'))
-                      }, null, 8, ["initial-config"])
-                    ]),
-                    _: 1
-                  })
-                ]),
-                _: 1
-              }, 8, ["modelValue"])
-            ]),
-            _: 1
-          })
-        ]),
-        _: 1
-      })
-    ]),
-    _: 1
-  }))
-}
-}
-
-};
-
-const {createApp} = await importShared('vue');
-
-const {createVuetify} = await importShared('vuetify');
-
-
-createApp(_sfc_main)
-  .use(createVuetify({ components, directives }))
-  .mount('#app');
+createApp(DevShell).use(vuetify).mount('#app');

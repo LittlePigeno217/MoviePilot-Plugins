@@ -662,7 +662,7 @@ class Checkin(_PluginBase):
     plugin_name = "自用签到工具"
     plugin_desc = "用于自用站点签到的统一工具，支持自动登录、Cookie 签到、通知与历史记录。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.4.0"
+    plugin_version = "1.5.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "checkin_"
