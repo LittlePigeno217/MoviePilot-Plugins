@@ -1,17 +1,16 @@
 from pathlib import Path, PurePosixPath
-from typing import List
 
 SIDECAR_EXTS = {".nfo", ".srt", ".ass", ".ssa", ".sup"}
 SIDECAR_NAMES = {"poster.jpg", "fanart.jpg", "banner.jpg", "clearlogo.png", "landscape.jpg"}
 
 
-def _is_sidecar(name: str) -> bool:
+def is_sidecar(name: str) -> bool:
     lower = name.lower()
     return PurePosixPath(lower).suffix in SIDECAR_EXTS or lower in SIDECAR_NAMES
 
 
 class MetadataSync:
-    """下载与媒体同目录的刮削文件（nfo/图片/字幕）到 .strm 同目录。"""
+    """将 115 中的刮削文件（nfo/图片/字幕）按 rel_path 镜像到本地输出目录。"""
 
     def __init__(self, client):
         self._client = client
@@ -26,22 +25,19 @@ class MetadataSync:
         dest.write_bytes(resp.content)
         return True
 
-    def sync_for(self, media_item: dict, strm_path: Path, siblings: List[dict]) -> int:
+    def mirror(self, item: dict, target_dir: str) -> bool:
         """
-        下载 siblings 中的 sidecar 文件到 strm_path 同目录。
-        :return: 实际下载数量
+        若 item 是 sidecar，则按其 rel_path 下载到 target_dir（与 .strm 同结构）。
+        :return: 是否实际下载
         """
-        count = 0
-        for sib in siblings:
-            name = sib.get("name", "")
-            if not _is_sidecar(name):
-                continue
-            dest = strm_path.parent / name
-            if dest.exists():
-                continue
-            try:
-                if self.download_file(sib.get("pickcode", ""), dest):
-                    count += 1
-            except Exception:  # noqa: BLE001
-                continue
-        return count
+        name = item.get("name", "")
+        if not is_sidecar(name):
+            return False
+        dest = Path(target_dir) / item.get("rel_path", name)
+        if dest.exists():
+            return False
+        try:
+            return self.download_file(item.get("pickcode", ""), dest)
+        except Exception:  # noqa: BLE001
+            return False
+

@@ -70,15 +70,24 @@ def test_changed_size_triggers_update(tmp_path):
     assert h.updated == 1 and h.skipped == 0
 
 
-def test_on_media_callback_invoked(tmp_path):
-    seen = []
-    files = [{"name": "a.mkv", "pickcode": "pcA", "size": 1, "rel_path": "a.mkv"}]
+def test_metadata_mirror_invoked_for_sidecar(tmp_path):
+    mirrored = []
+
+    class FakeMeta:
+        def mirror(self, item, target_dir):
+            mirrored.append((item["name"], target_dir))
+            return True
+
+    files = [
+        {"name": "a.mkv", "pickcode": "pcA", "size": 1, "rel_path": "a.mkv"},
+        {"name": "a.nfo", "pickcode": "pcN", "size": 2, "rel_path": "a.nfo"},
+    ]
     gen = StrmGenerator(
         FakeClient(files), Store(FakeHost()), "http://mp:3001", "tok",
-        incremental=True, on_media=lambda item, path: seen.append(path),
+        incremental=True, metadata_sync=FakeMeta(),
     )
     gen.run_mapping(Mapping("m1", True, "10", "/", str(tmp_path)))
-    assert len(seen) == 1
+    assert mirrored == [("a.nfo", str(tmp_path))]
 
 
 def test_media_exts_covers_common():

@@ -3,12 +3,12 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from metadata import MetadataSync, _is_sidecar  # noqa: E402
+from metadata import MetadataSync, is_sidecar  # noqa: E402
 
 
 def test_is_sidecar():
-    assert _is_sidecar("movie.nfo") and _is_sidecar("poster.jpg") and _is_sidecar("s.srt")
-    assert not _is_sidecar("a.mkv")
+    assert is_sidecar("movie.nfo") and is_sidecar("poster.jpg") and is_sidecar("s.srt")
+    assert not is_sidecar("a.mkv")
 
 
 def test_download_file(tmp_path):
@@ -28,27 +28,26 @@ def test_download_file_no_url_returns_false(tmp_path):
     assert ms.download_file("pc", tmp_path / "x.nfo") is False
 
 
-def test_sync_for_filters_and_skips_existing(tmp_path):
+def test_mirror_downloads_sidecar_by_rel_path(tmp_path):
     client = MagicMock()
     client.get_download_url.return_value = "https://dl/x"
     client.session.get.return_value = MagicMock(content=b"x", raise_for_status=lambda: None)
     ms = MetadataSync(client)
-    strm = tmp_path / "a.strm"
-    strm.write_text("u")
-    siblings = [
-        {"name": "a.nfo", "pickcode": "p1"},
-        {"name": "b.mkv", "pickcode": "p2"},   # 非 sidecar，跳过
-        {"name": "poster.jpg", "pickcode": "p3"},
-    ]
-    assert ms.sync_for({}, strm, siblings) == 2
+    item = {"name": "a.nfo", "pickcode": "p1", "rel_path": "movies/a.nfo"}
+    assert ms.mirror(item, str(tmp_path)) is True
+    assert (tmp_path / "movies" / "a.nfo").read_bytes() == b"x"
 
 
-def test_sync_for_skips_already_downloaded(tmp_path):
+def test_mirror_skips_non_sidecar(tmp_path):
+    ms = MetadataSync(MagicMock())
+    assert ms.mirror({"name": "a.mkv", "pickcode": "p", "rel_path": "a.mkv"}, str(tmp_path)) is False
+
+
+def test_mirror_skips_existing(tmp_path):
     client = MagicMock()
     client.get_download_url.return_value = "https://dl/x"
     client.session.get.return_value = MagicMock(content=b"x", raise_for_status=lambda: None)
     ms = MetadataSync(client)
-    strm = tmp_path / "a.strm"
-    strm.write_text("u")
-    (tmp_path / "a.nfo").write_text("existing")  # 已存在
-    assert ms.sync_for({}, strm, [{"name": "a.nfo", "pickcode": "p1"}]) == 0
+    (tmp_path / "a.nfo").write_text("existing")
+    item = {"name": "a.nfo", "pickcode": "p1", "rel_path": "a.nfo"}
+    assert ms.mirror(item, str(tmp_path)) is False

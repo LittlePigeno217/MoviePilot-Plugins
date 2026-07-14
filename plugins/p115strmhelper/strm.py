@@ -1,7 +1,6 @@
 import time
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Callable, Optional
 from urllib.parse import quote
 
 try:  # 运行时相对导入；单测直接导入模块时回退绝对导入
@@ -29,16 +28,16 @@ def _now_iso() -> str:
 
 
 class StrmGenerator:
-    """遍历 115 源目录，生成 .strm，支持增量跳过。"""
+    """遍历 115 源目录，生成 .strm，支持增量跳过与刮削镜像。"""
 
     def __init__(self, client, store, moviepilot_url, api_token,
-                 incremental=True, on_media: Optional[Callable] = None):
+                 incremental=True, metadata_sync=None):
         self._client = client
         self._store = store
         self._mp_url = moviepilot_url
         self._token = api_token
         self._incremental = incremental
-        self._on_media = on_media  # 回调 (file_item, strm_path)，供刮削同步挂接
+        self._metadata = metadata_sync  # MetadataSync 或 None；非 None 时镜像 sidecar
 
     def run_mapping(self, mapping: Mapping) -> HistoryEntry:
         start = time.time()
@@ -47,6 +46,8 @@ class StrmGenerator:
         records = []
         for item in self._client.iter_files(mapping.source_cid, recursive=True):
             if not _is_media(item.get("name", "")):
+                if self._metadata:
+                    self._metadata.mirror(item, mapping.target_dir)
                 continue
             try:
                 rel = PurePosixPath(item["rel_path"])
@@ -67,8 +68,6 @@ class StrmGenerator:
                     updated += 1
                 else:
                     added += 1
-                if self._on_media:
-                    self._on_media(item, strm_path)
             except Exception:  # noqa: BLE001
                 errors += 1
         self._store.bulk_set_sync_records(records)
