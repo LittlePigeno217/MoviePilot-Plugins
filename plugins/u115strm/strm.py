@@ -14,7 +14,7 @@ MEDIA_EXTS = {".mkv", ".mp4", ".ts", ".m2ts", ".avi", ".mov", ".wmv", ".iso", ".
 def build_strm_url(moviepilot_url: str, pickcode: str, api_token: str) -> str:
     base = (moviepilot_url or "").rstrip("/")
     return (
-        f"{base}/api/v1/plugin/P115StrmHelper/redirect"
+        f"{base}/api/v1/plugin/U115Strm/redirect"
         f"?pickcode={quote(pickcode)}&apikey={quote(api_token)}"
     )
 

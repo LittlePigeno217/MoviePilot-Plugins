@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, p as pluginRequest } from './_plugin-vue_export-helper-59eae27f.js';
-import Config from './__federation_expose_Config-a5b5128f.js';
-import Page from './__federation_expose_Page-d1c49f1f.js';
+import { _ as _export_sfc, p as pluginRequest } from './_plugin-vue_export-helper-22e9664a.js';
+import Config from './__federation_expose_Config-08390c56.js';
+import Page from './__federation_expose_Page-32a99c0a.js';
 
 const AppPage_vue_vue_type_style_index_0_scoped_0669aaf5_lang = '';
 

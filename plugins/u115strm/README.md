@@ -1,4 +1,4 @@
-# 115 STRM 助手（P115StrmHelper）
+# 115 STRM 助手（U115Strm）
 
 扫描 115 网盘目录生成 `.strm`，经插件的 302 重定向端点流式播放（不下载媒体本体）。
 
@@ -12,7 +12,7 @@
 `.strm` 内容为指向插件重定向端点的 URL：
 
 ```
-http://{MoviePilot地址}/api/v1/plugin/P115StrmHelper/redirect?pickcode={pickcode}&apikey={API_TOKEN}
+http://{MoviePilot地址}/api/v1/plugin/U115Strm/redirect?pickcode={pickcode}&apikey={API_TOKEN}
 ```
 
 Emby/Jellyfin 播放时请求该 URL，插件用 115 换取新的下载直链并 302 跳转。

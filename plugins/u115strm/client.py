@@ -45,7 +45,7 @@ class U115Client:
     def _init_headers(self) -> None:
         self.session.headers.update(
             {
-                "User-Agent": "P115StrmHelper/1.0",
+                "User-Agent": "U115Strm/1.0",
                 "Accept-Encoding": "gzip, deflate",
                 "Content-Type": "application/x-www-form-urlencoded",
             }

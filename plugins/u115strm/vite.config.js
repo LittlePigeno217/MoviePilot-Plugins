@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     vue(),
     federation({
-      name: 'P115StrmHelper',
+      name: 'U115Strm',
       filename: 'remoteEntry.js',
       exposes: {
         './Page': './src/components/Page.vue',

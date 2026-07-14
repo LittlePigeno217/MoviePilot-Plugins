@@ -28,7 +28,7 @@ class FakeClient:
 
 def test_build_strm_url():
     url = build_strm_url("http://mp:3001/", "pc1", "tok")
-    assert url == "http://mp:3001/api/v1/plugin/P115StrmHelper/redirect?pickcode=pc1&apikey=tok"
+    assert url == "http://mp:3001/api/v1/plugin/U115Strm/redirect?pickcode=pc1&apikey=tok"
 
 
 def test_build_strm_url_quotes_special():

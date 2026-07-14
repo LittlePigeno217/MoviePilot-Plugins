@@ -12,14 +12,14 @@ from .store import Store
 from .api import Api
 
 
-class P115StrmHelper(_PluginBase):
+class U115Strm(_PluginBase):
     plugin_name = "115 STRM 助手"
     plugin_desc = "扫描 115 网盘目录生成 STRM，经 302 重定向流式播放，支持定时/增量/刮削同步与多目录映射。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     plugin_version = "1.0.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
-    plugin_config_prefix = "p115strmhelper_"
+    plugin_config_prefix = "u115strm_"
     plugin_order = 52
     auth_level = 1
 

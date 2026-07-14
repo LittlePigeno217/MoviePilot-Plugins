@@ -15,5 +15,5 @@ class RedirectResolver:
         try:
             return self._client.get_download_url(pickcode)
         except Exception as e:  # noqa: BLE001
-            logger.error(f"[P115StrmHelper] 取直链失败 pickcode={pickcode}: {e}")
+            logger.error(f"[U115Strm] 取直链失败 pickcode={pickcode}: {e}")
             return None

@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, p as pluginRequest } from './_plugin-vue_export-helper-59eae27f.js';
+import { _ as _export_sfc, p as pluginRequest } from './_plugin-vue_export-helper-22e9664a.js';
 
 const HistoryTable_vue_vue_type_style_index_0_scoped_73f57a34_lang = '';
 

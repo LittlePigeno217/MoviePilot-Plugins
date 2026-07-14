@@ -2,21 +2,21 @@
 import sys
 from pathlib import Path
 
-# 把 plugins/ 目录加入 path，以便 import p115strmhelper 包（触发真实 __init__）
+# 把 plugins/ 目录加入 path，以便 import u115strm 包（触发真实 __init__）
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import p115strmhelper  # noqa: E402
-from p115strmhelper import P115StrmHelper  # noqa: E402
+import u115strm  # noqa: E402
+from u115strm import U115Strm  # noqa: E402
 
 
 def _new():
-    return P115StrmHelper()
+    return U115Strm()
 
 
 def test_class_metadata():
-    assert P115StrmHelper.plugin_version == "1.0.0"
-    assert P115StrmHelper.auth_level == 1
-    assert P115StrmHelper.plugin_config_prefix == "p115strmhelper_"
+    assert U115Strm.plugin_version == "1.0.0"
+    assert U115Strm.auth_level == 1
+    assert U115Strm.plugin_config_prefix == "u115strm_"
 
 
 def test_get_render_mode_is_vue():

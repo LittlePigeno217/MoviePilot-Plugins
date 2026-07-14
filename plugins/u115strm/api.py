@@ -65,7 +65,7 @@ class Api:
             b64 = b64encode(buf.getvalue()).decode()
             return _ok({"qrcode": f"data:image/png;base64,{b64}", "codeContent": content})
         except Exception as e:  # noqa: BLE001
-            logger.error(f"[P115StrmHelper] 二维码失败: {e}")
+            logger.error(f"[U115Strm] 二维码失败: {e}")
             return _err(f"二维码失败: {e}")
 
     def check_login(self) -> Dict:

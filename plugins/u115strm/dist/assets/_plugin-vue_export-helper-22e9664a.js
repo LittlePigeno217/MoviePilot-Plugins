@@ -1,6 +1,6 @@
 // 与插件后端 API 交互的统一助手。
 // MoviePilot 将 axios 实例作为 `api` prop 注入各联邦组件。
-const PLUGIN_ID = 'P115StrmHelper';
+const PLUGIN_ID = 'U115Strm';
 
 async function pluginRequest(api, path, options = {}) {
   const normalized = path.startsWith('/') ? path : `/${path}`;
