@@ -30,6 +30,11 @@ class P115StrmHelper(_PluginBase):
         self._api = Api(self._get_client, self._store, self._get_api_token)
 
     def init_plugin(self, config: dict = None):
+        # MoviePilot 标准配置流：保存面板提交的 config 到 Store，保持单一数据源
+        if config:
+            merged = self._store.get_config()
+            merged.update(config)
+            self._store.save_config(merged)
         # 每次初始化重建客户端，读取最新配置
         self._client = None
         self._get_client()
