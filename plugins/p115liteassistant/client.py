@@ -44,17 +44,32 @@ class U115Client:
         "115ipad",
         "tv",
     }
+    cookie_app_by_ssoent = {
+        "A1": "web",
+        "D1": "ios",
+        "D3": "115ios",
+        "F1": "android",
+        "F3": "115android",
+        "H1": "ipad",
+        "H3": "115ipad",
+        "I1": "tv",
+        "R1": "wechatmini",
+        "R2": "alipaymini",
+        "S1": "harmony",
+    }
 
     def __init__(
         self,
         cookie: str = "",
         tokens: Optional[Dict[str, Any]] = None,
         app_id: str = "",
+        client_type: str = "",
         session: Any = None,
     ):
         self.cookie = cookie.strip()
         self.tokens = dict(tokens or {})
         self.app_id = app_id.strip()
+        self.client_type = client_type.strip() if client_type in self.qrcode_client_types else ""
         self._auth_state: Dict[str, Any] = {}
         self.session = session or self._create_session()
         self._init_headers()
@@ -70,9 +85,9 @@ class U115Client:
             {
                 "User-Agent": "P115LiteAssistant/1.0",
                 "Accept-Encoding": "gzip, deflate",
-                "Content-Type": "application/x-www-form-urlencoded",
             }
         )
+        self.session.headers.pop("Content-Type", None)
         self.session.headers.pop("Cookie", None)
         self.session.headers.pop("Authorization", None)
         if self.cookie:
@@ -177,6 +192,7 @@ class U115Client:
         if not self.cookie:
             return {"success": False, "message": "115 未返回有效登录 Cookie"}
         self.tokens = {}
+        self.client_type = client_type
         self._auth_state = {}
         self._init_headers()
         return {"success": True, "data": {"status": 2, "tip": "登录成功"}}
@@ -200,15 +216,25 @@ class U115Client:
 
     def get_dir_list(self, cid: str = "0") -> list[Dict[str, Any]]:
         if self.cookie:
+            app = self._cookie_app()
+            if app in {"alipaymini", "wechatmini"}:
+                url = f"{self.base_url}/{app}/files"
+            else:
+                url = f"{self.base_url}/{app}/2.0/ufile/files"
             payload = self._request_url(
                 "GET",
-                "https://webapi.115.com/files",
+                url,
                 params={
                     "aid": 1,
                     "cid": int(cid or 0),
                     "limit": 1000,
                     "offset": 0,
+                    "record_open_time": 1,
                     "show_dir": 1,
+                    "cur": 1,
+                    "fc_mix": 1,
+                    "asc": 1,
+                    "o": "user_ptime",
                 },
             )
             data = self._response_data(payload)
@@ -231,6 +257,18 @@ class U115Client:
         if isinstance(data, dict):
             data = data.get("items", [])
         return list(data) if isinstance(data, list) else []
+
+    def _cookie_app(self) -> str:
+        if self.client_type:
+            return self.client_type
+        for part in self.cookie.split(";"):
+            key, separator, value = part.strip().partition("=")
+            if key != "UID" or not separator:
+                continue
+            uid_parts = value.split("_")
+            if len(uid_parts) > 1:
+                return self.cookie_app_by_ssoent.get(uid_parts[1], "alipaymini")
+        return "alipaymini"
 
     def iter_files(self, cid: str) -> Iterator[Dict[str, Any]]:
         stack = [(str(cid), "")]

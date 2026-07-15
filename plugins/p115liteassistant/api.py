@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict
 from zoneinfo import ZoneInfo
 
 from app.core.config import settings
-from app.helper.directory import DirectoryHelper
 from app.log import logger
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -95,6 +94,7 @@ class Api:
             if (result.get("data") or {}).get("status") == 2:
                 config = self._store.get_config()
                 config["tokens"] = client.export_tokens()
+                config["login_client_type"] = client.client_type
                 if client.cookie:
                     config["cookie"] = client.cookie
                 self._store.save_config(config)
@@ -132,24 +132,14 @@ class Api:
 
     @staticmethod
     def _local_roots() -> list[Path]:
-        roots: list[Path] = []
-        directories = DirectoryHelper()
-        configured_paths = [
-            directory.library_path for directory in directories.get_local_library_dirs()
-        ] + [
-            directory.download_path for directory in directories.get_local_download_dirs()
-        ]
-        for configured_path in configured_paths:
-            root = Path(configured_path).expanduser().resolve()
-            if root.is_dir() and root not in roots:
-                roots.append(root)
-        return roots
+        root = Path(settings.ROOT_PATH).resolve()
+        return [root] if root.is_dir() else []
 
     def browse_local(self, path: str = "", root: str = "") -> Dict[str, Any]:
         try:
             roots = self._local_roots()
             if not roots:
-                return _error("未配置可用的 MoviePilot 本地下载目录或媒体库目录")
+                return _error("MoviePilot 根目录不可用")
             requested_root = Path(root).expanduser().resolve() if root else None
             base = next((item for item in roots if item == requested_root), roots[0])
             if requested_root and base != requested_root:
@@ -171,7 +161,7 @@ class Api:
                 }
             )
         except ValueError:
-            return _error("目录超出媒体库根目录")
+            return _error("目录超出 MoviePilot 根目录")
         except Exception as err:  # noqa: BLE001
             return _error(f"浏览本地目录失败: {err}")
 

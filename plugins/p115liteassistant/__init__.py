@@ -28,7 +28,7 @@ class P115LiteAssistant(_PluginBase):
         super().__init__()
         self._store = Store(self)
         self._client: Optional[U115Client] = None
-        self._client_signature: Optional[Tuple[str, str, str]] = None
+        self._client_signature: Optional[Tuple[str, ...]] = None
         self._api = Api(self._get_client, self._store, self._get_api_token)
 
     def init_plugin(self, config: dict | None = None) -> None:
@@ -41,12 +41,14 @@ class P115LiteAssistant(_PluginBase):
     def _get_client(self) -> U115Client:
         config = self._store.get_config()
         app_id = str(config.get("app_id") or getattr(settings, "U115_APP_ID", ""))
-        signature = (str(config.get("cookie") or ""), repr(config.get("tokens") or {}), app_id)
+        client_type = str(config.get("login_client_type") or "")
+        signature = (str(config.get("cookie") or ""), repr(config.get("tokens") or {}), app_id, client_type)
         if self._client is None or self._client_signature != signature:
             self._client = U115Client(
                 cookie=signature[0],
                 tokens=config.get("tokens") or {},
                 app_id=app_id,
+                client_type=client_type,
             )
             self._client_signature = signature
         return self._client

@@ -11,6 +11,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "cookie": "",
     "tokens": {},
     "app_id": "",
+    "login_client_type": "",
     "strm_incremental": True,
     "strm_mappings": [],
     "upload_mappings": [],
