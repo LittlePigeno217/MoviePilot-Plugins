@@ -1,6 +1,6 @@
-export const PLUGIN_ID = 'P115LiteAssistant'
+const PLUGIN_ID = 'P115LiteAssistant';
 
-export const DEFAULT_CONFIG = {
+const DEFAULT_CONFIG = {
   enabled: false,
   cookie: '',
   moviepilot_address: '',
@@ -14,13 +14,13 @@ export const DEFAULT_CONFIG = {
   checkin_enabled: false,
   checkin_cron: '15 8 * * *',
   checkin_time_range: '06:00-09:00',
-}
+};
 
-export function clone(value) {
+function clone(value) {
   return JSON.parse(JSON.stringify(value || {}))
 }
 
-export function normalizeConfig(value = {}) {
+function normalizeConfig(value = {}) {
   return { ...clone(DEFAULT_CONFIG), ...clone(value) }
 }
 
@@ -31,16 +31,26 @@ function unwrap(response) {
   return response || {}
 }
 
-export async function pluginGet(api, path, params) {
-  const response = unwrap(await api.get(`plugin/${PLUGIN_ID}${path}`, { params }))
+async function pluginGet(api, path, params) {
+  const response = unwrap(await api.get(`plugin/${PLUGIN_ID}${path}`, { params }));
   return Object.prototype.hasOwnProperty.call(response, 'data') ? response.data : response
 }
 
-export async function pluginPost(api, path, payload = {}) {
-  const response = unwrap(await api.post(`plugin/${PLUGIN_ID}${path}`, payload))
+async function pluginPost(api, path, payload = {}) {
+  const response = unwrap(await api.post(`plugin/${PLUGIN_ID}${path}`, payload));
   return {
     success: response.success !== false,
     message: response.message || '',
     data: Object.prototype.hasOwnProperty.call(response, 'data') ? response.data : response,
   }
 }
+
+const _export_sfc = (sfc, props) => {
+  const target = sfc.__vccOpts || sfc;
+  for (const [key, val] of props) {
+    target[key] = val;
+  }
+  return target;
+};
+
+export { _export_sfc as _, pluginPost as a, clone as c, normalizeConfig as n, pluginGet as p };

@@ -65,7 +65,7 @@ class U115ClientTest(unittest.TestCase):
         class DirectorySession(FakeSession):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
-                if url == "https://proapi.115.com/alipaymini/files":
+                if url == "https://webapi.115.com/files":
                     return FakeResponse(
                         {
                             "state": True,
@@ -79,21 +79,45 @@ class U115ClientTest(unittest.TestCase):
 
         self.assertEqual(items, [{"cid": "12", "fc": "0", "fn": "Movies"}])
         self.assertEqual(session.requests[0][2]["params"]["cid"], 12)
-        self.assertEqual(session.requests[0][1], "https://proapi.115.com/alipaymini/files")
+        self.assertEqual(session.requests[0][2]["params"]["limit"], 1150)
+        self.assertEqual(session.requests[0][2]["params"]["custom_order"], 1)
+        self.assertIn("iPhone", session.requests[0][2]["headers"]["User-Agent"])
+        self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
         self.assertNotIn("Content-Type", session.headers)
 
-    def test_cookie_login_infers_the_device_api_from_uid(self):
+    def test_cookie_login_falls_back_to_device_api_from_uid(self):
         class DirectorySession(FakeSession):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
+                if url == "https://webapi.115.com/files":
+                    return FakeResponse({"state": False, "code": 500, "error": "temporary failure"})
                 if url == "https://proapi.115.com/115android/2.0/ufile/files":
-                    return FakeResponse({"state": True, "data": []})
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "code": "",
+                            "data": [
+                                {
+                                    "category_id": "12",
+                                    "category_name": "Movies",
+                                    "file_category": "0",
+                                }
+                            ],
+                        }
+                    )
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = DirectorySession()
-        U115Client(cookie="UID=1_F3_0; CID=2", session=session).get_dir_list()
+        client = U115Client(cookie="UID=1_F3_0; CID=2", session=session)
+        client.read_retry_delay = 0
+        items = client.get_dir_list()
 
-        self.assertEqual(session.requests[0][1], "https://proapi.115.com/115android/2.0/ufile/files")
+        self.assertEqual(session.requests[-1][1], "https://proapi.115.com/115android/2.0/ufile/files")
+        self.assertEqual(client._item_name(items[0]), "Movies")
+        self.assertEqual(client._item_id(items[0]), "12")
+
+    def test_cookie_response_with_empty_code_is_successful(self):
+        self.assertTrue(U115Client._is_response_success({"state": True, "code": ""}))
 
     def test_oauth_login_lists_directories_from_open_api(self):
         class DirectorySession(FakeSession):

@@ -26,7 +26,7 @@ const qrDialog = reactive({ open: false, loading: false, error: '', code: '', cl
 const picker = reactive({ open: false, type: '', index: -1, cid: '0', path: '', localBase: '', roots: [], remoteTrail: [], items: [] })
 const pickerTitle = computed(() => ({ strm_source: '选择 115 源目录', upload_target: '选择 115 上传目录', strm_target: '选择本地 STRM 目录', upload_source: '选择本地上传目录' }[picker.type] || '选择目录'))
 const isRemotePicker = computed(() => ['strm_source', 'upload_target'].includes(picker.type))
-const connectionReady = computed(() => Boolean(config.cookie || config.app_id))
+const connectionReady = computed(() => Boolean(String(config.cookie || '').trim()))
 const selectedQrClient = computed(() => qrClients.find(item => item.value === qrDialog.clientType) || qrClients[0])
 
 function applyConfig(value = {}) {
@@ -54,6 +54,13 @@ async function save() {
 
 function addStrmMapping() {
   config.strm_mappings.push({ id: crypto.randomUUID?.() || String(Date.now()), enabled: true, source_cid: '', source_path: '', target_dir: '' })
+}
+
+function useCurrentMoviePilotAddress() {
+  const origin = globalThis.location?.origin
+  if (!origin) return tell('无法识别当前站点地址', 'error')
+  config.moviepilot_address = origin
+  tell('已使用当前站点地址', 'success')
 }
 
 function addUploadMapping() {
@@ -236,15 +243,22 @@ onBeforeUnmount(clearQrPoll)
               <div><span class="work-code">AUTH / 115</span><h3>授权连接</h3></div>
               <v-switch v-model="config.enabled" label="启用插件" color="primary" hide-details density="compact" class="head-switch" />
             </section>
-            <section class="work-grid auth-grid">
-              <div class="field-lane">
-                <v-text-field v-model="config.app_id" label="115 APP ID" variant="outlined" density="comfortable" hide-details />
-                <v-textarea v-model="config.cookie" label="115 Cookie" rows="4" auto-grow variant="outlined" density="comfortable" hide-details />
-                <div class="command-row"><v-btn class="station-primary" prepend-icon="mdi-qrcode-scan" @click="openQrDialog">扫码登录 115</v-btn></div>
+            <section class="auth-deck">
+              <div class="auth-portal">
+                <div class="auth-portal-head">
+                  <div><span class="work-code">QR / SECURE SESSION</span><h4>扫码授权</h4></div>
+                  <span class="auth-chip" :class="{ ready: connectionReady }"><i />{{ connectionReady ? '已保存' : '未授权' }}</span>
+                </div>
+                <v-btn class="auth-qr-action station-primary" size="large" block prepend-icon="mdi-qrcode-scan" @click="openQrDialog">扫码登录 115</v-btn>
+              </div>
+              <div class="cookie-vault">
+                <div class="cookie-vault-head"><span class="work-code">COOKIE / CREDENTIAL</span><span>手工凭据</span></div>
+                <v-text-field v-model="config.cookie" type="password" label="115 Cookie" variant="outlined" density="comfortable" hide-details autocomplete="new-password" spellcheck="false" class="cookie-field" />
               </div>
               <aside class="auth-state" :class="{ ready: connectionReady }">
-                <v-icon :icon="connectionReady ? 'mdi-link-variant' : 'mdi-link-variant-off'" size="28" />
-                <strong>{{ connectionReady ? '授权信息待校验' : '尚未配置授权信息' }}</strong>
+                <span class="auth-state-icon"><v-icon :icon="connectionReady ? 'mdi-shield-check-outline' : 'mdi-shield-key-outline'" size="26" /></span>
+                <span class="work-code">115 SESSION</span>
+                <strong>{{ connectionReady ? '凭据已保存' : '等待授权' }}</strong>
               </aside>
             </section>
           </v-window-item>
@@ -253,6 +267,13 @@ onBeforeUnmount(clearQrPoll)
             <section class="work-header">
               <div><span class="work-code">ROUTE / STRM</span><h3>文件映射</h3></div>
               <v-switch v-model="config.strm_incremental" label="增量生成" color="primary" hide-details density="compact" class="head-switch" />
+            </section>
+            <section class="strm-address-row">
+              <v-text-field v-model="config.moviepilot_address" label="STRM 文件内链接地址" placeholder="http://moviepilot:3000" variant="outlined" density="comfortable" hide-details>
+                <template #append-inner>
+                  <v-tooltip text="使用当前站点地址" location="top"><template #activator="{ props: tipProps }"><v-btn v-bind="tipProps" aria-label="使用当前站点地址" icon="mdi-web" variant="text" size="small" @click.stop="useCurrentMoviePilotAddress" /></template></v-tooltip>
+                </template>
+              </v-text-field>
             </section>
             <div class="mapping-list">
               <div class="mapping-caption"><span>115 源目录</span><span>本地 STRM 输出目录</span></div>
@@ -513,12 +534,25 @@ onBeforeUnmount(clearQrPoll)
 .station-config :deep(.v-switch .v-selection-control--dirty .v-switch__thumb) { color: var(--cyan); }
 
 .work-grid { gap: 18px; padding: 24px 0; }
-.auth-grid { grid-template-columns: minmax(0, 1fr) 238px; }
-.field-lane { gap: 15px; }
-.auth-state { gap: 12px; padding: 24px 18px; color: var(--muted); background: color-mix(in srgb, var(--paper) 68%, var(--paper-strong)); border: 1px solid var(--line); border-radius: 6px; }
-.auth-state.ready { color: var(--green); }
-.auth-state strong { font-size: 13px; }
-.command-row { margin-top: 2px; }
+.auth-deck { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) 178px; gap: 14px; padding: 24px 0; }
+.auth-portal,
+.cookie-vault,
+.auth-state { min-width: 0; border: 1px solid var(--line); border-radius: 6px; }
+.auth-portal { padding: 18px; background: color-mix(in srgb, var(--paper) 64%, var(--paper-strong)); }
+.auth-portal-head,
+.cookie-vault-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.auth-portal h4 { margin: 5px 0 0; color: var(--ink); font-size: 17px; font-weight: 760; }
+.auth-chip { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; color: var(--muted); font-size: 11px; font-weight: 700; }
+.auth-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.auth-chip.ready { color: var(--green); }.auth-chip.ready i { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 17%, transparent); }
+.auth-qr-action { min-height: 44px; margin-top: 20px; font-weight: 750; }
+.cookie-vault { display: flex; flex-direction: column; justify-content: center; padding: 18px; background: var(--paper-strong); }
+.cookie-vault-head { margin-bottom: 14px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.cookie-vault-head .work-code { color: var(--cyan); }.cookie-field :deep(input) { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .02em; }
+.auth-state { align-items: flex-start; justify-content: center; gap: 8px; padding: 20px; color: var(--muted); background: color-mix(in srgb, var(--paper) 76%, var(--paper-strong)); text-align: left; }
+.auth-state.ready { color: var(--green); }.auth-state-icon { display: grid; width: 38px; height: 38px; place-items: center; margin-bottom: 4px; color: var(--cyan); background: color-mix(in srgb, var(--cyan) 10%, transparent); border-radius: 5px; }.auth-state.ready .auth-state-icon { color: var(--green); background: color-mix(in srgb, var(--green) 11%, transparent); }
+.auth-state .work-code { color: inherit; opacity: .78; }.auth-state strong { color: var(--ink); font-size: 14px; }
+.auth-state.ready strong { color: var(--green); }
 
 .station-config :deep(.v-field) { background: var(--paper-strong); border-radius: 5px; }
 .station-config :deep(.v-field__outline) { --v-field-border-opacity: 1; color: var(--line); }
@@ -527,6 +561,9 @@ onBeforeUnmount(clearQrPoll)
 .station-config :deep(.v-field__input) { color: var(--ink); }
 
 .mapping-list { padding-top: 12px; }
+.strm-address-row { padding: 20px 0 8px; border-bottom: 1px solid var(--soft-line); }
+.strm-address-row :deep(input) { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.strm-address-row :deep(.v-btn) { color: var(--cyan); }
 .mapping-caption { padding: 0 12px 8px; color: var(--muted); font-size: 10px; }
 .mapping-row { min-height: 72px; margin-bottom: 9px; padding: 11px 12px; background: var(--paper-strong); border: 1px solid var(--line); border-radius: 6px; }
 .mapping-row:hover { border-color: color-mix(in srgb, var(--cyan) 52%, var(--line)); }
@@ -568,6 +605,12 @@ onBeforeUnmount(clearQrPoll)
 .qr-refresh { color: #fff !important; background: var(--cyan) !important; }
 .qr-login-actions { min-height: 56px; padding: 8px 16px; background: color-mix(in srgb, var(--paper) 55%, var(--paper-strong)); }
 
+@media (max-width: 1080px) {
+  .auth-deck { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .auth-state { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: flex-start; min-height: 76px; padding: 16px 20px; }
+  .auth-state-icon { margin-bottom: 0; }
+}
+
 @media (max-width: 900px) {
   .station-config { border-radius: 0; }
   .station-head { grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
@@ -587,8 +630,9 @@ onBeforeUnmount(clearQrPoll)
   .station-workspace { padding: 22px 16px 0; }
   .work-header { align-items: flex-start; flex-direction: column; gap: 13px; }
   .head-switches { justify-content: flex-start; gap: 4px 12px; }
-  .auth-grid { grid-template-columns: 1fr; }
-  .auth-state { min-height: 130px; }
+  .auth-deck { grid-template-columns: 1fr; }
+  .auth-state { grid-column: auto; flex-direction: column; align-items: flex-start; min-height: 124px; }
+  .auth-state-icon { margin-bottom: 4px; }
   .extension-grid { grid-template-columns: 1fr; }
   .mapping-caption { display: none; }
   .mapping-row { grid-template-columns: 40px minmax(0, 1fr) 32px; gap: 8px; padding: 9px; }

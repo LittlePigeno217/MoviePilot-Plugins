@@ -114,8 +114,8 @@ class Api:
             for item in retry_call(lambda: self._client_provider().get_dir_list(cache_key), attempts=3, delay=1.0):
                 if not U115Client._is_directory(item):
                     continue
-                name = str(item.get("fn") or item.get("file_name") or item.get("n") or "").strip()
-                item_cid = str(item.get("cid") or item.get("file_id") or item.get("fid") or "")
+                name = U115Client._item_name(item).strip()
+                item_cid = U115Client._item_id(item)
                 if not name or not item_cid:
                     continue
                 items.append(
@@ -186,8 +186,12 @@ class Api:
         host = str(request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc).split(",", 1)[0].strip()
         return f"{scheme}://{host}".rstrip("/")
 
+    def _strm_moviepilot_url(self, request: Request) -> str:
+        configured = str(self._store.get_config().get("moviepilot_address") or "").strip()
+        return configured.rstrip("/") or self._moviepilot_url(request)
+
     def trigger_strm(self, request: Request) -> Dict[str, Any]:
-        moviepilot_url = self._moviepilot_url(request)
+        moviepilot_url = self._strm_moviepilot_url(request)
         return self._start("strm", lambda: self.run_strm(moviepilot_url), "STRM 同步已开始")
 
     def trigger_upload(self, payload: Dict[str, Any] | bool | None = None) -> Dict[str, Any]:

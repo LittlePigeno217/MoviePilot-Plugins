@@ -11,9 +11,13 @@ from plugins.p115liteassistant.uploader import DirectoryUploader
 
 
 class FakeStore:
-    def __init__(self):
+    def __init__(self, config=None):
         self.strm_records = {}
         self.upload_records = IncrementalRecordStore()
+        self.config = dict(config or {})
+
+    def get_config(self):
+        return dict(self.config)
 
     def get_strm_records(self):
         return dict(self.strm_records)
@@ -84,6 +88,24 @@ class StrmAndUploaderTest(unittest.TestCase):
 
         self.assertEqual(Api._moviepilot_url(request), "https://moviepilot.example")
 
+    def test_strm_address_prefers_config_and_falls_back_to_request(self):
+        request = Request(
+            {
+                "type": "http",
+                "scheme": "http",
+                "server": ("127.0.0.1", 3001),
+                "path": "/api/v1/plugin/P115LiteAssistant/strm/sync",
+                "query_string": b"",
+                "headers": [(b"host", b"127.0.0.1:3001")],
+            }
+        )
+
+        configured = Api(lambda: None, FakeStore({"moviepilot_address": "https://media.example/"}), lambda: "")
+        fallback = Api(lambda: None, FakeStore(), lambda: "")
+
+        self.assertEqual(configured._strm_moviepilot_url(request), "https://media.example")
+        self.assertEqual(fallback._strm_moviepilot_url(request), "http://127.0.0.1:3001")
+
     def test_strm_generator_writes_unique_plugin_redirect_url(self):
         with TemporaryDirectory() as directory:
             target = Path(directory)
@@ -101,6 +123,16 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "http://mp:3000/api/v1/plugin/P115LiteAssistant/redirect?pickcode=pick&apikey=api-token\n",
             )
             self.assertFalse(list(generated.parent.glob(".*.tmp")))
+
+            changed = StrmGenerator(FakeStrmClient(), store, "https://media.example/", "api-token", incremental=True)
+            changed_result = changed.run_mapping(
+                {"id": "movies", "source_cid": "115-root", "source_path": "/Movies", "target_dir": str(target)}
+            )
+            self.assertEqual(changed_result["updated"], 1)
+            self.assertEqual(
+                generated.read_text(encoding="utf-8"),
+                "https://media.example/api/v1/plugin/P115LiteAssistant/redirect?pickcode=pick&apikey=api-token\n",
+            )
 
     def test_directory_uploader_includes_sidecars_and_skips_unchanged_files(self):
         with TemporaryDirectory() as directory:

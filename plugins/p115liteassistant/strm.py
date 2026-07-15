@@ -64,7 +64,8 @@ class StrmGenerator:
                 counts["errors"] += 1
                 continue
             record_key = f"{mapping_id}:{rel_path.as_posix()}"
-            fingerprint = f"{pickcode}:{item.get('size', 0)}"
+            strm_url = build_strm_url(self._moviepilot_url, pickcode, self._api_token)
+            fingerprint = f"{pickcode}:{item.get('size', 0)}:{self._moviepilot_url.rstrip('/')}"
             previous = records.get(record_key, {})
             if self._incremental and previous.get("fingerprint") == fingerprint and output.exists():
                 counts["skipped"] += 1
@@ -73,10 +74,7 @@ class StrmGenerator:
             try:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 temp_output = output.with_name(f".{output.name}.tmp")
-                temp_output.write_text(
-                    build_strm_url(self._moviepilot_url, pickcode, self._api_token) + "\n",
-                    encoding="utf-8",
-                )
+                temp_output.write_text(strm_url + "\n", encoding="utf-8")
                 temp_output.replace(output)
                 records[record_key] = {"fingerprint": fingerprint, "path": str(output)}
                 counts["updated" if previous else "added"] += 1

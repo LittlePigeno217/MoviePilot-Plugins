@@ -33,6 +33,11 @@ class U115Client:
     qrcode_status_url = "https://qrcodeapi.115.com/get/status/"
     qrcode_base_url = "https://qrcodeapi.115.com"
     points_sign_url = "https://webapi.115.com/user/points_sign"
+    web_files_url = "https://webapi.115.com/files"
+    ios_user_agent = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20D502 UDown/38.0.2"
+    )
     read_retry_attempts = 3
     read_retry_delay = 1.0
     qrcode_client_types = {
@@ -62,13 +67,11 @@ class U115Client:
         self,
         cookie: str = "",
         tokens: Optional[Dict[str, Any]] = None,
-        app_id: str = "",
         client_type: str = "",
         session: Any = None,
     ):
         self.cookie = cookie.strip()
         self.tokens = dict(tokens or {})
-        self.app_id = app_id.strip()
         self.client_type = client_type.strip() if client_type in self.qrcode_client_types else ""
         self._auth_state: Dict[str, Any] = {}
         self.session = session or self._create_session()
@@ -216,29 +219,10 @@ class U115Client:
 
     def get_dir_list(self, cid: str = "0") -> list[Dict[str, Any]]:
         if self.cookie:
-            app = self._cookie_app()
-            if app in {"alipaymini", "wechatmini"}:
-                url = f"{self.base_url}/{app}/files"
-            else:
-                url = f"{self.base_url}/{app}/2.0/ufile/files"
-            payload = self._request_url(
-                "GET",
-                url,
-                params={
-                    "aid": 1,
-                    "cid": int(cid or 0),
-                    "limit": 1000,
-                    "offset": 0,
-                    "record_open_time": 1,
-                    "show_dir": 1,
-                    "cur": 1,
-                    "fc_mix": 1,
-                    "asc": 1,
-                    "o": "user_ptime",
-                },
-            )
-            data = self._response_data(payload)
-            return list(data) if isinstance(data, list) else []
+            try:
+                return self._get_cookie_dir_list(cid)
+            except (httpx.HTTPError, U115ApiError, ValueError):
+                return self._get_device_dir_list(cid)
 
         payload = self._request(
             "GET",
@@ -258,6 +242,66 @@ class U115Client:
             data = data.get("items", [])
         return list(data) if isinstance(data, list) else []
 
+    def _get_cookie_dir_list(self, cid: str) -> list[Dict[str, Any]]:
+        items: list[Dict[str, Any]] = []
+        offset = 0
+        page_size = 1150
+        while True:
+            payload = self._request_url(
+                "GET",
+                self.web_files_url,
+                headers={"User-Agent": self.ios_user_agent},
+                params={
+                    "aid": 1,
+                    "cid": int(cid or 0),
+                    "count_folders": 1,
+                    "limit": page_size,
+                    "offset": offset,
+                    "record_open_time": 1,
+                    "show_dir": 1,
+                    "cur": 1,
+                    "fc_mix": 1,
+                    "asc": 1,
+                    "o": "user_ptime",
+                    "custom_order": 1,
+                },
+            )
+            data = self._response_data(payload)
+            batch = list(data) if isinstance(data, list) else []
+            items.extend(batch)
+            total = int(payload.get("count") or len(items))
+            if not batch or len(items) >= total:
+                return items
+            offset += len(batch)
+            time.sleep(2)
+
+    def _get_device_dir_list(self, cid: str) -> list[Dict[str, Any]]:
+        app = self._cookie_app()
+        if app in {"alipaymini", "wechatmini"}:
+            url = f"{self.base_url}/{app}/files"
+        else:
+            url = f"{self.base_url}/{app}/2.0/ufile/files"
+        payload = self._request_url(
+            "GET",
+            url,
+            params={
+                "aid": 1,
+                "cid": int(cid or 0),
+                "count_folders": 1,
+                "limit": 1000,
+                "offset": 0,
+                "record_open_time": 1,
+                "show_dir": 1,
+                "cur": 1,
+                "fc_mix": 1,
+                "asc": 1,
+                "o": "user_ptime",
+                "custom_order": 2,
+            },
+        )
+        data = self._response_data(payload)
+        return list(data) if isinstance(data, list) else []
+
     def _cookie_app(self) -> str:
         if self.client_type:
             return self.client_type
@@ -275,12 +319,12 @@ class U115Client:
         while stack:
             current_cid, prefix = stack.pop()
             for raw in self.get_dir_list(current_cid):
-                name = str(raw.get("fn") or raw.get("file_name") or raw.get("n") or "")
+                name = self._item_name(raw)
                 if not name:
                     continue
                 rel_path = f"{prefix}/{name}" if prefix else name
                 if self._is_directory(raw):
-                    child_cid = str(raw.get("cid") or raw.get("file_id") or raw.get("fid") or "")
+                    child_cid = self._item_id(raw)
                     if child_cid:
                         stack.append((child_cid, rel_path))
                     continue
@@ -310,13 +354,13 @@ class U115Client:
                     item
                     for item in self.get_dir_list(current["fileid"])
                     if self._is_directory(item)
-                    and str(item.get("fn") or item.get("file_name") or item.get("n") or "") == name
+                    and self._item_name(item) == name
                 ),
                 None,
             )
             if found:
                 current = {
-                    "fileid": str(found.get("cid") or found.get("file_id") or found.get("fid") or ""),
+                    "fileid": self._item_id(found),
                     "path": f"{current['path'].rstrip('/')}/{name}",
                     "name": name,
                     "type": "dir",
@@ -335,7 +379,7 @@ class U115Client:
                         item
                         for item in self.get_dir_list(current["fileid"])
                         if self._is_directory(item)
-                        and str(item.get("fn") or item.get("file_name") or item.get("n") or "") == name
+                        and self._item_name(item) == name
                     ),
                     None,
                 )
@@ -343,7 +387,7 @@ class U115Client:
                     raise U115ApiError(f"创建 115 目录失败: {name}")
                 data = found
             current = {
-                "fileid": str(data.get("file_id") or data.get("cid") or data.get("fid") or ""),
+                "fileid": self._item_id(data),
                 "path": f"{current['path'].rstrip('/')}/{name}",
                 "name": name,
                 "type": "dir",
@@ -557,8 +601,13 @@ class U115Client:
 
     @staticmethod
     def _is_response_success(payload: Dict[str, Any]) -> bool:
+        state = payload.get("state")
+        if state is True:
+            return True
         code = payload.get("code")
-        return payload.get("state") is not False and code in (None, 0, 20004)
+        if state is False:
+            return code in (0, "0", 20004, "20004")
+        return code in (None, "", 0, "0", 20004, "20004")
 
     @staticmethod
     def _response_data(payload: Dict[str, Any]) -> Any:
@@ -568,6 +617,26 @@ class U115Client:
     def _is_directory(item: Dict[str, Any]) -> bool:
         return str(item.get("fc", item.get("file_category", "1"))) == "0" or (
             item.get("cid") is not None and item.get("fid") is None
+        )
+
+    @staticmethod
+    def _item_name(item: Dict[str, Any]) -> str:
+        return str(
+            item.get("fn")
+            or item.get("file_name")
+            or item.get("n")
+            or item.get("category_name")
+            or ""
+        )
+
+    @staticmethod
+    def _item_id(item: Dict[str, Any]) -> str:
+        return str(
+            item.get("cid")
+            or item.get("file_id")
+            or item.get("fid")
+            or item.get("category_id")
+            or ""
         )
 
     @staticmethod
@@ -581,9 +650,9 @@ class U115Client:
     def _item_from_info(info: Dict[str, Any], path: str) -> Dict[str, Any]:
         category = str(info.get("file_category", "1"))
         return {
-            "fileid": str(info.get("file_id") or info.get("fid") or ""),
+            "fileid": U115Client._item_id(info),
             "path": path,
             "type": "dir" if category == "0" else "file",
-            "name": info.get("file_name") or PurePosixPath(path).name,
+            "name": U115Client._item_name(info) or PurePosixPath(path).name,
             "pickcode": info.get("pick_code") or info.get("pickcode") or "",
         }

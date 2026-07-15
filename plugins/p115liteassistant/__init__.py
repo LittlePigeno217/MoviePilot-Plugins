@@ -17,7 +17,7 @@ class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、目录选择、STRM/302、目录上传秒传和签到。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -40,14 +40,12 @@ class P115LiteAssistant(_PluginBase):
 
     def _get_client(self) -> U115Client:
         config = self._store.get_config()
-        app_id = str(config.get("app_id") or getattr(settings, "U115_APP_ID", ""))
         client_type = str(config.get("login_client_type") or "")
-        signature = (str(config.get("cookie") or ""), repr(config.get("tokens") or {}), app_id, client_type)
+        signature = (str(config.get("cookie") or ""), repr(config.get("tokens") or {}), client_type)
         if self._client is None or self._client_signature != signature:
             self._client = U115Client(
                 cookie=signature[0],
                 tokens=config.get("tokens") or {},
-                app_id=app_id,
                 client_type=client_type,
             )
             self._client_signature = signature
