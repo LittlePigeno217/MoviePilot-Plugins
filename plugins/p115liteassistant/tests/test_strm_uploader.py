@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from fastapi import Request
 from plugins.p115liteassistant.api import Api
@@ -112,9 +113,10 @@ class StrmAndUploaderTest(unittest.TestCase):
             store = FakeStore()
             generator = StrmGenerator(FakeStrmClient(), store, "http://mp:3000", "api-token", incremental=True)
 
-            result = generator.run_mapping(
-                {"id": "movies", "source_cid": "115-root", "source_path": "/Movies", "target_dir": str(target)}
-            )
+            with patch("plugins.p115liteassistant.strm.logger") as strm_logger:
+                result = generator.run_mapping(
+                    {"id": "movies", "source_cid": "115-root", "source_path": "/Movies", "target_dir": str(target)}
+                )
 
             generated = target / "Movies" / "Film.strm"
             self.assertEqual(result["added"], 1)
@@ -123,6 +125,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "http://mp:3000/api/v1/plugin/P115LiteAssistant/redirect?pickcode=pick&apikey=api-token\n",
             )
             self.assertFalse(list(generated.parent.glob(".*.tmp")))
+            self.assertTrue(any("生成 STRM 成功" in call.args[0] for call in strm_logger.info.call_args_list))
 
             changed = StrmGenerator(FakeStrmClient(), store, "https://media.example/", "api-token", incremental=True)
             changed_result = changed.run_mapping(
@@ -150,7 +153,8 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "upload_sidecar_extensions": ".nfo",
             }
 
-            first = DirectoryUploader(client, store, config).run(incremental=True)
+            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+                first = DirectoryUploader(client, store, config).run(incremental=True)
             second = DirectoryUploader(client, store, config).run(incremental=True)
 
             self.assertEqual(first["instant"], 1)
@@ -159,6 +163,9 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(client.uploaded, [("/Cloud/Movies", "Film.mkv"), ("/Cloud/Movies", "Film.nfo")])
             self.assertEqual(second["skipped"], 2)
             self.assertTrue(store.upload_records.has_changed(source / "Film.mkv", "/Cloud/New/Film.mkv"))
+            success_messages = [call.args[0] for call in upload_logger.info.call_args_list]
+            self.assertTrue(any("秒传成功" in message for message in success_messages))
+            self.assertTrue(any("上传成功" in message for message in success_messages))
 
     def test_directory_uploader_retries_transient_upload_failures(self):
         with TemporaryDirectory() as directory:
@@ -237,12 +244,14 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "upload_sidecar_extensions": ".nfo",
             }
 
-            result = DirectoryUploader(FailingSidecarUploadClient(), FakeStore(), config).run(incremental=True)
+            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+                result = DirectoryUploader(FailingSidecarUploadClient(), FakeStore(), config).run(incremental=True)
 
             self.assertEqual(result["deleted"], 0)
             self.assertEqual(result["errors"], 1)
             self.assertTrue(movie.exists())
             self.assertTrue(sidecar.exists())
+            self.assertTrue(any("上传失败" in call.args[0] for call in upload_logger.error.call_args_list))
 
     def test_directory_uploader_removes_empty_child_directories(self):
         with TemporaryDirectory() as directory:

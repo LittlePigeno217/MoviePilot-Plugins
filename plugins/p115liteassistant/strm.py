@@ -6,6 +6,10 @@ from time import monotonic
 from typing import Any, Dict
 from urllib.parse import quote
 
+from app.log import logger
+
+from .log_utils import safe_error_text
+
 
 MEDIA_EXTENSIONS = {
     ".mkv", ".mp4", ".ts", ".m2ts", ".avi", ".mov", ".wmv", ".iso", ".rmvb", ".flv",
@@ -52,16 +56,19 @@ class StrmGenerator:
             pickcode = str(item.get("pickcode") or "")
             if not pickcode:
                 counts["errors"] += 1
+                logger.warning(f"【STRM同步】文件缺少 Pickcode，跳过：{name or '-'}")
                 continue
             rel_path = PurePosixPath(str(item.get("rel_path") or name))
             if any(part in {"", ".", ".."} for part in rel_path.parts):
                 counts["errors"] += 1
+                logger.warning(f"【STRM同步】文件相对路径无效，跳过：{rel_path.as_posix()}")
                 continue
             output = target_dir.joinpath(*rel_path.parts).with_suffix(".strm")
             try:
                 output.resolve().relative_to(target_dir)
             except ValueError:
                 counts["errors"] += 1
+                logger.warning(f"【STRM同步】文件路径超出输出目录，跳过：{rel_path.as_posix()}")
                 continue
             record_key = f"{mapping_id}:{rel_path.as_posix()}"
             strm_url = build_strm_url(self._moviepilot_url, pickcode, self._api_token)
@@ -69,6 +76,7 @@ class StrmGenerator:
             previous = records.get(record_key, {})
             if self._incremental and previous.get("fingerprint") == fingerprint and output.exists():
                 counts["skipped"] += 1
+                logger.debug(f"【STRM同步】文件未变化，跳过：{rel_path.as_posix()}")
                 continue
             temp_output = None
             try:
@@ -78,14 +86,25 @@ class StrmGenerator:
                 temp_output.replace(output)
                 records[record_key] = {"fingerprint": fingerprint, "path": str(output)}
                 counts["updated" if previous else "added"] += 1
-            except OSError:
+                logger.info(
+                    f"【STRM同步】{'更新' if previous else '生成'} STRM 成功："
+                    f"{rel_path.as_posix()} -> {output}"
+                )
+            except OSError as err:
                 counts["errors"] += 1
+                logger.error(
+                    f"【STRM同步】生成 STRM 失败：{rel_path.as_posix()} -> {output}，"
+                    f"原因：{safe_error_text(err)}"
+                )
             finally:
                 if temp_output and temp_output.exists():
                     try:
                         temp_output.unlink(missing_ok=True)
-                    except OSError:
+                    except OSError as err:
                         counts["errors"] += 1
+                        logger.warning(
+                            f"【STRM同步】清理临时文件失败：{temp_output}，原因：{safe_error_text(err)}"
+                        )
         self._store.save_strm_records(records)
         return {
             "kind": "strm",

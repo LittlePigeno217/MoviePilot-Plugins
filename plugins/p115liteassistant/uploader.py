@@ -5,6 +5,9 @@ from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Any, Dict, Iterable, Iterator, Tuple
 
+from app.log import logger
+
+from .log_utils import safe_error_text
 from .resilience import retry_call
 
 
@@ -53,6 +56,7 @@ class DirectoryUploader:
                 directory.rmdir()
             except OSError:
                 return
+            logger.info(f"【目录上传】删除空目录：{directory}")
             directory = directory.parent
 
     @staticmethod
@@ -84,9 +88,11 @@ class DirectoryUploader:
                 try:
                     local_path.unlink()
                     counts["deleted"] += 1
+                    logger.info(f"【目录上传】删除源文件：{local_path}")
                     DirectoryUploader._remove_empty_parents(local_path.parent, source_roots[local_path])
                 except OSError as err:
                     counts["errors"] += 1
+                    logger.error(f"【目录上传】删除源文件失败：{local_path}，原因：{safe_error_text(err)}")
                     errors.append(
                         {
                             "path": str(local_path),
@@ -102,12 +108,16 @@ class DirectoryUploader:
         counts = {"uploaded": 0, "instant": 0, "skipped": 0, "deleted": 0, "errors": 0}
         errors = []
         files = list(self._iter_files())
+        logger.info(f"【目录上传】目录扫描完成，待处理文件：{len(files)}")
         uploaded_paths: set[Path] = set()
         for local_path, target_path, _kind, _source_root in files:
             if incremental and not records.has_changed(local_path, target_path):
                 counts["skipped"] += 1
+                logger.debug(f"【目录上传】文件未变化，跳过：{local_path} -> {target_path}")
                 continue
             try:
+                logger.debug(f"【目录上传】开始处理文件：{local_path} -> {target_path}")
+
                 def upload_once():
                     target_dir = self._client.ensure_remote_dir(str(PurePosixPath(target_path).parent))
                     result = self._client.upload_file(target_dir, local_path)
@@ -119,8 +129,15 @@ class DirectoryUploader:
                 records.mark_uploaded(local_path, target_path)
                 uploaded_paths.add(local_path)
                 counts["instant" if result.reused else "uploaded"] += 1
+                logger.info(
+                    f"【目录上传】{'秒传成功' if result.reused else '上传成功'}："
+                    f"{local_path} -> {target_path}"
+                )
             except Exception as err:  # noqa: BLE001
                 counts["errors"] += 1
+                logger.error(
+                    f"【目录上传】上传失败：{local_path} -> {target_path}，原因：{safe_error_text(err)}"
+                )
                 errors.append({"path": str(local_path), "target": target_path, "message": str(err)})
         if delete_source:
             self._delete_uploaded_sources(files, uploaded_paths, counts, errors)

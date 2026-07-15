@@ -7,15 +7,18 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from math import isfinite
 from pathlib import Path
+from time import monotonic
 from typing import Any, Callable, Dict
 from zoneinfo import ZoneInfo
 
+from app.core.config import settings
 from app.log import logger
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .checkin_schedule import random_epoch_for_date, pick_next_run_epoch
 from .client import U115ApiError, U115Client
+from .log_utils import safe_error_text
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
 from .strm import StrmGenerator
@@ -31,6 +34,8 @@ def _error(message: str) -> Dict[str, Any]:
 
 
 class Api:
+    _TASK_LABELS = {"strm": "STRM同步", "upload": "目录上传"}
+
     def __init__(self, client_provider: Callable[[], U115Client], store: Store, token_provider: Callable[[], str]):
         self._client_provider = client_provider
         self._store = store
@@ -199,35 +204,66 @@ class Api:
 
     def run_strm(self, moviepilot_url: str) -> list[Dict[str, Any]]:
         config = self._store.get_config()
+        incremental = bool(config.get("strm_incremental", True))
+        mappings = [mapping for mapping in config.get("strm_mappings") or [] if mapping.get("enabled", True)]
+        logger.info(f"【STRM同步】开始执行，模式：{'增量' if incremental else '全量'}，有效映射：{len(mappings)}")
+        if not mappings:
+            logger.warning("【STRM同步】没有启用的目录映射，任务结束")
         generator = StrmGenerator(
             self._client_provider(),
             self._store,
             moviepilot_url,
             self._token_provider(),
-            bool(config.get("strm_incremental", True)),
+            incremental,
         )
         entries = []
-        for mapping in config.get("strm_mappings") or []:
-            if not mapping.get("enabled", True):
-                continue
+        totals = {"added": 0, "updated": 0, "skipped": 0, "errors": 0, "duration_ms": 0}
+        for mapping in mappings:
+            source = str(mapping.get("source_path") or mapping.get("source_cid") or "-")
+            target = str(mapping.get("target_dir") or "-")
+            logger.info(f"【STRM同步】开始处理映射：{source} -> {target}")
+            mapping_started = monotonic()
             try:
                 entry = retry_call(lambda: generator.run_mapping(mapping), attempts=3, delay=3.0)
             except Exception as err:  # noqa: BLE001
+                logger.error(
+                    f"【STRM同步】映射处理失败：{source} -> {target}，原因：{safe_error_text(err)}"
+                )
                 entry = {
                     "kind": "strm",
                     "time": datetime.now().isoformat(timespec="seconds"),
-                    "mapping": mapping.get("source_path") or mapping.get("source_cid") or "-",
+                    "mapping": source,
                     "errors": 1,
                     "message": str(err),
                 }
+            entry["duration_ms"] = int((monotonic() - mapping_started) * 1000)
             self._store.append_history(entry)
             entries.append(entry)
+            for key in totals:
+                totals[key] += int(entry.get(key) or 0)
+            summary = (
+                f"新增 {int(entry.get('added') or 0)}，更新 {int(entry.get('updated') or 0)}，"
+                f"跳过 {int(entry.get('skipped') or 0)}，失败 {int(entry.get('errors') or 0)}，"
+                f"耗时 {int(entry.get('duration_ms') or 0)}ms"
+            )
+            log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
+            log_result(f"【STRM同步】映射完成：{source} -> {target}，{summary}")
+        total_summary = (
+            f"新增 {totals['added']}，更新 {totals['updated']}，跳过 {totals['skipped']}，"
+            f"失败 {totals['errors']}，耗时 {totals['duration_ms']}ms"
+        )
+        log_total = logger.warning if totals["errors"] else logger.info
+        log_total(f"【STRM同步】执行完成，{total_summary}")
         return entries
 
     def run_upload(self, incremental: bool = True) -> Dict[str, Any]:
+        config = self._store.get_config()
+        mappings = [mapping for mapping in config.get("upload_mappings") or [] if mapping.get("enabled", True)]
+        logger.info(f"【目录上传】开始执行，模式：{'增量' if incremental else '全量'}，有效映射：{len(mappings)}")
         try:
-            entry = DirectoryUploader(self._client_provider(), self._store, self._store.get_config()).run(incremental)
+            entry = DirectoryUploader(self._client_provider(), self._store, config).run(incremental)
         except Exception as err:  # noqa: BLE001
+            logger.error(f"【目录上传】执行失败：{safe_error_text(err)}")
             entry = {
                 "kind": "upload",
                 "time": datetime.now().isoformat(timespec="seconds"),
@@ -238,19 +274,36 @@ class Api:
         finally:
             self._browse_115_cache.clear()
         self._store.append_history(entry)
+        summary = (
+            f"上传 {int(entry.get('uploaded') or 0)}，秒传 {int(entry.get('instant') or 0)}，"
+            f"跳过 {int(entry.get('skipped') or 0)}，删除 {int(entry.get('deleted') or 0)}，"
+            f"失败 {int(entry.get('errors') or 0)}，耗时 {int(entry.get('duration_ms') or 0)}ms"
+        )
+        log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
+        log_result(f"【目录上传】执行完成，{summary}")
         return entry
 
     def run_checkin(self) -> Dict[str, Any]:
         if not self._checkin_lock.acquire(blocking=False):
+            logger.warning("【115签到】签到任务正在运行，忽略重复触发")
             return _error("签到任务正在运行")
+        logger.info("【115签到】开始执行")
         try:
             result = self._client_provider().checkin()
             entry = {"kind": "checkin", "time": datetime.now().isoformat(timespec="seconds"), **result}
             self._store.append_history(entry)
+            if result.get("already"):
+                logger.info("【115签到】执行完成：今日已签到")
+            else:
+                logger.info(
+                    f"【115签到】执行完成：{result.get('message') or '签到成功'}，"
+                    f"连续 {int(result.get('continuous_day') or 0)} 天，本次积分 {int(result.get('points_num') or 0)}"
+                )
             return _ok(entry, result.get("message") or "签到完成")
         except Exception as err:  # noqa: BLE001
             entry = {"kind": "checkin", "time": datetime.now().isoformat(timespec="seconds"), "message": str(err)}
             self._store.append_history(entry)
+            logger.error(f"【115签到】执行失败：{safe_error_text(err)}")
             return _error(str(err))
         finally:
             self._checkin_lock.release()
@@ -330,22 +383,34 @@ class Api:
 
             url = retry_call(fetch_url, attempts=3, delay=1.0)
         except Exception as err:  # noqa: BLE001
+            logger.error(f"【302取链】获取下载地址失败：{safe_error_text(err)}")
             return JSONResponse({"success": False, "message": f"取链失败: {err}"}, status_code=502)
         self._redirect_cache.set(pickcode, url)
         return RedirectResponse(url, status_code=302)
 
     def _start(self, kind: str, target: Callable[[], Any], message: str) -> Dict[str, Any]:
+        label = self._TASK_LABELS.get(kind, kind)
         with self._lock:
             if kind in self._running:
+                logger.warning(f"【{label}】任务正在运行，忽略重复触发")
                 return _error(f"{kind} 任务正在运行")
             self._running.add(kind)
-
         def run() -> None:
             try:
                 target()
+            except Exception as err:  # noqa: BLE001
+                logger.error(f"【{label}】后台任务异常终止：{safe_error_text(err)}")
             finally:
                 with self._lock:
                     self._running.discard(kind)
 
-        threading.Thread(target=run, name=f"p115liteassistant-{kind}", daemon=True).start()
+        thread = threading.Thread(target=run, name=f"p115liteassistant-{kind}", daemon=True)
+        try:
+            thread.start()
+        except Exception as err:  # noqa: BLE001
+            with self._lock:
+                self._running.discard(kind)
+            logger.error(f"【{label}】任务启动失败：{safe_error_text(err)}")
+            return _error(f"{kind} 任务启动失败")
+        logger.info(f"【{label}】任务已提交")
         return _ok(message=message)

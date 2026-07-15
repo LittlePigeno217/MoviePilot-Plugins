@@ -1,7 +1,9 @@
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from plugins.p115liteassistant.api import Api
+from plugins.p115liteassistant.log_utils import safe_error_text
 
 
 class FakeStore:
@@ -74,6 +76,83 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertEqual(first.headers["location"], "https://download.example/pick")
         self.assertEqual(second.headers["location"], "https://download.example/pick")
         self.assertEqual(self.client.download_calls, 1)
+
+    def test_strm_execution_writes_start_and_summary_logs(self):
+        self.store.config.update({"strm_incremental": True, "strm_mappings": []})
+
+        with patch("plugins.p115liteassistant.api.logger") as task_logger:
+            result = self.api.run_strm("http://moviepilot:3000")
+
+        self.assertEqual(result, [])
+        info_messages = [call.args[0] for call in task_logger.info.call_args_list]
+        warning_messages = [call.args[0] for call in task_logger.warning.call_args_list]
+        self.assertTrue(any("【STRM同步】开始执行" in message for message in info_messages))
+        self.assertTrue(any("【STRM同步】执行完成" in message for message in info_messages))
+        self.assertTrue(any("没有启用的目录映射" in message for message in warning_messages))
+
+    def test_upload_execution_writes_start_and_summary_logs(self):
+        self.store.config["upload_mappings"] = [{"enabled": True, "source": "/source", "target": "/target"}]
+        upload_result = {
+            "kind": "upload",
+            "uploaded": 1,
+            "instant": 0,
+            "skipped": 0,
+            "deleted": 0,
+            "errors": 1,
+            "duration_ms": 25,
+            "errors_detail": [{"path": "/source/fail.mkv", "target": "/target/fail.mkv", "message": "失败"}],
+        }
+
+        with patch("plugins.p115liteassistant.api.DirectoryUploader") as uploader, patch(
+            "plugins.p115liteassistant.api.logger"
+        ) as task_logger:
+            uploader.return_value.run.return_value = upload_result
+            result = self.api.run_upload(incremental=True)
+
+        self.assertEqual(result, upload_result)
+        self.assertTrue(any("【目录上传】开始执行" in call.args[0] for call in task_logger.info.call_args_list))
+        self.assertTrue(any("【目录上传】执行完成" in call.args[0] for call in task_logger.warning.call_args_list))
+
+    def test_checkin_execution_writes_result_log(self):
+        with patch("plugins.p115liteassistant.api.logger") as task_logger:
+            result = self.api.run_checkin()
+
+        self.assertTrue(result["success"])
+        info_messages = [call.args[0] for call in task_logger.info.call_args_list]
+        self.assertTrue(any("【115签到】开始执行" in message for message in info_messages))
+        self.assertTrue(any("本次积分 5" in message for message in info_messages))
+
+    def test_redirect_failure_writes_redacted_plugin_log(self):
+        with patch.object(self.client, "get_download_url", side_effect=RuntimeError("apikey=secret")), patch(
+            "plugins.p115liteassistant.api.retry_call", side_effect=lambda operation, **_kwargs: operation()
+        ), patch("plugins.p115liteassistant.api.logger") as task_logger:
+            response = self.api.redirect("pick", "token")
+
+        self.assertEqual(response.status_code, 502)
+        error_message = task_logger.error.call_args.args[0]
+        self.assertIn("【302取链】", error_message)
+        self.assertNotIn("secret", error_message)
+
+    def test_task_start_failure_releases_running_state(self):
+        with patch("plugins.p115liteassistant.api.threading.Thread.start", side_effect=RuntimeError("start failed")), patch(
+            "plugins.p115liteassistant.api.logger"
+        ) as task_logger:
+            result = self.api._start("strm", lambda: None, "STRM 同步已开始")
+
+        self.assertFalse(result["success"])
+        self.assertNotIn("strm", self.api._running)
+        self.assertTrue(any("任务启动失败" in call.args[0] for call in task_logger.error.call_args_list))
+
+    def test_error_text_redacts_credentials_and_limits_length(self):
+        message = safe_error_text(
+            RuntimeError("cookie=UID=123; CID=456; access_token='secret'; Authorization: Bearer abc " + "x" * 600)
+        )
+
+        self.assertNotIn("123", message)
+        self.assertNotIn("456", message)
+        self.assertNotIn("secret", message)
+        self.assertNotIn("Bearer abc", message)
+        self.assertLessEqual(len(message), 503)
 
     def test_scheduled_checkin_runs_once_and_records_the_day(self):
         result = self.api.run_scheduled_checkin()
