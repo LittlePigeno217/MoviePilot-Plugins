@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import secrets
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, Optional
 
 import httpx
 
@@ -69,11 +72,14 @@ class U115Client:
         tokens: Optional[Dict[str, Any]] = None,
         client_type: str = "",
         session: Any = None,
+        token_saver: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         self.cookie = cookie.strip()
         self.tokens = dict(tokens or {})
         self.client_type = client_type.strip() if client_type in self.qrcode_client_types else ""
         self._auth_state: Dict[str, Any] = {}
+        self._open_auth_lock = threading.RLock()
+        self._token_saver = token_saver
         self.session = session or self._create_session()
         self._init_headers()
 
@@ -100,6 +106,13 @@ class U115Client:
 
     def export_tokens(self) -> Dict[str, Any]:
         return dict(self.tokens)
+
+    def _persist_tokens(self, tokens: Dict[str, Any]) -> None:
+        tokens = dict(tokens)
+        if self._token_saver:
+            self._token_saver(dict(tokens))
+        self.tokens = tokens
+        self._init_headers()
 
     def is_authenticated(self) -> bool:
         return bool(self.cookie or self.tokens.get("access_token") or self.tokens.get("refresh_token"))
@@ -201,21 +214,124 @@ class U115Client:
         return {"success": True, "data": {"status": 2, "tip": "登录成功"}}
 
     def refresh_access_token(self) -> bool:
-        refresh_token = self.tokens.get("refresh_token")
-        if not refresh_token:
+        with self._open_auth_lock:
+            refresh_token = self.tokens.get("refresh_token")
+            if not refresh_token:
+                return False
+            try:
+                payload = self._request(
+                    "POST",
+                    "/open/refreshToken",
+                    base_url=self.passport_url,
+                    require_auth=False,
+                    no_error=True,
+                    data={"refresh_token": refresh_token},
+                )
+            except (httpx.HTTPError, U115ApiError, ValueError):
+                return False
+            data = payload.get("data") or {}
+            if payload.get("code") != 0 or not isinstance(data, dict) or not data.get("access_token"):
+                return False
+            self._persist_tokens({**data, "refresh_time": int(time.time())})
+            return True
+
+    @staticmethod
+    def _open_client_id() -> str:
+        try:
+            from app.core.config import settings
+
+            return str(settings.U115_APP_ID or "").strip() or "100197847"
+        except Exception:  # noqa: BLE001
+            return "100197847"
+
+    def _authorize_open_from_cookie(self) -> None:
+        self._ensure_cookie_auth()
+        with self._open_auth_lock:
+            code_verifier = secrets.token_urlsafe(96)[:128]
+            code_challenge = base64.b64encode(
+                hashlib.sha256(code_verifier.encode("utf-8")).digest()
+            ).decode("ascii")
+            device_payload = self._request_url(
+                "POST",
+                f"{self.passport_url}/open/authDeviceCode",
+                require_auth=False,
+                data={
+                    "client_id": self._open_client_id(),
+                    "code_challenge": code_challenge,
+                    "code_challenge_method": "sha256",
+                },
+            )
+            device_data = device_payload.get("data") or {}
+            uid = str(device_data.get("uid") or "") if isinstance(device_data, dict) else ""
+            if not uid:
+                raise U115AuthError("115 未返回 Open 授权设备码")
+
+            self._request_url(
+                "GET",
+                f"{self.qrcode_base_url}/api/2.0/prompt.php",
+                require_auth=False,
+                params={"uid": uid},
+            )
+            self._request_url(
+                "GET",
+                f"{self.qrcode_base_url}/api/2.0/slogin.php",
+                require_auth=False,
+                params={"key": uid, "uid": uid, "client": 0},
+            )
+            token_payload = self._request_url(
+                "POST",
+                f"{self.passport_url}/open/deviceCodeToToken",
+                require_auth=False,
+                data={"uid": uid, "code_verifier": code_verifier},
+            )
+            token_data = token_payload.get("data") or {}
+            if not isinstance(token_data, dict) or not token_data.get("access_token"):
+                raise U115AuthError("115 未返回有效 Open 访问令牌")
+            self._persist_tokens({**token_data, "refresh_time": int(time.time())})
+
+    def _open_token_expired(self) -> bool:
+        if not self.tokens.get("access_token"):
+            return True
+        try:
+            expires_in = int(self.tokens.get("expires_in") or 0)
+            refresh_time = int(self.tokens.get("refresh_time") or 0)
+        except (TypeError, ValueError):
+            return True
+        if not expires_in or not refresh_time:
             return False
-        payload = self._request(
-            "POST",
-            "/open/refreshToken",
-            base_url=self.passport_url,
-            require_auth=False,
-            data={"refresh_token": refresh_token},
-        )
-        if payload.get("code") != 0:
-            return False
-        self.tokens = {**(payload.get("data") or {}), "refresh_time": int(time.time())}
-        self._init_headers()
-        return True
+        return int(time.time()) >= refresh_time + max(0, expires_in - 60)
+
+    def _ensure_open_auth(self) -> None:
+        with self._open_auth_lock:
+            if not self._open_token_expired():
+                return
+            if self.tokens.get("refresh_token") and self.refresh_access_token():
+                return
+            if self.cookie:
+                try:
+                    self._authorize_open_from_cookie()
+                    return
+                except (httpx.HTTPError, U115ApiError, ValueError) as err:
+                    raise U115AuthError(f"无法使用 115 Cookie 获取 Open 授权: {err}") from err
+            raise U115AuthError("缺少有效的 115 Open 授权，请重新扫码登录")
+
+    def ensure_upload_ready(self) -> None:
+        self._ensure_open_auth()
+        try:
+            self._request("GET", "/open/user/info")
+        except (U115ApiError, httpx.HTTPStatusError) as err:
+            error_text = str(err).lower()
+            status_code = getattr(getattr(err, "response", None), "status_code", None)
+            if status_code not in {401, 403} and not any(
+                value in error_text for value in ("access_token", "token", "40140125", "授权")
+            ):
+                raise
+            with self._open_auth_lock:
+                if not self.refresh_access_token():
+                    if not self.cookie:
+                        raise U115AuthError("115 Open 授权已失效，请重新扫码登录") from err
+                    self._authorize_open_from_cookie()
+            self._request("GET", "/open/user/info")
 
     def get_dir_list(self, cid: str = "0") -> list[Dict[str, Any]]:
         if self.cookie:
@@ -442,7 +558,7 @@ class U115Client:
         return None
 
     def checkin(self, attempts: int = 3, retry_delay: float = 3.0) -> Dict[str, Any]:
-        self._ensure_auth()
+        self._ensure_cookie_auth()
         current = self._request_url("GET", self.points_sign_url)
         data = self._response_data(current) or {}
         if isinstance(data, dict) and int(data.get("is_sign_today") or 0) == 1:
@@ -560,6 +676,9 @@ class U115Client:
         no_error: bool = False,
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        if require_auth:
+            self._ensure_open_auth()
+            require_auth = False
         return self._request_url(
             method,
             f"{base_url or self.base_url}{endpoint}",
@@ -599,13 +718,17 @@ class U115Client:
         if not self.is_authenticated():
             raise U115AuthError("115 未登录，请配置 Cookie 或完成扫码登录")
 
+    def _ensure_cookie_auth(self) -> None:
+        if not self.cookie:
+            raise U115AuthError("缺少有效的 115 Cookie，请重新扫码登录")
+
     @staticmethod
     def _is_response_success(payload: Dict[str, Any]) -> bool:
         state = payload.get("state")
-        if state is True:
+        if state in (True, 1, "1"):
             return True
         code = payload.get("code")
-        if state is False:
+        if state in (False, 0, "0"):
             return code in (0, "0", 20004, "20004")
         return code in (None, "", 0, "0", 20004, "20004")
 

@@ -55,12 +55,8 @@ class Api:
         payload = payload or {}
         if not isinstance(payload, dict):
             return _error("配置格式无效")
-        config = self._store.get_config()
         allowed = set(DEFAULT_CONFIG) - {"tokens"}
-        for key in allowed:
-            if key in payload:
-                config[key] = payload[key]
-        self._store.save_config(config)
+        self._store.update_config({key: payload[key] for key in allowed if key in payload})
         return _ok(message="配置已保存")
 
     def qrcode(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
@@ -96,12 +92,13 @@ class Api:
             if not result.get("success"):
                 return _error(result.get("message") or "检查登录状态失败")
             if (result.get("data") or {}).get("status") == 2:
-                config = self._store.get_config()
-                config["tokens"] = client.export_tokens()
-                config["login_client_type"] = client.client_type
+                updates = {
+                    "tokens": client.export_tokens(),
+                    "login_client_type": client.client_type,
+                }
                 if client.cookie:
-                    config["cookie"] = client.cookie
-                self._store.save_config(config)
+                    updates["cookie"] = client.cookie
+                self._store.update_config(updates)
                 self._browse_115_cache.clear()
                 self._redirect_cache.clear()
             return _ok(result.get("data") or {}, result.get("message") or "")

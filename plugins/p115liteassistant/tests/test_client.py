@@ -1,6 +1,9 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import Mock, patch
+
+import httpx
 
 from plugins.p115liteassistant.client import U115AuthError, U115Client
 
@@ -152,7 +155,7 @@ class U115ClientTest(unittest.TestCase):
             media.write_bytes(b"media")
             session = FakeSession()
 
-            result = U115Client(cookie="UID=1; CID=2", session=session).upload_file(
+            result = U115Client(tokens={"access_token": "token"}, session=session).upload_file(
                 {"fileid": "0", "path": "/Cloud"}, media
             )
 
@@ -160,6 +163,178 @@ class U115ClientTest(unittest.TestCase):
             self.assertTrue(result.reused)
             self.assertEqual(result.file_item["fileid"], "123")
             self.assertEqual(session.requests[0][2]["data"]["target"], "U_1_0")
+            self.assertEqual(session.headers["Authorization"], "Bearer token")
+
+    def test_cookie_login_authorizes_open_api_before_upload(self):
+        class CookieUploadSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/authDeviceCode"):
+                    return FakeResponse({"code": 0, "data": {"uid": "open-uid"}})
+                if url.endswith("/api/2.0/prompt.php") or url.endswith("/api/2.0/slogin.php"):
+                    return FakeResponse({"state": True})
+                if url.endswith("/open/deviceCodeToToken"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                "access_token": "open-token",
+                                "refresh_token": "refresh-token",
+                                "expires_in": 7200,
+                            },
+                        }
+                    )
+                if url.endswith("/open/user/info"):
+                    return FakeResponse({"code": 0, "data": {"user_id": "1"}})
+                return super().request(method, url, **kwargs)
+
+        with TemporaryDirectory() as directory, patch.object(U115Client, "_open_client_id", return_value="app-id"):
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"media")
+            token_saver = Mock()
+            session = CookieUploadSession()
+            client = U115Client(cookie="UID=1; CID=2", session=session, token_saver=token_saver)
+
+            client.ensure_upload_ready()
+            result = client.upload_file({"fileid": "0", "path": "/Cloud"}, media)
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.reused)
+        self.assertEqual(client.tokens["access_token"], "open-token")
+        self.assertEqual(session.headers["Authorization"], "Bearer open-token")
+        token_saver.assert_called_once()
+        auth_request = next(request for request in session.requests if request[1].endswith("/open/authDeviceCode"))
+        self.assertEqual(auth_request[2]["data"]["client_id"], "app-id")
+        upload_request = next(request for request in session.requests if request[1].endswith("/open/upload/init"))
+        self.assertEqual(upload_request[2]["data"]["target"], "U_1_0")
+
+    def test_expired_open_token_is_refreshed_and_persisted(self):
+        class RefreshSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/refreshToken"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                "access_token": "new-token",
+                                "refresh_token": "new-refresh",
+                                "expires_in": 7200,
+                            },
+                        }
+                    )
+                if url.endswith("/open/user/info"):
+                    return FakeResponse({"code": 0, "data": {"user_id": "1"}})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        token_saver = Mock()
+        session = RefreshSession()
+        client = U115Client(
+            tokens={
+                "access_token": "expired-token",
+                "refresh_token": "old-refresh",
+                "expires_in": 1,
+                "refresh_time": 1,
+            },
+            session=session,
+            token_saver=token_saver,
+        )
+
+        client.ensure_upload_ready()
+
+        self.assertEqual(client.tokens["access_token"], "new-token")
+        self.assertEqual(session.headers["Authorization"], "Bearer new-token")
+        token_saver.assert_called_once()
+        self.assertEqual(token_saver.call_args.args[0]["refresh_token"], "new-refresh")
+
+    def test_http_401_preflight_refreshes_open_token(self):
+        class UnauthorizedResponse:
+            def __init__(self, url):
+                request = httpx.Request("GET", url)
+                self.response = httpx.Response(401, request=request)
+
+            def raise_for_status(self):
+                raise httpx.HTTPStatusError(
+                    "unauthorized",
+                    request=self.response.request,
+                    response=self.response,
+                )
+
+            def json(self):
+                return {"code": 401}
+
+        class RefreshAfter401Session(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/user/info"):
+                    if self.headers.get("Authorization") == "Bearer new-token":
+                        return FakeResponse({"code": 0, "data": {"user_id": "1"}})
+                    return UnauthorizedResponse(url)
+                if url.endswith("/open/refreshToken"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                "access_token": "new-token",
+                                "refresh_token": "new-refresh",
+                                "expires_in": 7200,
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = RefreshAfter401Session()
+        client = U115Client(
+            tokens={"access_token": "invalid-token", "refresh_token": "refresh-token"},
+            session=session,
+        )
+        client.read_retry_delay = 0
+
+        client.ensure_upload_ready()
+
+        self.assertEqual(client.tokens["access_token"], "new-token")
+        self.assertEqual(session.headers["Authorization"], "Bearer new-token")
+
+    def test_invalid_token_falls_back_to_cookie_open_authorization(self):
+        class CookieFallbackSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/user/info"):
+                    if self.headers.get("Authorization") == "Bearer cookie-token":
+                        return FakeResponse({"code": 0, "data": {"user_id": "1"}})
+                    return FakeResponse({"state": False, "code": 40140125, "message": "access_token 已失效"})
+                if url.endswith("/open/refreshToken"):
+                    return FakeResponse({"code": 401, "message": "refresh_token 已失效"})
+                if url.endswith("/open/authDeviceCode"):
+                    return FakeResponse({"code": 0, "data": {"uid": "open-uid"}})
+                if url.endswith("/api/2.0/prompt.php") or url.endswith("/api/2.0/slogin.php"):
+                    return FakeResponse({"state": True})
+                if url.endswith("/open/deviceCodeToToken"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                "access_token": "cookie-token",
+                                "refresh_token": "cookie-refresh",
+                                "expires_in": 7200,
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = CookieFallbackSession()
+        client = U115Client(
+            cookie="UID=1; CID=2",
+            tokens={"access_token": "invalid-token", "refresh_token": "invalid-refresh"},
+            session=session,
+        )
+        client.read_retry_delay = 0
+
+        with patch.object(U115Client, "_open_client_id", return_value="app-id"):
+            client.ensure_upload_ready()
+
+        self.assertEqual(client.tokens["access_token"], "cookie-token")
+        self.assertEqual(session.headers["Authorization"], "Bearer cookie-token")
 
     def test_checkin_retries_failed_post_requests(self):
         class CheckinSession(FakeSession):

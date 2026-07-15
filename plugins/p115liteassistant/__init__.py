@@ -17,7 +17,7 @@ class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、目录选择、STRM/302、目录上传秒传和签到。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.0.2"
+    plugin_version = "1.0.3"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -33,23 +33,25 @@ class P115LiteAssistant(_PluginBase):
 
     def init_plugin(self, config: dict | None = None) -> None:
         if config:
-            merged = self._store.get_config()
-            merged.update(config)
-            self._store.save_config(merged)
+            self._store.update_config(config)
         self._client = None
 
     def _get_client(self) -> U115Client:
         config = self._store.get_config()
         client_type = str(config.get("login_client_type") or "")
-        signature = (str(config.get("cookie") or ""), repr(config.get("tokens") or {}), client_type)
+        signature = (str(config.get("cookie") or ""), client_type)
         if self._client is None or self._client_signature != signature:
             self._client = U115Client(
                 cookie=signature[0],
                 tokens=config.get("tokens") or {},
-                client_type=client_type,
+                client_type=signature[1],
+                token_saver=self._save_client_tokens,
             )
             self._client_signature = signature
         return self._client
+
+    def _save_client_tokens(self, tokens: Dict[str, Any]) -> None:
+        self._store.update_config({"tokens": dict(tokens)})
 
     @staticmethod
     def _get_api_token() -> str:

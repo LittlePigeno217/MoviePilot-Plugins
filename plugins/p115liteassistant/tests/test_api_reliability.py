@@ -19,6 +19,10 @@ class FakeStore:
     def get_config(self):
         return dict(self.config)
 
+    def update_config(self, updates):
+        self.config.update(dict(updates))
+        return dict(self.config)
+
     def append_history(self, entry):
         self.history.append(entry)
 
@@ -65,6 +69,15 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertEqual([item["name"] for item in first["data"]["items"]], ["Alpha", "Zeta"])
         self.assertEqual(second["data"], first["data"])
         self.assertEqual(self.client.browse_calls, 1)
+
+    def test_config_save_cannot_replace_internal_tokens(self):
+        self.store.config["tokens"] = {"access_token": "internal"}
+
+        result = self.api.save_config({"enabled": False, "tokens": {"access_token": "injected"}})
+
+        self.assertTrue(result["success"])
+        self.assertFalse(self.store.config["enabled"])
+        self.assertEqual(self.store.config["tokens"], {"access_token": "internal"})
 
     def test_local_directory_root_is_filesystem_root(self):
         self.assertEqual(Api._local_roots(), [Path("/").resolve()])

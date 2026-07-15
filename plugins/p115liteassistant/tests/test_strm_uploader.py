@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from fastapi import Request
 from plugins.p115liteassistant.api import Api
-from plugins.p115liteassistant.client import UploadResult
+from plugins.p115liteassistant.client import U115AuthError, UploadResult
 from plugins.p115liteassistant.records import IncrementalRecordStore
 from plugins.p115liteassistant.strm import StrmGenerator
 from plugins.p115liteassistant.uploader import DirectoryUploader
@@ -47,6 +47,10 @@ class FakeStrmClient:
 class FakeUploadClient:
     def __init__(self):
         self.uploaded = []
+        self.ready_checks = 0
+
+    def ensure_upload_ready(self):
+        self.ready_checks += 1
 
     def ensure_remote_dir(self, path):
         return {"fileid": "1", "path": path}
@@ -166,6 +170,23 @@ class StrmAndUploaderTest(unittest.TestCase):
             success_messages = [call.args[0] for call in upload_logger.info.call_args_list]
             self.assertTrue(any("秒传成功" in message for message in success_messages))
             self.assertTrue(any("上传成功" in message for message in success_messages))
+
+    def test_directory_uploader_checks_auth_before_scanning(self):
+        class UnauthorizedClient(FakeUploadClient):
+            def ensure_upload_ready(self):
+                raise U115AuthError("Open 授权失败")
+
+        uploader = DirectoryUploader(
+            UnauthorizedClient(),
+            FakeStore(),
+            {"upload_mappings": [{"enabled": True, "source": "/missing", "target": "/Cloud"}]},
+        )
+
+        with patch.object(uploader, "_iter_files") as iter_files:
+            with self.assertRaisesRegex(U115AuthError, "Open 授权失败"):
+                uploader.run(incremental=True)
+
+        iter_files.assert_not_called()
 
     def test_directory_uploader_retries_transient_upload_failures(self):
         with TemporaryDirectory() as directory:

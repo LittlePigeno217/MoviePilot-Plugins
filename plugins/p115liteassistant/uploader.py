@@ -103,6 +103,9 @@ class DirectoryUploader:
 
     def run(self, incremental: bool = True) -> Dict[str, Any]:
         started = monotonic()
+        logger.info("【目录上传】开始校验 115 上传授权")
+        self._client.ensure_upload_ready()
+        logger.info("【目录上传】115 上传授权校验通过")
         records = self._store.get_upload_records()
         delete_source = bool(self._config.get("upload_delete_source", False))
         counts = {"uploaded": 0, "instant": 0, "skipped": 0, "deleted": 0, "errors": 0}

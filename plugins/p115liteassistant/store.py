@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from threading import RLock
 from typing import Any, Dict, List
 
 from .records import IncrementalRecordStore, TaskHistory
@@ -36,16 +37,26 @@ class Store:
 
     def __init__(self, plugin):
         self._plugin = plugin
+        self._config_lock = RLock()
 
     def get_config(self) -> Dict[str, Any]:
-        config = deepcopy(DEFAULT_CONFIG)
-        saved = self._plugin.get_data(self._CONFIG_KEY) or {}
-        if isinstance(saved, dict):
-            config.update({key: value for key, value in saved.items() if key in DEFAULT_CONFIG})
-        return config
+        with self._config_lock:
+            config = deepcopy(DEFAULT_CONFIG)
+            saved = self._plugin.get_data(self._CONFIG_KEY) or {}
+            if isinstance(saved, dict):
+                config.update({key: value for key, value in saved.items() if key in DEFAULT_CONFIG})
+            return config
 
     def save_config(self, config: Dict[str, Any]) -> None:
-        self._plugin.save_data(self._CONFIG_KEY, config)
+        with self._config_lock:
+            self._plugin.save_data(self._CONFIG_KEY, config)
+
+    def update_config(self, updates: Dict[str, Any]) -> Dict[str, Any]:
+        with self._config_lock:
+            config = self.get_config()
+            config.update({key: value for key, value in updates.items() if key in DEFAULT_CONFIG})
+            self.save_config(config)
+            return config
 
     def get_strm_records(self) -> Dict[str, Dict[str, Any]]:
         records = self._plugin.get_data(self._STRM_RECORDS_KEY) or {}
