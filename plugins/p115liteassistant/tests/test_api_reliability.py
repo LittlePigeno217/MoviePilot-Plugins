@@ -1,6 +1,6 @@
+from pathlib import Path
 import unittest
 
-from app.core.config import settings
 from plugins.p115liteassistant.api import Api
 
 
@@ -64,8 +64,8 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertEqual(second["data"], first["data"])
         self.assertEqual(self.client.browse_calls, 1)
 
-    def test_local_directory_root_is_moviepilot_root(self):
-        self.assertEqual(Api._local_roots(), [settings.ROOT_PATH.resolve()])
+    def test_local_directory_root_is_filesystem_root(self):
+        self.assertEqual(Api._local_roots(), [Path("/").resolve()])
 
     def test_redirect_uses_short_lived_pickcode_cache(self):
         first = self.api.redirect("pick", "token")

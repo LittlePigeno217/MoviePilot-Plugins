@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict
 from zoneinfo import ZoneInfo
 
-from app.core.config import settings
 from app.log import logger
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -132,7 +131,7 @@ class Api:
 
     @staticmethod
     def _local_roots() -> list[Path]:
-        root = Path(settings.ROOT_PATH).resolve()
+        root = Path("/").resolve()
         return [root] if root.is_dir() else []
 
     def browse_local(self, path: str = "", root: str = "") -> Dict[str, Any]:
