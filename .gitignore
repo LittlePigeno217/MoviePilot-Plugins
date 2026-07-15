@@ -124,6 +124,8 @@ celerybeat.pid
 env/
 venv/
 src/
+!plugins/p115liteassistant/src/
+!plugins/p115liteassistant/src/**
 ENV/
 env.bak/
 venv.bak/

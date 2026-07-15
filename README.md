@@ -9,6 +9,7 @@ MoviePilot 第三方插件库。
 当前仓库保留的实际插件目录为：
 
 - `plugins/checkin/`
+- `plugins/p115liteassistant/`
 
 插件元数据请查看：
 
