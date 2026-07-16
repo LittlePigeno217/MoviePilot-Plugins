@@ -1,1 +1,2 @@
 qrcode>=7.4
+p115pickcode==0.0.5.4

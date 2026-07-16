@@ -14,15 +14,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "login_client_type": "",
     "moviepilot_address": "",
     "strm_incremental": True,
+    "strm_download_sidecars": False,
     "strm_mappings": [],
     "upload_mappings": [],
     "upload_include_sidecars": True,
+    "upload_generate_strm": False,
     "upload_delete_source": False,
     "upload_media_extensions": ".mkv,.mp4,.ts,.m2ts,.avi,.mov,.wmv,.iso,.rmvb,.flv",
     "upload_sidecar_extensions": ".nfo,.jpg,.jpeg,.png,.webp,.srt,.ass,.ssa,.sup",
     "checkin_enabled": False,
     "checkin_cron": "15 8 * * *",
     "checkin_time_range": "06:00-09:00",
+    "same_playback": False,
 }
 
 

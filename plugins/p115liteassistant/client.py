@@ -5,6 +5,8 @@ import hashlib
 import secrets
 import threading
 import time
+from collections import deque
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, Iterator, Optional
@@ -28,6 +30,12 @@ class UploadResult:
     message: str = ""
 
 
+@dataclass(frozen=True)
+class PlaybackCopy:
+    file_id: str
+    pickcode: str
+
+
 class U115Client:
     """独立的 115 客户端，只覆盖本插件需要的登录、浏览、上传、签到和取链能力。"""
 
@@ -43,6 +51,12 @@ class U115Client:
     )
     read_retry_attempts = 3
     read_retry_delay = 1.0
+    download_endpoint = "/open/ufile/downurl"
+    download_request_interval = 1.0
+    directory_request_interval = 1 / 3
+    directory_scan_workers = 6
+    directory_scan_prefetch = 12
+    playback_copy_directory = "/多端播放"
     qrcode_client_types = {
         "alipaymini",
         "wechatmini",
@@ -79,6 +93,13 @@ class U115Client:
         self.client_type = client_type.strip() if client_type in self.qrcode_client_types else ""
         self._auth_state: Dict[str, Any] = {}
         self._open_auth_lock = threading.RLock()
+        self._download_rate_lock = threading.Lock()
+        self._next_download_request_at = 0.0
+        self._directory_rate_lock = threading.Lock()
+        self._next_directory_request_at = 0.0
+        self._playback_dir_lock = threading.Lock()
+        self._playback_copy_lock = threading.Lock()
+        self._playback_dir_id = ""
         self._token_saver = token_saver
         self.session = session or self._create_session()
         self._init_headers()
@@ -340,29 +361,82 @@ class U115Client:
             except (httpx.HTTPError, U115ApiError, ValueError):
                 return self._get_device_dir_list(cid)
 
-        payload = self._request(
-            "GET",
-            "/open/ufile/files",
-            params={"cid": int(cid or 0), "limit": 1000, "offset": 0, "cur": True, "show_dir": 1},
-        )
-        data = self._response_data(payload)
-        if isinstance(data, list):
-            return data
-        payload = self._request(
-            "POST",
-            "/open/folder/list",
-            data={"cid": str(cid or "0")},
-        )
-        data = self._response_data(payload)
-        if isinstance(data, dict):
-            data = data.get("items", [])
-        return list(data) if isinstance(data, list) else []
+        items: list[Dict[str, Any]] = []
+        offset = 0
+        page_size = 1000
+        while True:
+            self._acquire_directory_request_slot()
+            payload = self._request(
+                "GET",
+                "/open/ufile/files",
+                params={
+                    "cid": int(cid or 0),
+                    "limit": page_size,
+                    "offset": offset,
+                    "cur": True,
+                    "show_dir": 1,
+                },
+            )
+            data = self._response_data(payload)
+            if not isinstance(data, list):
+                if offset:
+                    raise U115ApiError("115 Open 目录分页返回了无效响应")
+                self._acquire_directory_request_slot()
+                payload = self._request(
+                    "POST",
+                    "/open/folder/list",
+                    data={"cid": str(cid or "0")},
+                )
+                data = self._response_data(payload)
+                if isinstance(data, dict):
+                    data = data.get("items", [])
+                return list(data) if isinstance(data, list) else []
+            batch = list(data)
+            items.extend(batch)
+            if not batch or len(batch) < page_size:
+                return items
+            offset += len(batch)
+
+    def _acquire_directory_request_slot(self) -> None:
+        interval = max(0.0, float(self.directory_request_interval))
+        if not interval:
+            return
+        with self._directory_rate_lock:
+            now = time.monotonic()
+            delay = max(0.0, self._next_directory_request_at - now)
+            self._next_directory_request_at = max(now, self._next_directory_request_at) + interval
+        if delay:
+            time.sleep(delay)
+
+    def _acquire_download_request_slot(self) -> None:
+        interval = max(0.0, float(self.download_request_interval))
+        if not interval:
+            return
+        with self._download_rate_lock:
+            now = time.monotonic()
+            delay = max(0.0, self._next_download_request_at - now)
+            self._next_download_request_at = max(now, self._next_download_request_at) + interval
+        if delay:
+            time.sleep(delay)
+
+    @staticmethod
+    def _directory_page_complete(
+        payload: Dict[str, Any], item_count: int, batch_size: int, page_size: int
+    ) -> bool:
+        try:
+            total = int(payload.get("count"))
+        except (TypeError, ValueError):
+            total = -1
+        if total >= 0:
+            return item_count >= total
+        return batch_size < page_size
 
     def _get_cookie_dir_list(self, cid: str) -> list[Dict[str, Any]]:
         items: list[Dict[str, Any]] = []
         offset = 0
         page_size = 1150
         while True:
+            self._acquire_directory_request_slot()
             payload = self._request_url(
                 "GET",
                 self.web_files_url,
@@ -385,11 +459,9 @@ class U115Client:
             data = self._response_data(payload)
             batch = list(data) if isinstance(data, list) else []
             items.extend(batch)
-            total = int(payload.get("count") or len(items))
-            if not batch or len(items) >= total:
+            if self._directory_page_complete(payload, len(items), len(batch), page_size):
                 return items
             offset += len(batch)
-            time.sleep(2)
 
     def _get_device_dir_list(self, cid: str) -> list[Dict[str, Any]]:
         app = self._cookie_app()
@@ -397,26 +469,35 @@ class U115Client:
             url = f"{self.base_url}/{app}/files"
         else:
             url = f"{self.base_url}/{app}/2.0/ufile/files"
-        payload = self._request_url(
-            "GET",
-            url,
-            params={
-                "aid": 1,
-                "cid": int(cid or 0),
-                "count_folders": 1,
-                "limit": 1000,
-                "offset": 0,
-                "record_open_time": 1,
-                "show_dir": 1,
-                "cur": 1,
-                "fc_mix": 1,
-                "asc": 1,
-                "o": "user_ptime",
-                "custom_order": 2,
-            },
-        )
-        data = self._response_data(payload)
-        return list(data) if isinstance(data, list) else []
+        items: list[Dict[str, Any]] = []
+        offset = 0
+        page_size = 1000
+        while True:
+            self._acquire_directory_request_slot()
+            payload = self._request_url(
+                "GET",
+                url,
+                params={
+                    "aid": 1,
+                    "cid": int(cid or 0),
+                    "count_folders": 1,
+                    "limit": page_size,
+                    "offset": offset,
+                    "record_open_time": 1,
+                    "show_dir": 1,
+                    "cur": 1,
+                    "fc_mix": 1,
+                    "asc": 1,
+                    "o": "user_ptime",
+                    "custom_order": 2,
+                },
+            )
+            data = self._response_data(payload)
+            batch = list(data) if isinstance(data, list) else []
+            items.extend(batch)
+            if self._directory_page_complete(payload, len(items), len(batch), page_size):
+                return items
+            offset += len(batch)
 
     def _cookie_app(self) -> str:
         if self.client_type:
@@ -431,25 +512,39 @@ class U115Client:
         return "alipaymini"
 
     def iter_files(self, cid: str) -> Iterator[Dict[str, Any]]:
-        stack = [(str(cid), "")]
-        while stack:
-            current_cid, prefix = stack.pop()
-            for raw in self.get_dir_list(current_cid):
-                name = self._item_name(raw)
-                if not name:
-                    continue
-                rel_path = f"{prefix}/{name}" if prefix else name
-                if self._is_directory(raw):
-                    child_cid = self._item_id(raw)
-                    if child_cid:
-                        stack.append((child_cid, rel_path))
-                    continue
-                yield {
-                    "name": name,
-                    "pickcode": raw.get("pc") or raw.get("pick_code") or raw.get("pickcode") or "",
-                    "size": raw.get("fs") or raw.get("size_byte") or raw.get("size") or 0,
-                    "rel_path": rel_path,
-                }
+        root_cid = str(cid or "0")
+        pending = deque([(root_cid, "")])
+        seen_directories = {root_cid}
+        in_flight = {}
+        workers = max(1, int(self.directory_scan_workers))
+        prefetch = max(workers, int(self.directory_scan_prefetch))
+
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="p115-strm-scan") as executor:
+            while pending or in_flight:
+                while pending and len(in_flight) < prefetch:
+                    current_cid, prefix = pending.popleft()
+                    future = executor.submit(self.get_dir_list, current_cid)
+                    in_flight[future] = (current_cid, prefix)
+                done, _ = wait(tuple(in_flight), return_when=FIRST_COMPLETED)
+                for future in done:
+                    _current_cid, prefix = in_flight.pop(future)
+                    for raw in future.result():
+                        name = self._item_name(raw)
+                        if not name:
+                            continue
+                        rel_path = f"{prefix}/{name}" if prefix else name
+                        if self._is_directory(raw):
+                            child_cid = self._item_id(raw)
+                            if child_cid and child_cid not in seen_directories:
+                                seen_directories.add(child_cid)
+                                pending.append((child_cid, rel_path))
+                            continue
+                        yield {
+                            "name": name,
+                            "pickcode": raw.get("pc") or raw.get("pick_code") or raw.get("pickcode") or "",
+                            "size": raw.get("fs") or raw.get("size_byte") or raw.get("size") or 0,
+                            "rel_path": rel_path,
+                        }
 
     def get_item(self, path: str) -> Optional[Dict[str, Any]]:
         normalized = self._normalize_cloud_path(path)
@@ -535,17 +630,36 @@ class U115Client:
             if not isinstance(init_result, dict):
                 return UploadResult(False, message="115 上传二次认证失败")
 
-        target_path = f"{str(target_dir.get('path') or '/').rstrip('/')}/{local_path.name}"
+        file_item = self._upload_file_item(init_result, local_path.name)
         if int(init_result.get("status") or 0) == 2:
-            return UploadResult(True, reused=True, file_item=self.get_item(target_path))
+            return UploadResult(True, reused=True, file_item=file_item)
 
         self._upload_to_oss(local_path, file_size, file_sha1, init_data["target"], init_result)
-        return UploadResult(True, file_item=self.get_item(target_path))
+        return UploadResult(True, file_item=file_item)
 
-    def get_download_url(self, pickcode: str) -> Optional[str]:
+    @staticmethod
+    def _upload_file_item(data: Dict[str, Any], file_name: str) -> Optional[Dict[str, Any]]:
+        file_id = data.get("file_id") or data.get("fileid") or data.get("fid")
+        pickcode = data.get("pick_code") or data.get("pickcode") or data.get("pc")
+        if not file_id and not pickcode:
+            return None
+        item: Dict[str, Any] = {"name": file_name}
+        if file_id:
+            item["fileid"] = str(file_id)
+        if pickcode:
+            item["pickcode"] = str(pickcode)
+        return item
+
+    def get_download_url(self, pickcode: str, user_agent: str = "") -> Optional[str]:
         if not pickcode:
             return None
-        payload = self._request("POST", "/open/ufile/downurl", no_error=True, data={"pick_code": pickcode})
+        payload = self._request(
+            "POST",
+            "/open/ufile/downurl",
+            no_error=True,
+            data={"pick_code": pickcode},
+            headers={"User-Agent": user_agent},
+        )
         data = self._response_data(payload)
         if isinstance(data, dict):
             for value in data.values():
@@ -556,6 +670,122 @@ class U115Client:
                     if isinstance(url, str):
                         return url
         return None
+
+    def download_file(self, pickcode: str, output: Path, create_parent: bool = True) -> None:
+        user_agent = self.ios_user_agent
+        url = self.get_download_url(pickcode, user_agent=user_agent)
+        if not url:
+            raise U115ApiError("未获取到 115 下载地址")
+        if create_parent:
+            output.parent.mkdir(parents=True, exist_ok=True)
+        temp_output = output.with_name(f".{output.name}.{threading.get_ident()}.tmp")
+        try:
+            with httpx.stream(
+                "GET",
+                url,
+                headers={"User-Agent": user_agent},
+                follow_redirects=True,
+                timeout=60.0,
+            ) as response:
+                response.raise_for_status()
+                with temp_output.open("wb") as handle:
+                    for chunk in response.iter_bytes():
+                        handle.write(chunk)
+            temp_output.replace(output)
+        finally:
+            temp_output.unlink(missing_ok=True)
+
+    @staticmethod
+    def _pickcode_to_file_id(pickcode: str) -> int:
+        try:
+            from p115pickcode import to_id
+        except ImportError as err:
+            raise U115ApiError("缺少 p115pickcode 依赖，无法启用多端播放") from err
+        return int(to_id(pickcode))
+
+    def _playback_directory_id(self) -> str:
+        if self._playback_dir_id:
+            return self._playback_dir_id
+        with self._playback_dir_lock:
+            if not self._playback_dir_id:
+                directory = self.ensure_remote_dir(self.playback_copy_directory)
+                self._playback_dir_id = str(directory.get("fileid") or "")
+                if not self._playback_dir_id:
+                    raise U115ApiError("创建 115 多端播放目录失败")
+        return self._playback_dir_id
+
+    def create_playback_copy(self, pickcode: str) -> PlaybackCopy:
+        target_cid = self._playback_directory_id()
+        source_file_id = self._pickcode_to_file_id(pickcode)
+        with self._playback_copy_lock:
+            self._request(
+                "POST",
+                "/open/ufile/copy",
+                data={"file_id": source_file_id, "pid": int(target_cid)},
+                headers={"User-Agent": self.ios_user_agent},
+            )
+            item: Optional[Dict[str, Any]] = None
+            try:
+                item = self._latest_playback_copy_item(target_cid)
+                return self._playback_copy_from_item(item)
+            except Exception as err:  # noqa: BLE001
+                try:
+                    self._cleanup_failed_playback_copy(target_cid, item)
+                except Exception as cleanup_err:  # noqa: BLE001
+                    raise U115ApiError(
+                        f"读取多端播放副本失败，且无法清理临时副本: {cleanup_err}"
+                    ) from err
+                raise
+
+    def _latest_playback_copy_item(self, target_cid: str) -> Dict[str, Any]:
+        payload = self._request(
+            "GET",
+            "/open/ufile/files",
+            params={
+                "cid": int(target_cid),
+                "limit": 1,
+                "offset": 0,
+                "cur": True,
+                "show_dir": 1,
+                "o": "user_ptime",
+                "asc": 0,
+                "custom_order": 2,
+            },
+            headers={"User-Agent": self.ios_user_agent},
+        )
+        data = self._response_data(payload)
+        if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+            raise U115ApiError("复制多端播放文件后未找到副本")
+        return data[0]
+
+    @staticmethod
+    def _playback_copy_from_item(item: Dict[str, Any]) -> PlaybackCopy:
+        copied_pickcode = str(
+            item.get("pc") or item.get("pick_code") or item.get("pickcode") or ""
+        )
+        copied_file_id = str(item.get("fid") or item.get("file_id") or "")
+        if not copied_pickcode or not copied_file_id:
+            raise U115ApiError("115 多端播放副本信息不完整")
+        return PlaybackCopy(file_id=copied_file_id, pickcode=copied_pickcode)
+
+    def _cleanup_failed_playback_copy(
+        self,
+        target_cid: str,
+        item: Optional[Dict[str, Any]],
+    ) -> None:
+        cleanup_item = item or self._latest_playback_copy_item(target_cid)
+        copied_file_id = str(cleanup_item.get("fid") or cleanup_item.get("file_id") or "")
+        if not copied_file_id:
+            raise U115ApiError("未找到待清理的多端播放副本")
+        self.delete_file(copied_file_id)
+
+    def delete_file(self, file_id: str) -> None:
+        self._request(
+            "POST",
+            "/open/ufile/delete",
+            data={"file_ids": int(file_id)},
+            headers={"User-Agent": self.ios_user_agent},
+        )
 
     def checkin(self, attempts: int = 3, retry_delay: float = 3.0) -> Dict[str, Any]:
         self._ensure_cookie_auth()
@@ -679,6 +909,8 @@ class U115Client:
         if require_auth:
             self._ensure_open_auth()
             require_auth = False
+        if endpoint == self.download_endpoint:
+            self._acquire_download_request_slot()
         return self._request_url(
             method,
             f"{base_url or self.base_url}{endpoint}",
@@ -772,10 +1004,23 @@ class U115Client:
     @staticmethod
     def _item_from_info(info: Dict[str, Any], path: str) -> Dict[str, Any]:
         category = str(info.get("file_category", "1"))
+        raw_size = next(
+            (
+                info.get(key)
+                for key in ("size_byte", "file_size", "size", "fs")
+                if info.get(key) is not None
+            ),
+            None,
+        )
+        try:
+            size = int(raw_size) if raw_size is not None else None
+        except (TypeError, ValueError):
+            size = None
         return {
             "fileid": U115Client._item_id(info),
             "path": path,
             "type": "dir" if category == "0" else "file",
             "name": U115Client._item_name(info) or PurePosixPath(path).name,
             "pickcode": info.get("pick_code") or info.get("pickcode") or "",
+            "size": size,
         }

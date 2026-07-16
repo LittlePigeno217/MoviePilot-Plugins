@@ -1,8 +1,13 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import threading
+from time import time
 import unittest
 from unittest.mock import patch
 
+from fastapi import Request
 from plugins.p115liteassistant.api import Api
+from plugins.p115liteassistant.client import PlaybackCopy
 from plugins.p115liteassistant.log_utils import safe_error_text
 
 
@@ -37,6 +42,9 @@ class FakeClient:
     def __init__(self):
         self.browse_calls = 0
         self.download_calls = 0
+        self.download_requests = []
+        self.copy_calls = []
+        self.deleted = []
         self.checkin_calls = 0
 
     def get_dir_list(self, cid):
@@ -46,13 +54,39 @@ class FakeClient:
             {"fn": "Alpha", "cid": "1"},
         ]
 
-    def get_download_url(self, pickcode):
+    def get_download_url(self, pickcode, user_agent=""):
         self.download_calls += 1
-        return f"https://download.example/{pickcode}"
+        self.download_requests.append((pickcode, user_agent))
+        return f"https://download.example/{pickcode}?t={int(time()) + 3600}"
+
+    def create_playback_copy(self, pickcode):
+        self.copy_calls.append(pickcode)
+        return PlaybackCopy(file_id="copy-file-id", pickcode="copy-pickcode")
+
+    def delete_file(self, file_id):
+        self.deleted.append(file_id)
 
     def checkin(self):
         self.checkin_calls += 1
         return {"already": False, "continuous_day": 3, "points_num": 5, "message": "签到成功"}
+
+
+class CoordinatedDownloadClient(FakeClient):
+    def __init__(self):
+        super().__init__()
+        self._download_call_lock = threading.Lock()
+        self._download_call_count = 0
+        self._second_download_started = threading.Event()
+
+    def get_download_url(self, pickcode, user_agent=""):
+        with self._download_call_lock:
+            self._download_call_count += 1
+            call_number = self._download_call_count
+        if call_number == 1:
+            self._second_download_started.wait(timeout=0.1)
+        else:
+            self._second_download_started.set()
+        return super().get_download_url(pickcode, user_agent=user_agent)
 
 
 class ApiReliabilityTest(unittest.TestCase):
@@ -60,6 +94,20 @@ class ApiReliabilityTest(unittest.TestCase):
         self.client = FakeClient()
         self.store = FakeStore()
         self.api = Api(lambda: self.client, self.store, lambda: "token")
+
+    @staticmethod
+    def request(user_agent="Player/1.0"):
+        return Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "scheme": "http",
+                "server": ("127.0.0.1", 3001),
+                "path": "/redirect",
+                "query_string": b"",
+                "headers": [(b"user-agent", user_agent.encode("utf-8"))],
+            }
+        )
 
     def test_browse_115_sorts_and_caches_short_lived_results(self):
         first = self.api.browse_115("0")
@@ -82,13 +130,100 @@ class ApiReliabilityTest(unittest.TestCase):
     def test_local_directory_root_is_filesystem_root(self):
         self.assertEqual(Api._local_roots(), [Path("/").resolve()])
 
-    def test_redirect_uses_short_lived_pickcode_cache(self):
-        first = self.api.redirect("pick", "token")
-        second = self.api.redirect("pick", "token")
+    def test_redirect_uses_pickcode_and_user_agent_cache(self):
+        request = self.request("Player-A")
+        first = self.api.redirect(request, "pick", "token")
+        second = self.api.redirect(request, "pick", "token")
 
-        self.assertEqual(first.headers["location"], "https://download.example/pick")
-        self.assertEqual(second.headers["location"], "https://download.example/pick")
+        self.assertIn("https://download.example/pick", first.headers["location"])
+        self.assertEqual(second.headers["location"], first.headers["location"])
         self.assertEqual(self.client.download_calls, 1)
+        self.assertEqual(self.client.download_requests, [("pick", "Player-A")])
+
+    def test_same_playback_copies_file_for_second_user_agent_and_schedules_cleanup(self):
+        self.store.config["same_playback"] = True
+        first = self.api.redirect(self.request("Player-A"), "pick", "token")
+
+        with patch.object(self.api, "_schedule_playback_copy_cleanup") as cleanup:
+            second = self.api.redirect(self.request("Player-B"), "pick", "token")
+
+        self.assertIn("https://download.example/pick", first.headers["location"])
+        self.assertIn("https://download.example/copy-pickcode", second.headers["location"])
+        self.assertEqual(self.client.copy_calls, ["pick"])
+        self.assertEqual(self.client.download_requests[-1], ("copy-pickcode", "Player-B"))
+        cleanup.assert_called_once_with(self.client, "copy-file-id")
+
+    def test_redirect_singleflight_rechecks_same_user_agent_cache(self):
+        client = CoordinatedDownloadClient()
+        api = Api(lambda: client, self.store, lambda: "token")
+        barrier = threading.Barrier(3)
+
+        def redirect():
+            barrier.wait()
+            return api.redirect(self.request("Player-A"), "pick", "token")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(redirect) for _ in range(2)]
+            barrier.wait()
+            responses = [future.result(timeout=2) for future in futures]
+
+        self.assertEqual(client.download_requests, [("pick", "Player-A")])
+        self.assertEqual(responses[0].headers["location"], responses[1].headers["location"])
+        self.assertEqual(api._redirect_flights, {})
+
+    def test_same_playback_serializes_first_requests_for_different_user_agents(self):
+        client = CoordinatedDownloadClient()
+        self.store.config["same_playback"] = True
+        api = Api(lambda: client, self.store, lambda: "token")
+        barrier = threading.Barrier(3)
+
+        def redirect(user_agent):
+            barrier.wait()
+            return api.redirect(self.request(user_agent), "pick", "token")
+
+        with patch.object(api, "_schedule_playback_copy_cleanup") as cleanup, ThreadPoolExecutor(
+            max_workers=2
+        ) as executor:
+            futures = [executor.submit(redirect, user_agent) for user_agent in ("Player-A", "Player-B")]
+            barrier.wait()
+            responses = [future.result(timeout=2) for future in futures]
+
+        self.assertEqual(client.copy_calls, ["pick"])
+        self.assertEqual(
+            {pickcode for pickcode, _user_agent in client.download_requests},
+            {"pick", "copy-pickcode"},
+        )
+        self.assertEqual(
+            {response.headers["location"].split("?")[0] for response in responses},
+            {"https://download.example/pick", "https://download.example/copy-pickcode"},
+        )
+        cleanup.assert_called_once_with(client, "copy-file-id")
+
+    def test_same_playback_schedules_copy_cleanup_when_download_url_fails(self):
+        self.store.config["same_playback"] = True
+        self.api.redirect(self.request("Player-A"), "pick", "token")
+
+        with patch.object(self.client, "get_download_url", side_effect=RuntimeError("downurl failed")), patch(
+            "plugins.p115liteassistant.api.retry_call", side_effect=lambda operation, **_kwargs: operation()
+        ), patch.object(self.api, "_schedule_playback_copy_cleanup") as cleanup:
+            response = self.api.redirect(self.request("Player-B"), "pick", "token")
+
+        self.assertEqual(response.status_code, 502)
+        cleanup.assert_called_once_with(self.client, "copy-file-id")
+
+    def test_same_playback_schedules_copy_cleanup_when_ttl_is_invalid(self):
+        self.store.config["same_playback"] = True
+        self.api.redirect(self.request("Player-A"), "pick", "token")
+
+        with patch.object(
+            self.client,
+            "get_download_url",
+            return_value="https://download.example/copy-without-expiry",
+        ), patch.object(self.api, "_schedule_playback_copy_cleanup") as cleanup:
+            response = self.api.redirect(self.request("Player-B"), "pick", "token")
+
+        self.assertEqual(response.status_code, 502)
+        cleanup.assert_called_once_with(self.client, "copy-file-id")
 
     def test_strm_execution_writes_start_and_summary_logs(self):
         self.store.config.update({"strm_incremental": True, "strm_mappings": []})
@@ -139,7 +274,7 @@ class ApiReliabilityTest(unittest.TestCase):
         with patch.object(self.client, "get_download_url", side_effect=RuntimeError("apikey=secret")), patch(
             "plugins.p115liteassistant.api.retry_call", side_effect=lambda operation, **_kwargs: operation()
         ), patch("plugins.p115liteassistant.api.logger") as task_logger:
-            response = self.api.redirect("pick", "token")
+            response = self.api.redirect(self.request(), "pick", "token")
 
         self.assertEqual(response.status_code, 502)
         error_message = task_logger.error.call_args.args[0]

@@ -16,24 +16,39 @@ class IncrementalRecordStore:
         stat = path.stat()
         return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
 
-    def has_changed(self, path: Path, target: str | None = None) -> bool:
+    def has_changed(
+        self,
+        path: Path,
+        target: str | None = None,
+        metadata: Dict[str, Any] | None = None,
+    ) -> bool:
         current = self._fingerprint(path)
         previous = self._records.get(str(path))
         if not previous or any(previous.get(key) != value for key, value in current.items()):
             return True
-        return target is not None and previous.get("target") != target
+        if target is not None and previous.get("target") != target:
+            return True
+        return any(previous.get(key) != value for key, value in (metadata or {}).items())
 
     def mark_uploaded(
         self,
         path: Path,
         target: str,
         uploaded_at: str | None = None,
+        metadata: Dict[str, Any] | None = None,
     ) -> None:
         self._records[str(path)] = {
             **self._fingerprint(path),
             "target": target,
             "uploaded_at": uploaded_at or datetime.now().isoformat(timespec="seconds"),
+            **(metadata or {}),
         }
+
+    def update_metadata(self, path: Path, metadata: Dict[str, Any]) -> None:
+        record = self._records.get(str(path))
+        if record is None:
+            raise KeyError(f"上传记录不存在: {path}")
+        record.update(metadata)
 
     def to_dict(self) -> Dict[str, Dict[str, Any]]:
         return dict(self._records)

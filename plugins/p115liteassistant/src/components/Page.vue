@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { pluginGet, pluginPost } from '../plugin.js'
 
-const props = defineProps({ api: { type: Object, default: null }, show_switch: { type: Boolean, default: false } })
+const props = defineProps({ api: { type: [Object, Function], default: null }, show_switch: { type: Boolean, default: false } })
 const emit = defineEmits(['switch', 'close', 'action'])
 const status = ref({ running: [], history: [] })
 const loading = ref(false)

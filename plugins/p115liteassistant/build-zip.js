@@ -13,14 +13,17 @@ const legacyAssets = {
     '__federation_expose_Config-43e986fa.js',
     '__federation_expose_Config-bd0f9778.js',
     '__federation_expose_Config-469a5646.js',
+    '__federation_expose_Config-fb65a95a.js',
   ],
   page: [
     '__federation_expose_Page-977537ad.js',
     '__federation_expose_Page-8cb7e1c8.js',
+    '__federation_expose_Page-e25a15b8.js',
   ],
   helper: [
     '_plugin-vue_export-helper-12555fbe.js',
     '_plugin-vue_export-helper-c5cccadb.js',
+    '_plugin-vue_export-helper-acbf976c.js',
   ],
   index: [
     'index-1be59a16.js',
@@ -28,6 +31,7 @@ const legacyAssets = {
     'index-293984c5.js',
     'index-c4f2d89c.js',
     'index-30508e71.js',
+    'index-2bf71762.js',
   ],
   style: [
     'style-1375dbe0.css',
@@ -35,6 +39,7 @@ const legacyAssets = {
     'style-faffdeb7.css',
     'style-63f370f1.css',
     'style-6b3f9aca.css',
+    'style-8bf1f287.css',
   ],
 }
 

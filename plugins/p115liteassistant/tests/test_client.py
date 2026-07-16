@@ -1,5 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -38,6 +41,7 @@ class FakeSession:
                         "file_category": "1",
                         "file_name": "Film.mkv",
                         "pick_code": "pickcode",
+                        "size_byte": "5",
                     },
                 }
             )
@@ -45,6 +49,16 @@ class FakeSession:
 
 
 class U115ClientTest(unittest.TestCase):
+    def test_get_item_normalizes_open_size_byte(self):
+        client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
+
+        item = client.get_item("/Cloud/Film.mkv")
+
+        self.assertEqual(item["path"], "/Cloud/Film.mkv")
+        self.assertEqual(item["type"], "file")
+        self.assertEqual(item["pickcode"], "pickcode")
+        self.assertEqual(item["size"], 5)
+
     def test_qrcode_login_persists_selected_client_cookie(self):
         class QrSession(FakeSession):
             def request(self, method, url, **kwargs):
@@ -87,6 +101,32 @@ class U115ClientTest(unittest.TestCase):
         self.assertIn("iPhone", session.requests[0][2]["headers"]["User-Agent"])
         self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
         self.assertNotIn("Content-Type", session.headers)
+
+    def test_cookie_directory_listing_reads_all_pages_without_fixed_delay(self):
+        class PagedDirectorySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                offset = kwargs["params"]["offset"]
+                size = 1150 if offset == 0 else 1
+                return FakeResponse(
+                    {
+                        "state": True,
+                        "count": 1151,
+                        "data": [
+                            {"fid": f"{offset + index}", "fc": "1", "fn": f"Film{offset + index}.mkv"}
+                            for index in range(size)
+                        ],
+                    }
+                )
+
+        session = PagedDirectorySession()
+        client = U115Client(cookie="UID=1; CID=2", session=session)
+        client.directory_request_interval = 0
+
+        items = client.get_dir_list("12")
+
+        self.assertEqual(len(items), 1151)
+        self.assertEqual([request[2]["params"]["offset"] for request in session.requests], [0, 1150])
 
     def test_cookie_login_falls_back_to_device_api_from_uid(self):
         class DirectorySession(FakeSession):
@@ -142,6 +182,63 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(items, [{"cid": "12", "fc": "0", "fn": "Movies"}])
         self.assertTrue(session.requests[0][1].endswith("/open/ufile/files"))
 
+    def test_open_directory_listing_reads_all_pages(self):
+        class PagedDirectorySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                offset = kwargs["params"]["offset"]
+                size = 1000 if offset == 0 else 1
+                return FakeResponse(
+                    {
+                        "code": 0,
+                        "data": [
+                            {"fid": f"{offset + index}", "fc": "1", "fn": f"Film{offset + index}.mkv"}
+                            for index in range(size)
+                        ],
+                    }
+                )
+
+        session = PagedDirectorySession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client.directory_request_interval = 0
+
+        items = client.get_dir_list("12")
+
+        self.assertEqual(len(items), 1001)
+        self.assertEqual([request[2]["params"]["offset"] for request in session.requests], [0, 1000])
+
+    def test_iter_files_scans_independent_directories_concurrently(self):
+        client = U115Client(session=FakeSession())
+        client.directory_scan_workers = 4
+        client.directory_scan_prefetch = 8
+        state_lock = threading.Lock()
+        active = 0
+        max_active = 0
+
+        def get_dir_list(cid):
+            nonlocal active, max_active
+            with state_lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.03)
+                if cid == "root":
+                    return [{"cid": str(index), "fc": "0", "fn": f"Dir{index}"} for index in range(8)]
+                return [{"fid": f"file-{cid}", "fc": "1", "fn": "Film.mkv", "pc": f"pick-{cid}"}]
+            finally:
+                with state_lock:
+                    active -= 1
+
+        client.get_dir_list = get_dir_list
+
+        files = list(client.iter_files("root"))
+
+        self.assertGreaterEqual(max_active, 2)
+        self.assertEqual(
+            sorted(item["rel_path"] for item in files),
+            [f"Dir{index}/Film.mkv" for index in range(8)],
+        )
+
     def test_upload_requires_login(self):
         with TemporaryDirectory() as directory:
             with self.assertRaises(U115AuthError):
@@ -163,7 +260,250 @@ class U115ClientTest(unittest.TestCase):
             self.assertTrue(result.reused)
             self.assertEqual(result.file_item["fileid"], "123")
             self.assertEqual(session.requests[0][2]["data"]["target"], "U_1_0")
-            self.assertEqual(session.headers["Authorization"], "Bearer token")
+            self.assertEqual(len(session.requests), 1)
+        self.assertEqual(session.headers["Authorization"], "Bearer token")
+
+    def test_download_url_forwards_playback_user_agent(self):
+        class DownloadSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/downurl"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {"1": {"url": {"url": "https://download.example/file"}}},
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = DownloadSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+
+        url = client.get_download_url("pick", user_agent="Player/1.0")
+
+        self.assertEqual(url, "https://download.example/file")
+        request = session.requests[0]
+        self.assertEqual(request[2]["headers"], {"User-Agent": "Player/1.0"})
+
+    def test_download_url_is_one_qps_while_download_streams_remain_concurrent(self):
+        class DownloadSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/downurl"):
+                    pickcode = kwargs["data"]["pick_code"]
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                pickcode: {
+                                    "url": {"url": f"https://download.example/{pickcode}"}
+                                }
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        stream_barrier = threading.Barrier(2)
+        stream_lock = threading.Lock()
+        sleep_delays = []
+        active_streams = 0
+        max_active_streams = 0
+
+        class DownloadResponse:
+            def __enter__(self):
+                nonlocal active_streams, max_active_streams
+                with stream_lock:
+                    active_streams += 1
+                    max_active_streams = max(max_active_streams, active_streams)
+                stream_barrier.wait(timeout=1)
+                return self
+
+            def __exit__(self, *_args):
+                nonlocal active_streams
+                with stream_lock:
+                    active_streams -= 1
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+            @staticmethod
+            def iter_bytes():
+                return iter((b"media",))
+
+        session = DownloadSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+
+        with TemporaryDirectory() as directory, patch(
+            "plugins.p115liteassistant.client.time.monotonic", return_value=100.0
+        ), patch(
+            "plugins.p115liteassistant.client.time.sleep",
+            side_effect=lambda delay: sleep_delays.append(delay),
+        ), patch(
+            "plugins.p115liteassistant.client.httpx.stream",
+            side_effect=lambda *_args, **_kwargs: DownloadResponse(),
+        ), ThreadPoolExecutor(max_workers=2) as executor:
+            outputs = [Path(directory) / f"{pickcode}.mkv" for pickcode in ("one", "two")]
+            futures = [
+                executor.submit(client.download_file, pickcode, output)
+                for pickcode, output in zip(("one", "two"), outputs)
+            ]
+            for future in futures:
+                future.result(timeout=2)
+
+            self.assertEqual([output.read_bytes() for output in outputs], [b"media", b"media"])
+
+        self.assertEqual(sleep_delays, [1.0])
+        self.assertEqual(max_active_streams, 2)
+        self.assertEqual(len(session.requests), 2)
+
+    def test_playback_copy_uses_upstream_copy_directory_and_returns_latest_pickcode(self):
+        class PlaybackSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/copy"):
+                    return FakeResponse({"code": 0, "state": True})
+                if url.endswith("/open/ufile/files"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": [
+                                {
+                                    "cid": "99",
+                                    "fid": "456",
+                                    "fc": "1",
+                                    "fn": "Film.mkv",
+                                    "pc": "copy-pickcode",
+                                }
+                            ],
+                        }
+                    )
+                if url.endswith("/open/ufile/delete"):
+                    return FakeResponse({"code": 0, "state": True})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = PlaybackSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client._playback_dir_id = "99"
+
+        with patch.object(client, "_pickcode_to_file_id", return_value=123):
+            copied = client.create_playback_copy("original-pickcode")
+        client.delete_file(copied.file_id)
+
+        self.assertEqual(copied.file_id, "456")
+        self.assertEqual(copied.pickcode, "copy-pickcode")
+        copy_request = next(item for item in session.requests if item[1].endswith("/open/ufile/copy"))
+        self.assertEqual(copy_request[2]["data"], {"file_id": 123, "pid": 99})
+        self.assertEqual(copy_request[2]["headers"], {"User-Agent": client.ios_user_agent})
+        list_request = next(item for item in session.requests if item[1].endswith("/open/ufile/files"))
+        self.assertEqual(list_request[2]["params"]["o"], "user_ptime")
+        self.assertEqual(list_request[2]["params"]["asc"], 0)
+        self.assertEqual(list_request[2]["params"]["custom_order"], 2)
+        delete_request = next(item for item in session.requests if item[1].endswith("/open/ufile/delete"))
+        self.assertEqual(delete_request[2]["data"], {"file_ids": 456})
+        self.assertEqual(delete_request[2]["headers"], {"User-Agent": client.ios_user_agent})
+
+    def test_playback_copy_serializes_copy_and_latest_lookup_across_files(self):
+        class ConcurrentPlaybackSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.state_lock = threading.Lock()
+                self.operations = []
+                self.latest_file_id = 0
+                self.copy_calls = 0
+                self.second_copy_started = threading.Event()
+
+            def request(self, method, url, **kwargs):
+                if url.endswith("/open/ufile/copy"):
+                    file_id = int(kwargs["data"]["file_id"])
+                    with self.state_lock:
+                        self.operations.append(("copy", file_id))
+                        self.latest_file_id = file_id
+                        self.copy_calls += 1
+                        copy_call = self.copy_calls
+                    if copy_call == 1:
+                        self.second_copy_started.wait(timeout=0.1)
+                    else:
+                        self.second_copy_started.set()
+                    return FakeResponse({"code": 0, "state": True})
+                if url.endswith("/open/ufile/files"):
+                    with self.state_lock:
+                        file_id = self.latest_file_id
+                        self.operations.append(("files", file_id))
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": [
+                                {
+                                    "fid": str(100 + file_id),
+                                    "fc": "1",
+                                    "fn": f"Film{file_id}.mkv",
+                                    "pc": f"copy-{file_id}",
+                                }
+                            ],
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = ConcurrentPlaybackSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client._playback_dir_id = "99"
+        barrier = threading.Barrier(3)
+
+        def create_copy(pickcode):
+            barrier.wait()
+            return client.create_playback_copy(pickcode)
+
+        with patch.object(client, "_pickcode_to_file_id", side_effect=lambda value: int(value)), ThreadPoolExecutor(
+            max_workers=2
+        ) as executor:
+            futures = [executor.submit(create_copy, pickcode) for pickcode in ("1", "2")]
+            barrier.wait()
+            copies = [future.result(timeout=2) for future in futures]
+
+        self.assertEqual({copy.pickcode for copy in copies}, {"copy-1", "copy-2"})
+        self.assertEqual(
+            [operation for operation, _file_id in session.operations],
+            ["copy", "files", "copy", "files"],
+        )
+
+    def test_playback_copy_best_effort_cleans_up_when_first_list_is_empty(self):
+        class CleanupSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.list_calls = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/copy"):
+                    return FakeResponse({"code": 0, "state": True})
+                if url.endswith("/open/ufile/files"):
+                    self.list_calls += 1
+                    if self.list_calls == 1:
+                        return FakeResponse({"code": 0, "data": []})
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": [{"fid": "456", "fc": "1", "fn": "Film.mkv", "pc": "copy-pickcode"}],
+                        }
+                    )
+                if url.endswith("/open/ufile/delete"):
+                    return FakeResponse({"code": 0, "state": True})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = CleanupSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client._playback_dir_id = "99"
+
+        with patch.object(client, "_pickcode_to_file_id", return_value=123), self.assertRaisesRegex(
+            RuntimeError,
+            "复制多端播放文件后未找到副本",
+        ):
+            client.create_playback_copy("original-pickcode")
+
+        self.assertEqual(session.list_calls, 2)
+        delete_request = next(item for item in session.requests if item[1].endswith("/open/ufile/delete"))
+        self.assertEqual(delete_request[2]["data"], {"file_ids": 456})
 
     def test_cookie_login_authorizes_open_api_before_upload(self):
         class CookieUploadSession(FakeSession):

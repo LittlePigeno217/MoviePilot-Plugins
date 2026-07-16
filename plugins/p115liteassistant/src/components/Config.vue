@@ -4,7 +4,7 @@ import { clone, normalizeConfig, pluginGet, pluginPost } from '../plugin.js'
 
 const props = defineProps({
   initialConfig: { type: Object, default: () => ({}) },
-  api: { type: Object, default: null },
+  api: { type: [Object, Function], default: null },
   saving: { type: Boolean, default: false },
 })
 const emit = defineEmits(['save', 'close', 'switch'])
@@ -24,7 +24,7 @@ const qrClients = [
 ]
 const qrDialog = reactive({ open: false, loading: false, error: '', code: '', clientType: 'alipaymini', status: '等待扫码', timer: null })
 const picker = reactive({ open: false, type: '', index: -1, cid: '0', path: '', localBase: '', roots: [], remoteTrail: [], items: [] })
-const pickerTitle = computed(() => ({ strm_source: '选择 115 源目录', upload_target: '选择 115 上传目录', strm_target: '选择本地 STRM 目录', upload_source: '选择本地上传目录' }[picker.type] || '选择目录'))
+const pickerTitle = computed(() => ({ strm_source: '选择 115 源目录', upload_target: '选择 115 上传目录', strm_target: '选择本地 STRM 目录', upload_source: '选择本地上传目录', upload_strm_target: '选择上传 STRM 输出目录' }[picker.type] || '选择目录'))
 const isRemotePicker = computed(() => ['strm_source', 'upload_target'].includes(picker.type))
 const connectionReady = computed(() => Boolean(String(config.cookie || '').trim()))
 const selectedQrClient = computed(() => qrClients.find(item => item.value === qrDialog.clientType) || qrClients[0])
@@ -64,7 +64,7 @@ function useCurrentMoviePilotAddress() {
 }
 
 function addUploadMapping() {
-  config.upload_mappings.push({ enabled: true, source: '', target: '' })
+  config.upload_mappings.push({ enabled: true, source: '', target: '', strm_target: '' })
 }
 
 function remove(items, index) {
@@ -196,6 +196,8 @@ function selectPicker() {
     config.strm_mappings[picker.index].target_dir = localPath
   } else if (picker.type === 'upload_source') {
     config.upload_mappings[picker.index].source = localPath
+  } else if (picker.type === 'upload_strm_target') {
+    config.upload_mappings[picker.index].strm_target = localPath
   }
   picker.open = false
 }
@@ -266,7 +268,11 @@ onBeforeUnmount(clearQrPoll)
           <v-window-item value="strm">
             <section class="work-header">
               <div><span class="work-code">ROUTE / STRM</span><h3>文件映射</h3></div>
-              <v-switch v-model="config.strm_incremental" label="增量生成" color="primary" hide-details density="compact" class="head-switch" />
+              <div class="head-switches">
+                <v-switch v-model="config.strm_incremental" label="增量生成" color="primary" hide-details density="compact" class="head-switch" />
+                <v-switch v-model="config.strm_download_sidecars" label="回传附属文件" color="primary" hide-details density="compact" class="head-switch" />
+                <v-switch v-model="config.same_playback" label="多端播放" color="primary" hide-details density="compact" class="head-switch" />
+              </div>
             </section>
             <section class="strm-address-row">
               <v-text-field v-model="config.moviepilot_address" label="STRM 文件内链接地址" placeholder="http://moviepilot:3000" variant="outlined" density="comfortable" hide-details>
@@ -279,8 +285,8 @@ onBeforeUnmount(clearQrPoll)
               <div class="mapping-caption"><span>115 源目录</span><span>本地 STRM 输出目录</span></div>
               <section v-for="(mapping, index) in config.strm_mappings" :key="mapping.id || index" class="mapping-row">
                 <v-switch v-model="mapping.enabled" aria-label="启用映射" color="primary" hide-details density="compact" />
-                <v-text-field v-model="mapping.source_path" label="115 源目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('strm_source', index)" />
-                <v-text-field v-model="mapping.target_dir" label="本地 STRM 输出目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('strm_target', index)" />
+                <v-text-field v-model="mapping.source_path" class="mapping-primary-field" label="115 源目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('strm_source', index)" />
+                <v-text-field v-model="mapping.target_dir" class="mapping-secondary-field" label="本地 STRM 输出目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('strm_target', index)" />
                 <v-tooltip text="删除映射" location="top"><template #activator="{ props: tipProps }"><v-btn v-bind="tipProps" icon="mdi-delete-outline" variant="text" color="error" size="small" @click="remove(config.strm_mappings, index)" /></template></v-tooltip>
               </section>
               <div v-if="!config.strm_mappings.length" class="empty-row">尚未添加映射</div>
@@ -293,19 +299,21 @@ onBeforeUnmount(clearQrPoll)
               <div><span class="work-code">SYNC / UPLOAD</span><h3>目录上传</h3></div>
               <div class="head-switches">
                 <v-switch v-model="config.upload_include_sidecars" label="上传附属文件" color="primary" hide-details density="compact" class="head-switch" />
+                <v-switch v-model="config.upload_generate_strm" label="上传完成生成 STRM" color="primary" hide-details density="compact" class="head-switch" />
                 <v-switch v-model="config.upload_delete_source" label="上传完成后删除源文件" color="primary" hide-details density="compact" class="head-switch" />
               </div>
             </section>
             <section class="work-grid extension-grid">
               <v-text-field v-model="config.upload_media_extensions" label="媒体扩展名" variant="outlined" density="comfortable" hide-details />
-              <v-text-field v-model="config.upload_sidecar_extensions" label="附属文件扩展名" variant="outlined" density="comfortable" hide-details />
+              <v-text-field v-model="config.upload_sidecar_extensions" label="上传与 STRM 附属文件扩展名" variant="outlined" density="comfortable" hide-details />
             </section>
             <div class="mapping-list">
-              <div class="mapping-caption"><span>本地源目录</span><span>115 目标目录</span></div>
-              <section v-for="(mapping, index) in config.upload_mappings" :key="index" class="mapping-row">
+              <div class="mapping-caption upload-mapping-caption" :class="{ 'with-strm-target': config.upload_generate_strm }"><span>本地源目录</span><span>115 目标目录</span><span v-if="config.upload_generate_strm">STRM 输出目录</span></div>
+              <section v-for="(mapping, index) in config.upload_mappings" :key="index" class="mapping-row upload-mapping-row" :class="{ 'with-strm-target': config.upload_generate_strm }">
                 <v-switch v-model="mapping.enabled" aria-label="启用上传映射" color="primary" hide-details density="compact" />
-                <v-text-field v-model="mapping.source" label="本地源目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('upload_source', index)" />
-                <v-text-field v-model="mapping.target" label="115 目标目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('upload_target', index)" />
+                <v-text-field v-model="mapping.source" class="mapping-primary-field upload-source-field" label="本地源目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('upload_source', index)" />
+                <v-text-field v-model="mapping.target" class="mapping-secondary-field upload-target-field" label="115 目标目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('upload_target', index)" />
+                <v-text-field v-if="config.upload_generate_strm" v-model="mapping.strm_target" class="mapping-tertiary-field upload-strm-field" label="STRM 输出目录" variant="outlined" density="comfortable" readonly hide-details @click="openPicker('upload_strm_target', index)" />
                 <v-tooltip text="删除映射" location="top"><template #activator="{ props: tipProps }"><v-btn v-bind="tipProps" icon="mdi-delete-outline" variant="text" color="error" size="small" @click="remove(config.upload_mappings, index)" /></template></v-tooltip>
               </section>
               <div v-if="!config.upload_mappings.length" class="empty-row">尚未添加上传目录</div>
@@ -418,7 +426,21 @@ onBeforeUnmount(clearQrPoll)
 
 .qr-login-dialog { background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px !important; }.qr-login-head { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 15px 0 18px; border-bottom: 1px solid var(--soft-line); }.qr-login-head > div { display: inline-flex; align-items: center; gap: 9px; color: var(--cyan); font-size: 15px; font-weight: 750; }.qr-login-head span { color: var(--ink); }.qr-login-body { min-height: 400px; padding: 24px 26px 18px !important; text-align: center; }.qr-login-label { margin: 0 0 15px; font-size: 14px; font-weight: 700; }.qr-client-types { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }.qr-client-types :deep(.v-btn) { min-width: 50px; height: 27px; padding: 0 10px; border-radius: 14px; color: var(--muted); border-color: var(--line); font-size: 12px; }.qr-client-types :deep(.v-btn.selected) { color: var(--cyan); border-color: var(--cyan); background: color-mix(in srgb, var(--cyan) 7%, transparent); }.qr-code-stage { display: flex; flex-direction: column; align-items: center; padding-top: 18px; }.qr-code-frame { display: grid; width: 214px; height: 214px; place-items: center; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }.qr-code-frame img { display: block; width: 184px; height: 184px; image-rendering: pixelated; }.qr-code-stage p { margin: 11px 0 4px; color: var(--muted); font-size: 12px; }.qr-code-stage strong { color: var(--cyan); font-size: 13px; }.qr-refresh { margin-top: 14px; color: var(--cyan) !important; background: color-mix(in srgb, var(--cyan) 9%, transparent) !important; border-radius: 4px !important; }.qr-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 320px; gap: 13px; color: var(--muted); font-size: 13px; }.qr-login-actions { min-height: 48px; padding: 6px 14px; }.qr-login-actions :deep(.v-btn) { color: var(--muted); }.qr-login-actions :deep(.v-btn:last-child) { color: var(--cyan); }
 
-@media (max-width: 860px) { .station-head { grid-template-columns: 1fr auto; }.signal-rail { grid-column: 1 / -1; grid-row: 2; }.station-shell { grid-template-columns: 1fr; }.station-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--line); }.station-nav button { grid-template-columns: 22px auto auto; flex: 0 0 auto; min-height: 48px; padding: 0 14px; border-left: 0; border-bottom: 3px solid transparent; }.station-nav button.current { border-left-color: transparent; border-bottom-color: var(--green); }.station-workspace { padding: 23px 20px 0; }.mapping-caption { display: none; }.mapping-row { grid-template-columns: 46px minmax(0, 1fr) 36px; }.mapping-row :deep(.v-text-field:nth-of-type(2)) { grid-column: 2; }.mapping-row :deep(.v-btn) { grid-column: 3; grid-row: 1; }.auth-grid { grid-template-columns: 1fr; }.auth-state { min-height: 185px; border-top: 1px solid var(--line); border-left: 0; }.extension-grid { grid-template-columns: 1fr; } }
+@media (max-width: 860px) {
+  .station-head { grid-template-columns: 1fr auto; }
+  .signal-rail { grid-column: 1 / -1; grid-row: 2; }
+  .station-shell { grid-template-columns: 1fr; }
+  .station-nav { display: flex; overflow-x: auto; padding: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+  .station-nav button { grid-template-columns: 22px auto auto; flex: 0 0 auto; min-height: 48px; padding: 0 14px; border-left: 0; border-bottom: 3px solid transparent; }
+  .station-nav button.current { border-left-color: transparent; border-bottom-color: var(--green); }
+  .station-workspace { padding: 23px 20px 0; }
+  .mapping-caption { display: none; }
+  .mapping-row { grid-template-columns: 46px minmax(0, 1fr) 36px; }
+  .mapping-row :deep(.v-btn) { grid-column: 3; grid-row: 1; }
+  .auth-grid { grid-template-columns: 1fr; }
+  .auth-state { min-height: 185px; border-top: 1px solid var(--line); border-left: 0; }
+  .extension-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 560px) { .station-config { border-left: 0; border-right: 0; }.station-head { padding: 16px; gap: 12px; }.signal-rail em { width: 12px; margin: 0 4px; }.station-workspace { padding: 20px 16px 0; }.work-header { align-items: start; flex-direction: column; }.head-switches { justify-content: start; }.head-switch { margin-bottom: 0; }.mapping-row { grid-template-columns: 42px minmax(0, 1fr) 32px; gap: 8px; }.station-footer { align-items: stretch; flex-direction: column; }.station-footer > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }.station-footer > div :deep(.v-btn) { width: 100%; min-width: 0; }.title-row h2 { font-size: 19px; } }
 @media (prefers-reduced-motion: reduce) { .station-config * { transition: none !important; } }
 </style>
@@ -566,6 +588,8 @@ onBeforeUnmount(clearQrPoll)
 .strm-address-row :deep(.v-btn) { color: var(--cyan); }
 .mapping-caption { padding: 0 12px 8px; color: var(--muted); font-size: 10px; }
 .mapping-row { min-height: 72px; margin-bottom: 9px; padding: 11px 12px; background: var(--paper-strong); border: 1px solid var(--line); border-radius: 6px; }
+.upload-mapping-caption.with-strm-target,
+.upload-mapping-row.with-strm-target { grid-template-columns: 58px repeat(3, minmax(0, 1fr)) 36px; }
 .mapping-row:hover { border-color: color-mix(in srgb, var(--cyan) 52%, var(--line)); }
 .mapping-row :deep(.v-field__input) { font-size: 12px; }
 .empty-row { padding: 32px 0; background: color-mix(in srgb, var(--paper) 58%, var(--paper-strong)); border: 1px dashed var(--line); border-radius: 6px; }
@@ -622,6 +646,13 @@ onBeforeUnmount(clearQrPoll)
   .station-workspace { padding: 26px 24px 0; }
 }
 
+@media (max-width: 860px) {
+  .upload-mapping-row.with-strm-target { grid-template-columns: 46px minmax(0, 1fr) 36px; }
+  .mapping-row :deep(.mapping-primary-field) { grid-column: 2; grid-row: 1; }
+  .mapping-row :deep(.mapping-secondary-field) { grid-column: 2; grid-row: 2; }
+  .mapping-row :deep(.mapping-tertiary-field) { grid-column: 2; grid-row: 3; }
+}
+
 @media (max-width: 620px) {
   .station-config { border-right: 0; border-left: 0; }
   .station-head { min-height: 116px; padding: 15px 16px 14px; }
@@ -636,7 +667,6 @@ onBeforeUnmount(clearQrPoll)
   .extension-grid { grid-template-columns: 1fr; }
   .mapping-caption { display: none; }
   .mapping-row { grid-template-columns: 40px minmax(0, 1fr) 32px; gap: 8px; padding: 9px; }
-  .mapping-row :deep(.v-text-field:nth-of-type(2)) { grid-column: 2; }
   .mapping-row :deep(.v-btn) { grid-column: 3; grid-row: 1; }
   .station-footer { align-items: stretch; flex-direction: column; }
   .station-footer > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

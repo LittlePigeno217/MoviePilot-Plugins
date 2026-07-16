@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import threading
 from base64 import b64encode
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta
 from io import BytesIO
 from math import isfinite
 from pathlib import Path
-from time import monotonic
-from typing import Any, Callable, Dict
+from time import monotonic, time
+from typing import Any, Callable, Dict, Iterator
+from urllib.parse import parse_qsl, urlsplit
 from zoneinfo import ZoneInfo
 
 from app.core.config import settings
@@ -44,7 +46,9 @@ class Api:
         self._lock = threading.Lock()
         self._checkin_lock = threading.Lock()
         self._browse_115_cache: TtlCache[str, list[Dict[str, Any]]] = TtlCache(30)
-        self._redirect_cache: TtlCache[str, str] = TtlCache(60)
+        self._redirect_cache: TtlCache[tuple[str, str], str] = TtlCache(60, maxsize=8096)
+        self._redirect_flights_guard = threading.Lock()
+        self._redirect_flights: Dict[str, tuple[Any, int]] = {}
 
     def get_config(self) -> Dict[str, Any]:
         config = deepcopy(self._store.get_config())
@@ -195,9 +199,18 @@ class Api:
         moviepilot_url = self._strm_moviepilot_url(request)
         return self._start("strm", lambda: self.run_strm(moviepilot_url), "STRM 同步已开始")
 
-    def trigger_upload(self, payload: Dict[str, Any] | bool | None = None) -> Dict[str, Any]:
+    def trigger_upload(
+        self,
+        request: Request,
+        payload: Dict[str, Any] | bool | None = None,
+    ) -> Dict[str, Any]:
         incremental = payload if isinstance(payload, bool) else bool((payload or {}).get("incremental", True))
-        return self._start("upload", lambda: self.run_upload(incremental), "目录上传已开始")
+        moviepilot_url = self._strm_moviepilot_url(request)
+        return self._start(
+            "upload",
+            lambda: self.run_upload(incremental, moviepilot_url),
+            "目录上传已开始",
+        )
 
     def run_strm(self, moviepilot_url: str) -> list[Dict[str, Any]]:
         config = self._store.get_config()
@@ -212,9 +225,18 @@ class Api:
             moviepilot_url,
             self._token_provider(),
             incremental,
+            download_sidecars=bool(config.get("strm_download_sidecars", False)),
+            sidecar_extensions=str(config.get("upload_sidecar_extensions") or ""),
         )
         entries = []
-        totals = {"added": 0, "updated": 0, "skipped": 0, "errors": 0, "duration_ms": 0}
+        totals = {
+            "added": 0,
+            "updated": 0,
+            "sidecars": 0,
+            "skipped": 0,
+            "errors": 0,
+            "duration_ms": 0,
+        }
         for mapping in mappings:
             source = str(mapping.get("source_path") or mapping.get("source_cid") or "-")
             target = str(mapping.get("target_dir") or "-")
@@ -240,25 +262,33 @@ class Api:
                 totals[key] += int(entry.get(key) or 0)
             summary = (
                 f"新增 {int(entry.get('added') or 0)}，更新 {int(entry.get('updated') or 0)}，"
+                f"附属文件 {int(entry.get('sidecars') or 0)}，"
                 f"跳过 {int(entry.get('skipped') or 0)}，失败 {int(entry.get('errors') or 0)}，"
                 f"耗时 {int(entry.get('duration_ms') or 0)}ms"
             )
             log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
             log_result(f"【STRM同步】映射完成：{source} -> {target}，{summary}")
         total_summary = (
-            f"新增 {totals['added']}，更新 {totals['updated']}，跳过 {totals['skipped']}，"
+            f"新增 {totals['added']}，更新 {totals['updated']}，附属文件 {totals['sidecars']}，"
+            f"跳过 {totals['skipped']}，"
             f"失败 {totals['errors']}，耗时 {totals['duration_ms']}ms"
         )
         log_total = logger.warning if totals["errors"] else logger.info
         log_total(f"【STRM同步】执行完成，{total_summary}")
         return entries
 
-    def run_upload(self, incremental: bool = True) -> Dict[str, Any]:
+    def run_upload(self, incremental: bool = True, moviepilot_url: str = "") -> Dict[str, Any]:
         config = self._store.get_config()
         mappings = [mapping for mapping in config.get("upload_mappings") or [] if mapping.get("enabled", True)]
         logger.info(f"【目录上传】开始执行，模式：{'增量' if incremental else '全量'}，有效映射：{len(mappings)}")
         try:
-            entry = DirectoryUploader(self._client_provider(), self._store, config).run(incremental)
+            entry = DirectoryUploader(
+                self._client_provider(),
+                self._store,
+                config,
+                moviepilot_url or str(config.get("moviepilot_address") or ""),
+                self._token_provider(),
+            ).run(incremental)
         except Exception as err:  # noqa: BLE001
             logger.error(f"【目录上传】执行失败：{safe_error_text(err)}")
             entry = {
@@ -273,6 +303,7 @@ class Api:
         self._store.append_history(entry)
         summary = (
             f"上传 {int(entry.get('uploaded') or 0)}，秒传 {int(entry.get('instant') or 0)}，"
+            f"生成 STRM {int(entry.get('strm_generated') or 0)}，"
             f"跳过 {int(entry.get('skipped') or 0)}，删除 {int(entry.get('deleted') or 0)}，"
             f"失败 {int(entry.get('errors') or 0)}，耗时 {int(entry.get('duration_ms') or 0)}ms"
         )
@@ -365,25 +396,103 @@ class Api:
     def history(self) -> Dict[str, Any]:
         return _ok({"items": self._store.get_history()})
 
-    def redirect(self, pickcode: str, apikey: str):
+    @staticmethod
+    def _download_url_cache_ttl(url: str) -> float:
+        expires_at = next(
+            int(value)
+            for key, value in parse_qsl(urlsplit(url).query)
+            if key == "t"
+        )
+        ttl = expires_at - 300 - time()
+        if ttl <= 0:
+            raise U115ApiError("115 下载地址已过期")
+        return ttl
+
+    @staticmethod
+    def _schedule_playback_copy_cleanup(client: U115Client, file_id: str) -> None:
+        def cleanup() -> None:
+            try:
+                client.delete_file(file_id)
+                logger.debug(f"【302跳转服务】清理 {file_id} 文件")
+            except Exception as err:  # noqa: BLE001
+                logger.error(f"【302跳转服务】清理多端播放副本失败：{safe_error_text(err)}")
+
+        timer = threading.Timer(5.0, cleanup)
+        timer.daemon = True
+        timer.start()
+
+    @contextmanager
+    def _redirect_singleflight(self, pickcode: str) -> Iterator[None]:
+        with self._redirect_flights_guard:
+            current = self._redirect_flights.get(pickcode)
+            if current is None:
+                flight_lock = threading.Lock()
+                self._redirect_flights[pickcode] = (flight_lock, 1)
+            else:
+                flight_lock, users = current
+                self._redirect_flights[pickcode] = (flight_lock, users + 1)
+
+        flight_lock.acquire()
+        try:
+            yield
+        finally:
+            flight_lock.release()
+            with self._redirect_flights_guard:
+                current = self._redirect_flights.get(pickcode)
+                if current is not None and current[0] is flight_lock:
+                    if current[1] == 1:
+                        self._redirect_flights.pop(pickcode, None)
+                    else:
+                        self._redirect_flights[pickcode] = (flight_lock, current[1] - 1)
+
+    def redirect(self, request: Request, pickcode: str, apikey: str):
         if not apikey or apikey != self._token_provider():
             return JSONResponse({"success": False, "message": "无效 apikey"}, status_code=403)
-        cached_url = self._redirect_cache.get(pickcode)
+        user_agent = str(request.headers.get("user-agent") or "")
+        cache_ua = user_agent or "NoUA"
+        cache_key = (pickcode, cache_ua)
+        cached_url = self._redirect_cache.get(cache_key)
         if cached_url:
             return RedirectResponse(cached_url, status_code=302)
-        try:
-            def fetch_url() -> str:
-                url = self._client_provider().get_download_url(pickcode)
-                if not url:
-                    raise U115ApiError("未获取到 115 下载地址")
-                return url
+        with self._redirect_singleflight(pickcode):
+            cached_url = self._redirect_cache.get(cache_key)
+            if cached_url:
+                return RedirectResponse(cached_url, status_code=302)
 
-            url = retry_call(fetch_url, attempts=3, delay=1.0)
-        except Exception as err:  # noqa: BLE001
-            logger.error(f"【302取链】获取下载地址失败：{safe_error_text(err)}")
-            return JSONResponse({"success": False, "message": f"取链失败: {err}"}, status_code=502)
-        self._redirect_cache.set(pickcode, url)
-        return RedirectResponse(url, status_code=302)
+            client: U115Client | None = None
+            playback_copy = None
+            try:
+                client = self._client_provider()
+                post_pickcode = pickcode
+                if (
+                    self._store.get_config().get("same_playback")
+                    and self._redirect_cache.count(lambda key: key[0] == pickcode) > 0
+                ):
+                    playback_copy = client.create_playback_copy(pickcode)
+                    post_pickcode = playback_copy.pickcode
+                    logger.debug(
+                        f"【302跳转服务】多端播放开启 {pickcode} -> {post_pickcode}"
+                    )
+
+                def fetch_url() -> str:
+                    url = client.get_download_url(post_pickcode, user_agent=user_agent)
+                    if not url:
+                        raise U115ApiError("未获取到 115 下载地址")
+                    return url
+
+                url = retry_call(fetch_url, attempts=3, delay=1.0)
+                ttl = self._download_url_cache_ttl(url)
+                self._redirect_cache.set(cache_key, url, ttl_seconds=ttl)
+                return RedirectResponse(url, status_code=302)
+            except Exception as err:  # noqa: BLE001
+                logger.error(f"【302取链】获取下载地址失败：{safe_error_text(err)}")
+                return JSONResponse({"success": False, "message": f"取链失败: {err}"}, status_code=502)
+            finally:
+                if client is not None and playback_copy is not None:
+                    try:
+                        self._schedule_playback_copy_cleanup(client, playback_copy.file_id)
+                    except Exception as err:  # noqa: BLE001
+                        logger.error(f"【302跳转服务】安排多端播放副本清理失败：{safe_error_text(err)}")
 
     def _start(self, kind: str, target: Callable[[], Any], message: str) -> Dict[str, Any]:
         label = self._TASK_LABELS.get(kind, kind)
