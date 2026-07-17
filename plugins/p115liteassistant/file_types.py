@@ -14,6 +14,13 @@ DEFAULT_MEDIA_EXTENSIONS = (
     ".iso",
     ".rmvb",
     ".flv",
+    ".mpeg",
+    ".mpg",
+    ".3gp",
+    ".asf",
+    ".m4v",
+    ".tp",
+    ".f4v",
 )
 DEFAULT_SIDECAR_EXTENSIONS = (
     ".nfo",

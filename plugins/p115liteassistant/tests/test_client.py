@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import threading
@@ -9,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import httpx
 
-from plugins.p115liteassistant.client import U115ApiError, U115AuthError, U115Client
+from plugins.p115liteassistant.client import PlaybackCopy, U115ApiError, U115AuthError, U115Client
 
 
 class FakeResponse:
@@ -328,6 +329,119 @@ class U115ClientTest(unittest.TestCase):
             {"User-Agent": "Player/1.0", "Authorization": "Bearer token"},
         )
 
+    def test_cookie_download_url_uses_rsa_and_player_user_agent(self):
+        class CookieDownloadSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/android/2.0/ufile/download"):
+                    return FakeResponse({"state": True, "data": "encrypted-response"})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = CookieDownloadSession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+        client.download_request_interval = 0
+        encrypted_payloads = []
+
+        def encrypt(payload):
+            encrypted_payloads.append(json.loads(payload))
+            return b"encrypted-request"
+
+        with patch(
+            "plugins.p115liteassistant.client.rsa_encrypt",
+            side_effect=encrypt,
+        ), patch(
+            "plugins.p115liteassistant.client.rsa_decrypt",
+            return_value=b'{"url":"https://download.example/cookie-file"}',
+        ):
+            url = client.get_download_url(
+                "abcdefghijklmnopq",
+                user_agent="Player/1.0",
+                mode="cookie",
+            )
+
+        self.assertEqual(url, "https://download.example/cookie-file")
+        self.assertEqual(
+            encrypted_payloads,
+            [{"pick_code": "abcdefghijklmnopq"}],
+        )
+        request = session.requests[0]
+        self.assertEqual(request[0], "POST")
+        self.assertEqual(request[2]["data"], {"data": "encrypted-request"})
+        self.assertEqual(request[2]["headers"]["User-Agent"], "Player/1.0")
+        self.assertEqual(request[2]["headers"]["Cookie"], "UID=1_R2_0; CID=2")
+        self.assertNotIn("Authorization", request[2]["headers"])
+
+    def test_download_url_parser_supports_direct_and_file_id_mappings(self):
+        self.assertEqual(
+            U115Client._extract_download_url(
+                {"url": "https://download.example/direct"}
+            ),
+            "https://download.example/direct",
+        )
+        self.assertEqual(
+            U115Client._extract_download_url(
+                {"123": {"url": {"url": "https://download.example/nested"}}}
+            ),
+            "https://download.example/nested",
+        )
+
+    def test_cookie_playback_directory_uses_a_directory_name_not_a_path(self):
+        class CookieDirectorySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if method == "GET" and url == "https://webapi.115.com/files":
+                    return FakeResponse({"state": True, "count": 0, "data": []})
+                if method == "POST" and url.endswith("/files/add"):
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "data": {"cid": "99", "fc": "0", "fn": "多端播放"},
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = CookieDirectorySession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+        client.directory_request_interval = 0
+
+        directory_id = client._playback_directory_id("cookie")
+
+        self.assertEqual(directory_id, "99")
+        create_request = next(item for item in session.requests if item[1].endswith("/files/add"))
+        self.assertEqual(create_request[2]["data"], {"cname": "多端播放", "pid": 0})
+
+    def test_open_download_mode_does_not_send_cookie(self):
+        class OpenDownloadSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/downurl"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {"1": {"url": {"url": "https://download.example/open-file"}}},
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = OpenDownloadSession()
+        client = U115Client(
+            cookie="UID=1_R2_0; CID=2",
+            tokens={"access_token": "open-token"},
+            session=session,
+        )
+
+        url = client.get_download_url(
+            "abcdefghijklmnopq",
+            user_agent="Player/1.0",
+            mode="open",
+        )
+
+        self.assertEqual(url, "https://download.example/open-file")
+        self.assertEqual(
+            session.requests[0][2]["headers"],
+            {"User-Agent": "Player/1.0", "Authorization": "Bearer open-token"},
+        )
+
     def test_download_url_is_one_qps_while_download_streams_remain_concurrent(self):
         class DownloadSession(FakeSession):
             def request(self, method, url, **kwargs):
@@ -402,21 +516,28 @@ class U115ClientTest(unittest.TestCase):
 
     def test_playback_copy_uses_upstream_copy_directory_and_returns_latest_pickcode(self):
         class PlaybackSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.list_calls = 0
+
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
                 if url.endswith("/open/ufile/copy"):
                     return FakeResponse({"code": 0, "state": True})
                 if url.endswith("/open/ufile/files"):
+                    self.list_calls += 1
+                    file_id = "100" if self.list_calls == 1 else "456"
+                    pickcode = "old-pickcode" if self.list_calls == 1 else "copy-pickcode"
                     return FakeResponse(
                         {
                             "code": 0,
                             "data": [
                                 {
                                     "cid": "99",
-                                    "fid": "456",
+                                    "fid": file_id,
                                     "fc": "1",
                                     "fn": "Film.mkv",
-                                    "pc": "copy-pickcode",
+                                    "pc": pickcode,
                                 }
                             ],
                         }
@@ -451,6 +572,58 @@ class U115ClientTest(unittest.TestCase):
             delete_request[2]["headers"],
             {"User-Agent": client.ios_user_agent, "Authorization": "Bearer token"},
         )
+
+    def test_cookie_playback_copy_uses_cookie_copy_list_and_delete(self):
+        class CookiePlaybackSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.list_calls = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/files/copy"):
+                    return FakeResponse({"state": True})
+                if url == "https://webapi.115.com/files":
+                    self.list_calls += 1
+                    file_id = "100" if self.list_calls == 1 else "456"
+                    pickcode = (
+                        "old-cookie-pickcode"
+                        if self.list_calls == 1
+                        else "bcdefghijklmnopqr"
+                    )
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "data": [
+                                {
+                                    "fid": file_id,
+                                    "fc": "1",
+                                    "fn": "Film.mkv",
+                                    "pc": pickcode,
+                                }
+                            ],
+                        }
+                    )
+                if url.endswith("/rb/delete"):
+                    return FakeResponse({"state": True})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = CookiePlaybackSession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+        client._playback_dir_id = "99"
+
+        with patch.object(client, "_pickcode_to_file_id", return_value=123):
+            copied = client.create_playback_copy("abcdefghijklmnopq", mode="cookie")
+        client.delete_file(copied.file_id, mode=copied.auth_mode)
+
+        self.assertEqual(copied, PlaybackCopy("456", "bcdefghijklmnopqr", "cookie"))
+        copy_request = next(item for item in session.requests if item[1].endswith("/files/copy"))
+        self.assertEqual(copy_request[2]["data"], {"fid": 123, "pid": 99})
+        self.assertEqual(copy_request[2]["headers"]["Cookie"], "UID=1_R2_0; CID=2")
+        list_request = next(item for item in session.requests if item[1] == "https://webapi.115.com/files")
+        self.assertEqual(list_request[2]["params"]["asc"], 0)
+        delete_request = next(item for item in session.requests if item[1].endswith("/rb/delete"))
+        self.assertEqual(delete_request[2]["data"], {"fid": 456})
 
     def test_playback_copy_serializes_copy_and_latest_lookup_across_files(self):
         class ConcurrentPlaybackSession(FakeSession):
@@ -513,10 +686,10 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual({copy.pickcode for copy in copies}, {"copy-1", "copy-2"})
         self.assertEqual(
             [operation for operation, _file_id in session.operations],
-            ["copy", "files", "copy", "files"],
+            ["files", "copy", "files", "files", "copy", "files"],
         )
 
-    def test_playback_copy_best_effort_cleans_up_when_first_list_is_empty(self):
+    def test_playback_copy_waits_until_new_copy_is_visible(self):
         class CleanupSession(FakeSession):
             def __init__(self):
                 super().__init__()
@@ -528,7 +701,7 @@ class U115ClientTest(unittest.TestCase):
                     return FakeResponse({"code": 0, "state": True})
                 if url.endswith("/open/ufile/files"):
                     self.list_calls += 1
-                    if self.list_calls == 1:
+                    if self.list_calls <= 2:
                         return FakeResponse({"code": 0, "data": []})
                     return FakeResponse(
                         {
@@ -543,16 +716,51 @@ class U115ClientTest(unittest.TestCase):
         session = CleanupSession()
         client = U115Client(tokens={"access_token": "token"}, session=session)
         client._playback_dir_id = "99"
+        client.playback_copy_discovery_delays = (0.0, 0.0)
+
+        with patch.object(client, "_pickcode_to_file_id", return_value=123):
+            copied = client.create_playback_copy("original-pickcode")
+
+        self.assertEqual(copied, PlaybackCopy("456", "copy-pickcode", "open"))
+        self.assertEqual(session.list_calls, 3)
+        self.assertFalse(any(item[1].endswith("/open/ufile/delete") for item in session.requests))
+
+    def test_playback_copy_never_deletes_preexisting_item_when_new_copy_is_missing(self):
+        class MissingCopySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/copy"):
+                    return FakeResponse({"code": 0, "state": True})
+                if url.endswith("/open/ufile/files"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": [
+                                {
+                                    "fid": "100",
+                                    "fc": "1",
+                                    "fn": "Existing.mkv",
+                                    "pc": "existing-pickcode",
+                                }
+                            ],
+                        }
+                    )
+                if url.endswith("/open/ufile/delete"):
+                    raise AssertionError("preexisting item must not be deleted")
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = MissingCopySession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client._playback_dir_id = "99"
+        client.playback_copy_discovery_delays = (0.0, 0.0)
 
         with patch.object(client, "_pickcode_to_file_id", return_value=123), self.assertRaisesRegex(
             RuntimeError,
-            "复制多端播放文件后未找到副本",
+            "未发现新副本",
         ):
             client.create_playback_copy("original-pickcode")
 
-        self.assertEqual(session.list_calls, 2)
-        delete_request = next(item for item in session.requests if item[1].endswith("/open/ufile/delete"))
-        self.assertEqual(delete_request[2]["data"], {"file_ids": 456})
+        self.assertFalse(any(item[1].endswith("/open/ufile/delete") for item in session.requests))
 
     def test_cookie_login_authorizes_open_api_before_upload(self):
         class CookieUploadSession(FakeSession):

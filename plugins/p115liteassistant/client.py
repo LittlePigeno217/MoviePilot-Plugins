@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import threading
 import time
@@ -12,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, Iterator, Optional
 
 import httpx
+from p115cipher import rsa_decrypt, rsa_encrypt
 
 
 class U115AuthError(RuntimeError):
@@ -34,6 +36,7 @@ class UploadResult:
 class PlaybackCopy:
     file_id: str
     pickcode: str
+    auth_mode: str = ""
 
 
 class U115Client:
@@ -49,6 +52,10 @@ class U115Client:
         "Referer": "https://proapi.115.com",
     }
     web_files_url = "https://webapi.115.com/files"
+    web_add_directory_url = "https://webapi.115.com/files/add"
+    web_copy_url = "https://webapi.115.com/files/copy"
+    web_delete_url = "https://webapi.115.com/rb/delete"
+    cookie_download_url = "https://proapi.115.com/android/2.0/ufile/download"
     ios_user_agent = (
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20D502 UDown/38.0.2"
@@ -60,7 +67,8 @@ class U115Client:
     directory_request_interval = 1 / 3
     directory_scan_workers = 6
     directory_scan_prefetch = 12
-    playback_copy_directory = "/多端播放"
+    playback_copy_discovery_delays = (0.0, 0.5, 1.0, 2.0)
+    playback_copy_directory = "多端播放"
     qrcode_client_types = {
         "alipaymini",
         "wechatmini",
@@ -478,7 +486,7 @@ class U115Client:
                         yield {
                             "name": name,
                             "pickcode": raw.get("pc") or raw.get("pick_code") or raw.get("pickcode") or "",
-                            "size": raw.get("fs") or raw.get("size_byte") or raw.get("size") or 0,
+                            "size": raw.get("fs") or raw.get("s") or raw.get("size_byte") or raw.get("size") or 0,
                             "rel_path": rel_path,
                         }
 
@@ -586,9 +594,69 @@ class U115Client:
             item["pickcode"] = str(pickcode)
         return item
 
-    def get_download_url(self, pickcode: str, user_agent: str = "") -> Optional[str]:
+    def _playback_auth_mode(self, mode: str = "") -> str:
+        mode = str(mode or "").strip().lower()
+        if not mode:
+            mode = "cookie" if self.cookie else "open"
+        if mode not in {"cookie", "open"}:
+            raise ValueError(f"不支持的 302 取链模式: {mode}")
+        if mode == "cookie":
+            self._ensure_cookie_auth()
+        return mode
+
+    def get_download_url(
+        self,
+        pickcode: str,
+        user_agent: str = "",
+        mode: str = "",
+    ) -> Optional[str]:
         if not pickcode:
             return None
+        mode = self._playback_auth_mode(mode)
+        if mode == "cookie":
+            self._acquire_download_request_slot()
+            return self._get_cookie_download_url(pickcode, user_agent)
+        return self._get_open_download_url(pickcode, user_agent)
+
+    def _get_cookie_download_url(self, pickcode: str, user_agent: str) -> Optional[str]:
+        encrypted = rsa_encrypt(
+            json.dumps(
+                {"pick_code": pickcode},
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).decode("utf-8")
+        payload = self._request_url(
+            "POST",
+            self.cookie_download_url,
+            data={"data": encrypted},
+            headers={"User-Agent": user_agent},
+        )
+        encrypted_data = payload.get("data")
+        if not encrypted_data:
+            raise U115ApiError("115 Cookie 取链未返回加密数据")
+        try:
+            data = json.loads(rsa_decrypt(encrypted_data))
+        except (TypeError, ValueError, json.JSONDecodeError) as err:
+            raise U115ApiError("115 Cookie 下载地址解析失败") from err
+        if not isinstance(data, dict):
+            raise U115ApiError("115 Cookie 下载地址响应无效")
+        return self._extract_download_url(data)
+
+    @staticmethod
+    def _extract_download_url(data: Any) -> Optional[str]:
+        if not isinstance(data, dict):
+            return None
+        candidates = [data]
+        candidates.extend(value for value in data.values() if isinstance(value, dict))
+        for candidate in candidates:
+            url = candidate.get("url")
+            if isinstance(url, dict):
+                url = url.get("url")
+            if isinstance(url, str) and url:
+                return url
+        return None
+
+    def _get_open_download_url(self, pickcode: str, user_agent: str) -> Optional[str]:
         payload = self._request(
             "POST",
             "/open/ufile/downurl",
@@ -597,15 +665,7 @@ class U115Client:
             headers={"User-Agent": user_agent},
         )
         data = self._response_data(payload)
-        if isinstance(data, dict):
-            for value in data.values():
-                if isinstance(value, dict):
-                    url = value.get("url")
-                    if isinstance(url, dict) and url.get("url"):
-                        return str(url["url"])
-                    if isinstance(url, str):
-                        return url
-        return None
+        return self._extract_download_url(data)
 
     def download_file(self, pickcode: str, output: Path, create_parent: bool = True) -> None:
         user_agent = self.ios_user_agent
@@ -639,89 +699,152 @@ class U115Client:
             raise U115ApiError("缺少 p115pickcode 依赖，无法启用多端播放") from err
         return int(to_id(pickcode))
 
-    def _playback_directory_id(self) -> str:
+    def _playback_directory_id(self, mode: str) -> str:
         if self._playback_dir_id:
             return self._playback_dir_id
         with self._playback_dir_lock:
             if not self._playback_dir_id:
-                directory = self.ensure_remote_dir(self.playback_copy_directory)
-                self._playback_dir_id = str(directory.get("fileid") or "")
+                if mode == "cookie":
+                    items = self._get_cookie_dir_list("0")
+                    directory = next(
+                        (
+                            item
+                            for item in items
+                            if self._is_directory(item)
+                            and self._item_name(item) == self.playback_copy_directory
+                        ),
+                        None,
+                    )
+                    if directory is None:
+                        payload = self._request_url(
+                            "POST",
+                            self.web_add_directory_url,
+                            data={"cname": self.playback_copy_directory, "pid": 0},
+                            headers={"User-Agent": self.ios_user_agent},
+                        )
+                        data = self._response_data(payload)
+                        directory = data if isinstance(data, dict) else payload
+                    self._playback_dir_id = self._item_id(directory)
+                else:
+                    directory = self.ensure_remote_dir(self.playback_copy_directory)
+                    self._playback_dir_id = str(directory.get("fileid") or "")
                 if not self._playback_dir_id:
                     raise U115ApiError("创建 115 多端播放目录失败")
         return self._playback_dir_id
 
-    def create_playback_copy(self, pickcode: str) -> PlaybackCopy:
-        target_cid = self._playback_directory_id()
+    def create_playback_copy(self, pickcode: str, mode: str = "") -> PlaybackCopy:
+        mode = self._playback_auth_mode(mode)
+        target_cid = self._playback_directory_id(mode)
         source_file_id = self._pickcode_to_file_id(pickcode)
         with self._playback_copy_lock:
-            self._request(
-                "POST",
-                "/open/ufile/copy",
-                data={"file_id": source_file_id, "pid": int(target_cid)},
-                headers={"User-Agent": self.ios_user_agent},
-            )
-            item: Optional[Dict[str, Any]] = None
-            try:
-                item = self._latest_playback_copy_item(target_cid)
-                return self._playback_copy_from_item(item)
-            except Exception as err:  # noqa: BLE001
+            baseline_item = self._latest_playback_copy_item(target_cid, mode)
+            baseline_file_id = self._playback_copy_file_id(baseline_item or {})
+            if mode == "cookie":
+                self._request_url(
+                    "POST",
+                    self.web_copy_url,
+                    data={"fid": source_file_id, "pid": int(target_cid)},
+                    headers={"User-Agent": self.ios_user_agent},
+                )
+            else:
+                self._request(
+                    "POST",
+                    "/open/ufile/copy",
+                    data={"file_id": source_file_id, "pid": int(target_cid)},
+                    headers={"User-Agent": self.ios_user_agent},
+                )
+            confirmed_file_id = ""
+            last_error: Exception | None = None
+            for delay in self.playback_copy_discovery_delays:
+                if delay:
+                    time.sleep(delay)
+                item = self._latest_playback_copy_item(target_cid, mode)
+                if not item:
+                    continue
+                candidate_file_id = self._playback_copy_file_id(item)
+                if not candidate_file_id or candidate_file_id == baseline_file_id:
+                    continue
                 try:
-                    self._cleanup_failed_playback_copy(target_cid, item)
+                    copy = self._playback_copy_from_item(item)
+                    return PlaybackCopy(copy.file_id, copy.pickcode, mode)
+                except Exception as err:  # noqa: BLE001
+                    confirmed_file_id = candidate_file_id
+                    last_error = err
+            if confirmed_file_id:
+                try:
+                    self.delete_file(confirmed_file_id, mode)
                 except Exception as cleanup_err:  # noqa: BLE001
                     raise U115ApiError(
                         f"读取多端播放副本失败，且无法清理临时副本: {cleanup_err}"
-                    ) from err
-                raise
+                    ) from last_error
+            if last_error is not None:
+                raise last_error
+            raise U115ApiError("复制多端播放文件后未发现新副本")
 
-    def _latest_playback_copy_item(self, target_cid: str) -> Dict[str, Any]:
-        payload = self._request(
-            "GET",
-            "/open/ufile/files",
-            params={
-                "cid": int(target_cid),
-                "limit": 1,
-                "offset": 0,
-                "cur": True,
-                "show_dir": 1,
-                "o": "user_ptime",
-                "asc": 0,
-                "custom_order": 2,
-            },
-            headers={"User-Agent": self.ios_user_agent},
-        )
+    def _latest_playback_copy_item(
+        self,
+        target_cid: str,
+        mode: str,
+    ) -> Optional[Dict[str, Any]]:
+        params = {
+            "cid": int(target_cid),
+            "limit": 1,
+            "offset": 0,
+            "cur": 1,
+            "show_dir": 1,
+            "o": "user_ptime",
+            "asc": 0,
+            "custom_order": 2,
+        }
+        if mode == "cookie":
+            payload = self._request_url(
+                "GET",
+                self.web_files_url,
+                params=params,
+                headers={"User-Agent": self.ios_user_agent},
+            )
+        else:
+            payload = self._request(
+                "GET",
+                "/open/ufile/files",
+                params=params,
+                headers={"User-Agent": self.ios_user_agent},
+            )
         data = self._response_data(payload)
         if not isinstance(data, list) or not data or not isinstance(data[0], dict):
-            raise U115ApiError("复制多端播放文件后未找到副本")
+            return None
         return data[0]
+
+    @staticmethod
+    def _playback_copy_file_id(item: Dict[str, Any]) -> str:
+        return str(item.get("fid") or item.get("file_id") or "")
 
     @staticmethod
     def _playback_copy_from_item(item: Dict[str, Any]) -> PlaybackCopy:
         copied_pickcode = str(
             item.get("pc") or item.get("pick_code") or item.get("pickcode") or ""
         )
-        copied_file_id = str(item.get("fid") or item.get("file_id") or "")
+        copied_file_id = U115Client._playback_copy_file_id(item)
         if not copied_pickcode or not copied_file_id:
             raise U115ApiError("115 多端播放副本信息不完整")
         return PlaybackCopy(file_id=copied_file_id, pickcode=copied_pickcode)
 
-    def _cleanup_failed_playback_copy(
-        self,
-        target_cid: str,
-        item: Optional[Dict[str, Any]],
-    ) -> None:
-        cleanup_item = item or self._latest_playback_copy_item(target_cid)
-        copied_file_id = str(cleanup_item.get("fid") or cleanup_item.get("file_id") or "")
-        if not copied_file_id:
-            raise U115ApiError("未找到待清理的多端播放副本")
-        self.delete_file(copied_file_id)
-
-    def delete_file(self, file_id: str) -> None:
-        self._request(
-            "POST",
-            "/open/ufile/delete",
-            data={"file_ids": int(file_id)},
-            headers={"User-Agent": self.ios_user_agent},
-        )
+    def delete_file(self, file_id: str, mode: str = "") -> None:
+        mode = self._playback_auth_mode(mode)
+        if mode == "cookie":
+            self._request_url(
+                "POST",
+                self.web_delete_url,
+                data={"fid": int(file_id)},
+                headers={"User-Agent": self.ios_user_agent},
+            )
+        else:
+            self._request(
+                "POST",
+                "/open/ufile/delete",
+                data={"file_ids": int(file_id)},
+                headers={"User-Agent": self.ios_user_agent},
+            )
 
     def checkin(self, attempts: int = 3, retry_delay: float = 3.0) -> Dict[str, Any]:
         self._ensure_cookie_auth()

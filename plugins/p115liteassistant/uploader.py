@@ -8,10 +8,18 @@ from typing import Any, Dict, Iterator, Tuple
 
 from app.log import logger
 
+from .client import U115AuthError
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
 from .resilience import retry_call
-from .strm import uploaded_strm_path, write_uploaded_strm
+from .strm import (
+    STRM_URL_FORMAT_VERSION,
+    build_strm_content,
+    normalize_pickcode,
+    strm_file_matches,
+    uploaded_strm_path,
+    write_uploaded_strm,
+)
 
 
 class DirectoryUploader:
@@ -21,14 +29,13 @@ class DirectoryUploader:
         store,
         config: Dict[str, Any],
         moviepilot_url: str = "",
-        api_token: str = "",
     ):
         self._client = client
         self._store = store
         self._config = config
         self._moviepilot_url = moviepilot_url.rstrip("/")
-        self._api_token = api_token
         self._generate_strm = bool(config.get("upload_generate_strm", False))
+        self._redirect_secret = store.get_redirect_secret() if self._generate_strm else ""
         self._media_extensions = parse_extensions(
             config.get("upload_media_extensions", ""),
             DEFAULT_MEDIA_EXTENSIONS,
@@ -86,6 +93,22 @@ class DirectoryUploader:
                     continue
                 rel_path = local_path.relative_to(source).as_posix()
                 yield local_path, (target / PurePosixPath(rel_path)).as_posix(), kind, source, strm_target
+
+    @staticmethod
+    def _validate_strm_output_paths(
+        files: list[Tuple[Path, str, str, Path, str]],
+    ) -> None:
+        claimed: Dict[Path, Path] = {}
+        for local_path, _target_path, kind, source_root, strm_target in files:
+            if kind != "media" or not strm_target:
+                continue
+            output = uploaded_strm_path(local_path, source_root, Path(strm_target))
+            previous = claimed.get(output)
+            if previous is not None and previous != local_path:
+                raise ValueError(
+                    f"STRM 输出路径冲突: {previous} 与 {local_path} 均映射到 {output}"
+                )
+            claimed[output] = local_path
 
     @staticmethod
     def _validate_source_file(local_path: Path, source_root: Path) -> None:
@@ -183,35 +206,62 @@ class DirectoryUploader:
             target_root=Path(strm_target),
             pickcode=pickcode,
             moviepilot_url=self._moviepilot_url,
-            api_token=self._api_token,
+            redirect_secret=self._redirect_secret,
         )
         logger.info(f"【目录上传】生成 STRM 成功：{output}")
         return output
 
     def _strm_record_metadata(self, strm_target: str) -> Dict[str, str]:
         signature = sha256(
-            f"{self._moviepilot_url}\0{self._api_token}".encode("utf-8")
+            f"v{STRM_URL_FORMAT_VERSION}\0{self._moviepilot_url}".encode("utf-8")
         ).hexdigest()
         return {
             "strm_target": str(Path(strm_target).expanduser().resolve()),
             "strm_signature": signature,
         }
 
+    def _uploaded_strm_matches(
+        self,
+        local_path: Path,
+        source_root: Path,
+        strm_target: str,
+        pickcode: str,
+    ) -> bool:
+        try:
+            expected = build_strm_content(
+                self._moviepilot_url,
+                normalize_pickcode(pickcode),
+                self._redirect_secret,
+                local_path.name,
+            )
+        except ValueError:
+            return False
+        output = uploaded_strm_path(local_path, source_root, Path(strm_target))
+        return strm_file_matches(output, expected)
+
     def _resolve_uploaded_file_item(
         self,
         file_item: Dict[str, Any] | None,
         target_path: str,
         wait_for_upload: bool,
+        retry_missing: bool = True,
     ) -> Dict[str, Any] | None:
         if (file_item or {}).get("pickcode"):
             return file_item
-        delays = (5, 10, 20) if wait_for_upload else (0, 5, 10, 20)
+        if wait_for_upload:
+            delays = (5, 10, 20)
+        elif retry_missing:
+            delays = (0, 5, 10, 20)
+        else:
+            delays = (0,)
         last_error: Exception | None = None
         for delay in delays:
             if delay:
                 sleep(delay)
             try:
                 file_item = self._client.get_item(target_path)
+            except U115AuthError:
+                raise
             except Exception as err:  # noqa: BLE001
                 last_error = err
                 continue
@@ -272,7 +322,7 @@ class DirectoryUploader:
         target_path: str,
         file_item: Dict[str, Any] | None,
     ) -> Dict[str, Any]:
-        record = records.to_dict().get(str(local_path), {})
+        record = records.get(local_path)
         recorded_pickcode = str(record.get("pickcode") or "")
         remote_pickcode = str((file_item or {}).get("pickcode") or "")
         if recorded_pickcode:
@@ -337,6 +387,33 @@ class DirectoryUploader:
             migration["pickcode_identity_fileid"] = remote_fileid
         return migration
 
+    def _resolve_and_validate_uploaded_identity(
+        self,
+        records,
+        local_path: Path,
+        target_path: str,
+        wait_for_upload: bool,
+        retry_missing: bool,
+    ) -> Dict[str, Any] | None:
+        file_item = self._resolve_uploaded_file_item(
+            None,
+            target_path,
+            wait_for_upload=wait_for_upload,
+            retry_missing=retry_missing,
+        )
+        identity_migration = self._validate_pending_strm_identity(
+            records,
+            local_path,
+            target_path,
+            file_item,
+        )
+        if identity_migration:
+            records.update_metadata(local_path, identity_migration)
+            logger.info(
+                f"【目录上传】旧上传记录身份迁移成功：{local_path} -> {target_path}"
+            )
+        return file_item
+
     def run(self, incremental: bool = True) -> Dict[str, Any]:
         started = monotonic()
         logger.info("【目录上传】开始校验 115 上传授权")
@@ -355,6 +432,8 @@ class DirectoryUploader:
         }
         errors = []
         files = list(self._iter_files())
+        if self._generate_strm:
+            self._validate_strm_output_paths(files)
         logger.info(f"【目录上传】目录扫描完成，待处理文件：{len(files)}")
         uploaded_paths: set[Path] = set()
         for local_path, target_path, kind, source_root, strm_target in files:
@@ -365,37 +444,35 @@ class DirectoryUploader:
                 else {}
             )
             upload_changed = records.has_changed(local_path, target_path)
+            record = records.get(local_path)
             strm_pending = bool(record_metadata) and (
                 records.has_changed(local_path, target_path, record_metadata)
-                or not uploaded_strm_path(
+                or not self._uploaded_strm_matches(
                     local_path,
                     source_root,
-                    Path(strm_target),
-                ).is_file()
+                    strm_target,
+                    str(record.get("pickcode") or ""),
+                )
             )
             if incremental and not upload_changed:
                 counts["skipped"] += 1
-                if not strm_pending:
+                if not record_metadata:
                     logger.debug(f"【目录上传】文件未变化，跳过：{local_path} -> {target_path}")
                     continue
-                logger.info(f"【目录上传】上传记录未变化，继续生成 STRM：{local_path}")
                 try:
-                    file_item = self._resolve_uploaded_file_item(
-                        None,
-                        target_path,
-                        wait_for_upload=False,
-                    )
-                    identity_migration = self._validate_pending_strm_identity(
+                    file_item = self._resolve_and_validate_uploaded_identity(
                         records,
                         local_path,
                         target_path,
-                        file_item,
+                        wait_for_upload=False,
+                        retry_missing=strm_pending,
                     )
-                    if identity_migration:
-                        records.update_metadata(local_path, identity_migration)
-                        logger.info(
-                            f"【目录上传】旧上传记录身份迁移成功：{local_path} -> {target_path}"
+                    if not strm_pending:
+                        logger.debug(
+                            f"【目录上传】远端文件身份未变化，跳过：{local_path} -> {target_path}"
                         )
+                        continue
+                    logger.info(f"【目录上传】上传记录未变化，继续生成 STRM：{local_path}")
                     if self._complete_strm(
                         records,
                         file_item,

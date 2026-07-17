@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from secrets import token_hex
 from threading import RLock
 from typing import Any, Dict, List
 
@@ -13,6 +14,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "tokens": {},
     "login_client_type": "",
     "moviepilot_address": "",
+    "link_redirect_mode": "cookie",
     "strm_incremental": True,
     "strm_download_sidecars": False,
     "strm_mappings": [],
@@ -20,7 +22,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "upload_include_sidecars": True,
     "upload_generate_strm": False,
     "upload_delete_source": False,
-    "upload_media_extensions": ".mkv,.mp4,.ts,.m2ts,.avi,.mov,.wmv,.iso,.rmvb,.flv",
+    "upload_media_extensions": ".mp4,.mkv,.ts,.iso,.rmvb,.avi,.mov,.mpeg,.mpg,.wmv,.3gp,.asf,.m4v,.flv,.m2ts,.tp,.f4v",
     "upload_sidecar_extensions": ".nfo,.jpg,.jpeg,.png,.webp,.srt,.ass,.ssa,.sup",
     "checkin_enabled": False,
     "checkin_cron": "15 8 * * *",
@@ -37,6 +39,7 @@ class Store:
     _UPLOAD_RECORDS_KEY = "p115liteassistant_upload_records"
     _HISTORY_KEY = "p115liteassistant_history"
     _CHECKIN_SCHEDULE_KEY = "p115liteassistant_checkin_schedule"
+    _REDIRECT_SECRET_KEY = "p115liteassistant_redirect_secret"
 
     def __init__(self, plugin):
         self._plugin = plugin
@@ -67,6 +70,15 @@ class Store:
 
     def save_strm_records(self, records: Dict[str, Dict[str, Any]]) -> None:
         self._plugin.save_data(self._STRM_RECORDS_KEY, records)
+
+    def get_redirect_secret(self) -> str:
+        with self._config_lock:
+            secret = self._plugin.get_data(self._REDIRECT_SECRET_KEY)
+            if isinstance(secret, str) and len(secret) >= 32:
+                return secret
+            secret = token_hex(32)
+            self._plugin.save_data(self._REDIRECT_SECRET_KEY, secret)
+            return secret
 
     def get_upload_records(self) -> IncrementalRecordStore:
         records = self._plugin.get_data(self._UPLOAD_RECORDS_KEY) or {}

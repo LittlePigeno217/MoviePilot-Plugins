@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from apscheduler.triggers.cron import CronTrigger
-from app.core.config import settings
 from app.log import logger
 from app.plugins import _PluginBase
 from app.scheduler import Scheduler
@@ -17,7 +16,7 @@ class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、目录选择、STRM/302、目录上传秒传和签到。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.1.1"
+    plugin_version = "1.1.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -29,7 +28,7 @@ class P115LiteAssistant(_PluginBase):
         self._store = Store(self)
         self._client: Optional[U115Client] = None
         self._client_signature: Optional[Tuple[str, ...]] = None
-        self._api = Api(self._get_client, self._store, self._get_api_token)
+        self._api = Api(self._get_client, self._store)
 
     def init_plugin(self, config: dict | None = None) -> None:
         if config:
@@ -52,10 +51,6 @@ class P115LiteAssistant(_PluginBase):
 
     def _save_client_tokens(self, tokens: Dict[str, Any]) -> None:
         self._store.update_config({"tokens": dict(tokens)})
-
-    @staticmethod
-    def _get_api_token() -> str:
-        return str(settings.API_TOKEN)
 
     def get_state(self) -> bool:
         return bool(self._store.get_config().get("enabled"))
@@ -88,7 +83,13 @@ class P115LiteAssistant(_PluginBase):
             {"path": "/upload", "endpoint": self._api.trigger_upload, "methods": ["POST"], "auth": "bear", "summary": "开始目录上传"},
             {"path": "/checkin", "endpoint": self._api.run_checkin, "methods": ["POST"], "auth": "bear", "summary": "执行 115 签到"},
             {"path": "/history", "endpoint": self._api.history, "methods": ["GET"], "auth": "bear", "summary": "读取执行历史"},
-            {"path": "/redirect", "endpoint": self._api.redirect, "methods": ["GET"], "auth": "apikey", "summary": "115 302 跳转"},
+            {
+                "path": "/redirect",
+                "endpoint": self._api.redirect,
+                "methods": ["GET", "POST", "HEAD"],
+                "allow_anonymous": True,
+                "summary": "115 302 跳转",
+            },
         ]
 
     def get_service(self) -> List[Dict[str, Any]]:

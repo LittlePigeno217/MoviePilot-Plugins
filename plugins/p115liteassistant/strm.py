@@ -4,12 +4,14 @@ import threading
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import datetime
 from hashlib import sha256
+from hmac import compare_digest, new as new_hmac
 from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Any, Dict
-from urllib.parse import quote
+from urllib.parse import urlencode, urlsplit
 
 from app.log import logger
+from p115pickcode import is_valid_pickcode
 
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
@@ -20,20 +22,96 @@ MEDIA_EXTENSIONS = set(DEFAULT_MEDIA_EXTENSIONS)
 STRM_WRITE_WORKERS = 8
 STRM_WRITE_PREFETCH = 256
 STRM_PROGRESS_INTERVAL = 1000
+STRM_URL_FORMAT_VERSION = 3
+REDIRECT_SIGNATURE_VERSION = 1
 
 
-def build_strm_url(moviepilot_url: str, pickcode: str, api_token: str) -> str:
-    base = moviepilot_url.rstrip("/")
-    return (
-        f"{base}/api/v1/plugin/P115LiteAssistant/redirect"
-        f"?pickcode={quote(pickcode)}&apikey={quote(api_token)}"
-    )
+def normalize_pickcode(value: str) -> str:
+    pickcode = str(value or "").strip().lower()
+    try:
+        valid = bool(pickcode) and is_valid_pickcode(pickcode)
+    except (LookupError, TypeError, ValueError):
+        valid = False
+    if not valid:
+        raise ValueError(f"无效 pickcode: {pickcode or '-'}")
+    return pickcode
+
+
+def normalize_moviepilot_url(value: str) -> str:
+    moviepilot_url = str(value or "").strip().rstrip("/")
+    parsed = urlsplit(moviepilot_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("请配置媒体服务器可访问的 MoviePilot HTTP(S) 地址")
+    if parsed.query or parsed.fragment:
+        raise ValueError("MoviePilot 地址不能包含查询参数或片段")
+    return moviepilot_url
+
+
+def build_redirect_signature(redirect_secret: str, pickcode: str) -> str:
+    secret = str(redirect_secret or "")
+    if not secret:
+        raise ValueError("STRM 播放签名密钥为空")
+    normalized_pickcode = normalize_pickcode(pickcode)
+    payload = f"p115liteassistant:v{REDIRECT_SIGNATURE_VERSION}:{normalized_pickcode}"
+    return new_hmac(secret.encode("utf-8"), payload.encode("utf-8"), sha256).hexdigest()
+
+
+def verify_redirect_signature(redirect_secret: str, pickcode: str, signature: str) -> bool:
+    candidate = str(signature or "").strip().lower()
+    if not candidate:
+        return False
+    try:
+        expected = build_redirect_signature(redirect_secret, pickcode)
+    except ValueError:
+        return False
+    return compare_digest(candidate, expected)
+
+
+def build_strm_url(
+    moviepilot_url: str,
+    pickcode: str,
+    redirect_secret: str,
+    file_name: str = "",
+) -> str:
+    base = normalize_moviepilot_url(moviepilot_url)
+    pickcode = normalize_pickcode(pickcode)
+    query = {"pickcode": pickcode}
+    if file_name:
+        query["file_name"] = str(file_name)
+    query["sign"] = build_redirect_signature(redirect_secret, pickcode)
+    return f"{base}/api/v1/plugin/P115LiteAssistant/redirect?{urlencode(query)}"
+
+
+def build_strm_content(
+    moviepilot_url: str,
+    pickcode: str,
+    redirect_secret: str,
+    file_name: str = "",
+) -> str:
+    return build_strm_url(moviepilot_url, pickcode, redirect_secret, file_name) + "\n"
+
+
+def strm_file_matches(output: Path, expected_content: str) -> bool:
+    if output.is_symlink() or not output.is_file():
+        return False
+    expected = expected_content.encode("utf-8")
+    try:
+        return output.stat().st_size == len(expected) and output.read_bytes() == expected
+    except OSError:
+        return False
+
+
+def strm_output_path(media_path: Path) -> Path:
+    if media_path.suffix.lower() == ".iso":
+        return media_path.with_name(f"{media_path.stem}.iso.strm")
+    return media_path.with_suffix(".strm")
 
 
 def _atomic_write_text(output: Path, content: str) -> None:
     temp_output = output.with_name(f".{output.name}.{threading.get_ident()}.tmp")
     try:
-        temp_output.write_text(content, encoding="utf-8")
+        with temp_output.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
         temp_output.replace(output)
     finally:
         temp_output.unlink(missing_ok=True)
@@ -49,7 +127,7 @@ def uploaded_strm_path(local_path: Path, source_root: Path, target_root: Path) -
     source_root = source_root.resolve()
     target_root = target_root.expanduser().resolve()
     rel_path = local_path.resolve().relative_to(source_root)
-    return target_root.joinpath(*rel_path.parts).with_suffix(".strm")
+    return strm_output_path(target_root.joinpath(*rel_path.parts))
 
 
 def write_uploaded_strm(
@@ -58,15 +136,14 @@ def write_uploaded_strm(
     target_root: Path,
     pickcode: str,
     moviepilot_url: str,
-    api_token: str,
+    redirect_secret: str,
 ) -> Path:
-    if not (len(pickcode) == 17 and pickcode.isalnum()):
-        raise ValueError(f"无效 pickcode: {pickcode or '-'}")
+    pickcode = normalize_pickcode(pickcode)
     target_root = target_root.expanduser().resolve()
     output = uploaded_strm_path(local_path, source_root, target_root)
     write_strm_file(
         output,
-        build_strm_url(moviepilot_url, pickcode, api_token) + "\n",
+        build_strm_content(moviepilot_url, pickcode, redirect_secret, local_path.name),
         target_root,
     )
     return output
@@ -78,29 +155,61 @@ class StrmGenerator:
         client,
         store,
         moviepilot_url: str,
-        api_token: str,
         incremental: bool,
         download_sidecars: bool = False,
         sidecar_extensions: str = "",
     ):
         self._client = client
         self._store = store
-        self._moviepilot_url = moviepilot_url
-        self._api_token = api_token
-        self._api_token_signature = sha256(api_token.encode("utf-8")).hexdigest()
+        self._redirect_secret = store.get_redirect_secret()
+        self._moviepilot_url = str(moviepilot_url or "").strip().rstrip("/")
         self._incremental = incremental
-        self._url_prefix = (
-            f"{moviepilot_url.rstrip('/')}/api/v1/plugin/P115LiteAssistant/redirect?pickcode="
-        )
-        self._url_suffix = f"&apikey={quote(api_token)}"
         self._download_sidecars = download_sidecars
         self._sidecar_extensions = parse_extensions(
             sidecar_extensions,
             DEFAULT_SIDECAR_EXTENSIONS,
         )
 
-    def _build_url(self, pickcode: str) -> str:
-        return f"{self._url_prefix}{quote(pickcode)}{self._url_suffix}"
+    def _build_url(self, pickcode: str, file_name: str) -> str:
+        return build_strm_url(
+            self._moviepilot_url,
+            pickcode,
+            self._redirect_secret,
+            file_name,
+        )
+
+    @staticmethod
+    def _record_path_matches(previous: Dict[str, Any], output: Path) -> bool:
+        previous_path = str(previous.get("path") or "").strip()
+        if not previous_path:
+            return False
+        try:
+            return Path(previous_path).expanduser().resolve() == output.resolve()
+        except (OSError, RuntimeError):
+            return False
+
+    @staticmethod
+    def _record_claims_output(
+        records: Dict[str, Any],
+        output: Path,
+        excluded_keys: set[str] | None = None,
+    ) -> bool:
+        excluded_keys = excluded_keys or set()
+        for record_key, record in records.items():
+            if record_key in excluded_keys:
+                continue
+            if not isinstance(record, dict):
+                continue
+            record_path = str(record.get("path") or "").strip()
+            if not record_path:
+                continue
+            try:
+                if Path(record_path).expanduser().resolve() == output:
+                    return True
+            except (OSError, RuntimeError):
+                logger.warning(f"【STRM同步】记录路径无法解析，保留旧文件：{record_path}")
+                return True
+        return False
 
     @staticmethod
     def _write_strm(
@@ -156,10 +265,11 @@ class StrmGenerator:
     def run_mapping(self, mapping: Dict[str, Any]) -> Dict[str, Any]:
         started = monotonic()
         mapping_id = str(mapping.get("id") or mapping.get("source_cid") or "default")
-        source_cid = str(mapping.get("source_cid") or "0")
+        source_cid = str(mapping.get("source_cid") or "").strip()
         target_value = str(mapping.get("target_dir") or "").strip()
-        if not self._moviepilot_url:
-            raise ValueError("请先配置媒体服务器可访问的 MoviePilot 地址")
+        normalize_moviepilot_url(self._moviepilot_url)
+        if not source_cid:
+            raise ValueError("115 源目录不能为空")
         if not target_value:
             raise ValueError("STRM 输出目录不能为空")
         target_dir = Path(target_value).expanduser()
@@ -169,10 +279,26 @@ class StrmGenerator:
             raise ValueError(f"STRM 输出目录不可用: {target_dir}")
 
         records = self._store.get_strm_records()
-        counts = {"added": 0, "updated": 0, "sidecars": 0, "skipped": 0, "errors": 0}
+        counts = {
+            "added": 0,
+            "updated": 0,
+            "removed": 0,
+            "sidecars": 0,
+            "skipped": 0,
+            "errors": 0,
+        }
         created_directories = {target_dir}
         directory_lock = threading.Lock()
+        mapping_record_prefix = f"{mapping_id}:"
+        mapping_record_keys = {
+            key for key in records if str(key).startswith(mapping_record_prefix)
+        }
+        seen_record_keys: set[str] = set()
         claimed_outputs: Dict[Path, str] = {}
+        conflicting_outputs: set[Path] = set()
+        output_record_keys: Dict[Path, set[str]] = {}
+        completed_count_by_output: Dict[Path, str] = {}
+        obsolete_outputs: set[Path] = set()
         pending: Dict[
             Future[None],
             tuple[str, str, str, Dict[str, Any], str, Path],
@@ -186,16 +312,27 @@ class StrmGenerator:
                 processed += 1
                 try:
                     future.result()
-                    records[record_key] = {"fingerprint": fingerprint, "path": str(output)}
-                    if kind == "sidecar":
-                        counts["sidecars"] += 1
-                        logger.debug(f"【STRM同步】附属文件回传成功：{rel_path_text} -> {output}")
+                    if output in conflicting_outputs:
+                        records.pop(record_key, None)
+                        logger.debug(f"【STRM同步】丢弃存在路径冲突的输出：{output}")
                     else:
-                        counts["updated" if previous else "added"] += 1
-                        logger.debug(
-                            f"【STRM同步】{'更新' if previous else '生成'} STRM 成功："
-                            f"{rel_path_text} -> {output}"
-                        )
+                        previous_path = str(previous.get("path") or "").strip()
+                        if kind == "strm" and previous_path:
+                            previous_output = Path(previous_path)
+                            if previous_output != output:
+                                obsolete_outputs.add(previous_output)
+                        records[record_key] = {"fingerprint": fingerprint, "path": str(output)}
+                        if kind == "sidecar":
+                            count_key = "sidecars"
+                            logger.debug(f"【STRM同步】附属文件回传成功：{rel_path_text} -> {output}")
+                        else:
+                            count_key = "updated" if previous else "added"
+                            logger.debug(
+                                f"【STRM同步】{'更新' if previous else '生成'} STRM 成功："
+                                f"{rel_path_text} -> {output}"
+                            )
+                        counts[count_key] += 1
+                        completed_count_by_output[output] = count_key
                 except Exception as err:  # noqa: BLE001
                     counts["errors"] += 1
                     action = "回传附属文件" if kind == "sidecar" else "生成 STRM"
@@ -238,11 +375,6 @@ class StrmGenerator:
                     not self._download_sidecars or extension not in self._sidecar_extensions
                 ):
                     continue
-                pickcode = str(item.get("pickcode") or "")
-                if not pickcode:
-                    counts["errors"] += 1
-                    logger.warning(f"【STRM同步】文件缺少 Pickcode，跳过：{name or '-'}")
-                    continue
                 rel_path = PurePosixPath(str(item.get("rel_path") or name).replace("\\", "/"))
                 if rel_path.is_absolute() or any(part in {"", ".", ".."} for part in rel_path.parts):
                     counts["errors"] += 1
@@ -251,12 +383,35 @@ class StrmGenerator:
                 rel_path_text = rel_path.as_posix()
                 output = target_dir.joinpath(*rel_path.parts)
                 if kind == "strm":
-                    output = output.with_suffix(".strm")
+                    output = strm_output_path(output)
                     record_key = f"{mapping_id}:{rel_path_text}"
                 else:
                     record_key = f"{mapping_id}:sidecar:{rel_path_text}"
+                mapping_record_keys.add(record_key)
+                seen_record_keys.add(record_key)
+                try:
+                    pickcode = normalize_pickcode(str(item.get("pickcode") or ""))
+                except ValueError:
+                    counts["errors"] += 1
+                    logger.warning(f"【STRM同步】文件 Pickcode 无效，跳过：{name or '-'}")
+                    continue
+                output_record_keys.setdefault(output, set()).add(record_key)
+                resolved_output = output.resolve()
+                if self._record_claims_output(
+                    records,
+                    resolved_output,
+                    excluded_keys=mapping_record_keys,
+                ):
+                    conflicting_outputs.add(output)
+                    counts["errors"] += 1
+                    logger.error(
+                        "【STRM同步】输出路径已被其他映射占用，跳过："
+                        f"{rel_path_text} -> {output}"
+                    )
+                    continue
                 conflicting_path = claimed_outputs.get(output)
                 if conflicting_path is not None:
+                    conflicting_outputs.add(output)
                     counts["errors"] += 1
                     logger.error(
                         "【STRM同步】输出路径冲突，跳过："
@@ -265,21 +420,35 @@ class StrmGenerator:
                     continue
                 claimed_outputs[output] = rel_path_text
                 fingerprint = (
-                    f"{pickcode}:{item.get('size', 0)}:{self._moviepilot_url.rstrip('/')}:"
-                    f"{self._api_token_signature}"
+                    f"v{STRM_URL_FORMAT_VERSION}:{pickcode}:{item.get('size', 0)}:"
+                    f"{self._moviepilot_url}"
                 )
+                content = ""
                 if kind == "sidecar":
                     fingerprint = f"{pickcode}:{item.get('size', 0)}"
+                else:
+                    content = self._build_url(pickcode, name) + "\n"
                 previous = records.get(record_key, {})
-                if self._incremental and previous.get("fingerprint") == fingerprint and output.exists():
+                output_matches = (
+                    strm_file_matches(output, content)
+                    if kind == "strm"
+                    else output.is_file()
+                )
+                if (
+                    self._incremental
+                    and previous.get("fingerprint") == fingerprint
+                    and self._record_path_matches(previous, output)
+                    and output_matches
+                ):
                     counts["skipped"] += 1
+                    completed_count_by_output[output] = "skipped"
                     logger.debug(f"【STRM同步】文件未变化，跳过：{rel_path_text}")
                     continue
                 if kind == "strm":
                     future = executor.submit(
                         self._write_strm,
                         output,
-                        self._build_url(pickcode) + "\n",
+                        content,
                         target_dir,
                         created_directories,
                         directory_lock,
@@ -305,6 +474,66 @@ class StrmGenerator:
                     done, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)
                     collect(done)
             drain_pending()
+        for conflicting_output in conflicting_outputs:
+            for record_key in output_record_keys.get(conflicting_output, set()):
+                records.pop(record_key, None)
+            count_key = completed_count_by_output.pop(conflicting_output, "")
+            if count_key and counts[count_key] > 0:
+                counts[count_key] -= 1
+            try:
+                resolved_output = conflicting_output.resolve()
+                resolved_output.relative_to(target_dir)
+                if self._record_claims_output(records, resolved_output):
+                    logger.debug(f"【STRM同步】冲突路径仍被其他记录使用，保留：{resolved_output}")
+                    continue
+                resolved_output.unlink(missing_ok=True)
+                logger.debug(f"【STRM同步】清理冲突 STRM：{resolved_output}")
+            except (OSError, RuntimeError, ValueError) as err:
+                counts["errors"] += 1
+                logger.error(
+                    f"【STRM同步】清理冲突 STRM 失败：{conflicting_output}，"
+                    f"原因：{safe_error_text(err)}"
+                )
+        for obsolete_output in obsolete_outputs:
+            try:
+                resolved_output = obsolete_output.expanduser().resolve()
+                resolved_output.relative_to(target_dir)
+                if resolved_output in claimed_outputs or self._record_claims_output(
+                    records,
+                    resolved_output,
+                ):
+                    logger.debug(f"【STRM同步】旧路径仍被其他记录使用，保留：{resolved_output}")
+                    continue
+                resolved_output.unlink(missing_ok=True)
+                logger.debug(f"【STRM同步】清理旧版 STRM：{resolved_output}")
+            except (OSError, RuntimeError, ValueError) as err:
+                counts["errors"] += 1
+                logger.error(
+                    f"【STRM同步】清理旧版 STRM 失败：{obsolete_output}，原因：{safe_error_text(err)}"
+                )
+        stale_outputs: set[Path] = set()
+        for record_key in mapping_record_keys - seen_record_keys:
+            stale_record = records.pop(record_key, None)
+            if not isinstance(stale_record, dict):
+                continue
+            stale_path = str(stale_record.get("path") or "").strip()
+            if stale_path:
+                stale_outputs.add(Path(stale_path))
+            counts["removed"] += 1
+        for stale_output in stale_outputs:
+            try:
+                resolved_output = stale_output.expanduser().resolve()
+                resolved_output.relative_to(target_dir)
+                if self._record_claims_output(records, resolved_output):
+                    logger.debug(f"【STRM同步】失效路径仍被其他记录使用，保留：{resolved_output}")
+                    continue
+                resolved_output.unlink(missing_ok=True)
+                logger.debug(f"【STRM同步】清理远端已删除条目的输出：{resolved_output}")
+            except (OSError, RuntimeError, ValueError) as err:
+                counts["errors"] += 1
+                logger.error(
+                    f"【STRM同步】清理失效输出失败：{stale_output}，原因：{safe_error_text(err)}"
+                )
         self._store.save_strm_records(records)
         return {
             "kind": "strm",

@@ -50,6 +50,10 @@ class IncrementalRecordStore:
             raise KeyError(f"上传记录不存在: {path}")
         record.update(metadata)
 
+    def get(self, path: Path) -> Dict[str, Any]:
+        record = self._records.get(str(path))
+        return dict(record) if record else {}
+
     def to_dict(self) -> Dict[str, Dict[str, Any]]:
         return dict(self._records)
 

@@ -13,6 +13,10 @@ const config = reactive(normalizeConfig())
 const activeTab = ref('login')
 const notice = ref('')
 const noticeColor = ref('info')
+const redirectModes = [
+  { title: 'Cookie', value: 'cookie' },
+  { title: 'Open API', value: 'open' },
+]
 const qrClients = [
   { label: '支付宝', value: 'alipaymini' },
   { label: '微信', value: 'wechatmini' },
@@ -280,6 +284,7 @@ onBeforeUnmount(clearQrPoll)
                   <v-tooltip text="使用当前站点地址" location="top"><template #activator="{ props: tipProps }"><v-btn v-bind="tipProps" aria-label="使用当前站点地址" icon="mdi-web" variant="text" size="small" @click.stop="useCurrentMoviePilotAddress" /></template></v-tooltip>
                 </template>
               </v-text-field>
+              <v-select v-model="config.link_redirect_mode" :items="redirectModes" label="302 取链模式" variant="outlined" density="comfortable" hide-details />
             </section>
             <div class="mapping-list">
               <div class="mapping-caption"><span>115 源目录</span><span>本地 STRM 输出目录</span></div>
@@ -583,7 +588,7 @@ onBeforeUnmount(clearQrPoll)
 .station-config :deep(.v-field__input) { color: var(--ink); }
 
 .mapping-list { padding-top: 12px; }
-.strm-address-row { padding: 20px 0 8px; border-bottom: 1px solid var(--soft-line); }
+.strm-address-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 14px; padding: 20px 0 8px; border-bottom: 1px solid var(--soft-line); }
 .strm-address-row :deep(input) { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .strm-address-row :deep(.v-btn) { color: var(--cyan); }
 .mapping-caption { padding: 0 12px 8px; color: var(--muted); font-size: 10px; }
@@ -665,6 +670,7 @@ onBeforeUnmount(clearQrPoll)
   .auth-state { grid-column: auto; flex-direction: column; align-items: flex-start; min-height: 124px; }
   .auth-state-icon { margin-bottom: 4px; }
   .extension-grid { grid-template-columns: 1fr; }
+  .strm-address-row { grid-template-columns: 1fr; }
   .mapping-caption { display: none; }
   .mapping-row { grid-template-columns: 40px minmax(0, 1fr) 32px; gap: 8px; padding: 9px; }
   .mapping-row :deep(.v-btn) { grid-column: 3; grid-row: 1; }
