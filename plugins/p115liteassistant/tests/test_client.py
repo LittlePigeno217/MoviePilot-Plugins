@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import threading
@@ -8,7 +9,7 @@ from unittest.mock import Mock, patch
 
 import httpx
 
-from plugins.p115liteassistant.client import U115AuthError, U115Client
+from plugins.p115liteassistant.client import U115ApiError, U115AuthError, U115Client
 
 
 class FakeResponse:
@@ -92,15 +93,25 @@ class U115ClientTest(unittest.TestCase):
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = DirectorySession()
-        items = U115Client(cookie="UID=1; CID=2", client_type="alipaymini", session=session).get_dir_list("12")
+        items = U115Client(
+            cookie="UID=1; CID=2",
+            tokens={"access_token": "open-token"},
+            client_type="alipaymini",
+            session=session,
+        ).get_dir_list("12")
 
         self.assertEqual(items, [{"cid": "12", "fc": "0", "fn": "Movies"}])
         self.assertEqual(session.requests[0][2]["params"]["cid"], 12)
         self.assertEqual(session.requests[0][2]["params"]["limit"], 1150)
         self.assertEqual(session.requests[0][2]["params"]["custom_order"], 1)
-        self.assertIn("iPhone", session.requests[0][2]["headers"]["User-Agent"])
+        request_headers = session.requests[0][2]["headers"]
+        self.assertIn("iPhone", request_headers["User-Agent"])
+        self.assertEqual(request_headers["Cookie"], "UID=1; CID=2")
+        self.assertNotIn("Authorization", request_headers)
         self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
         self.assertNotIn("Content-Type", session.headers)
+        self.assertNotIn("Cookie", session.headers)
+        self.assertNotIn("Authorization", session.headers)
 
     def test_cookie_directory_listing_reads_all_pages_without_fixed_delay(self):
         class PagedDirectorySession(FakeSession):
@@ -128,36 +139,59 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(len(items), 1151)
         self.assertEqual([request[2]["params"]["offset"] for request in session.requests], [0, 1150])
 
-    def test_cookie_login_falls_back_to_device_api_from_uid(self):
+    def test_cookie_auth_failure_does_not_fallback_to_login_client_api(self):
         class DirectorySession(FakeSession):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
                 if url == "https://webapi.115.com/files":
-                    return FakeResponse({"state": False, "code": 500, "error": "temporary failure"})
-                if url == "https://proapi.115.com/115android/2.0/ufile/files":
                     return FakeResponse(
-                        {
-                            "state": True,
-                            "code": "",
-                            "data": [
-                                {
-                                    "category_id": "12",
-                                    "category_name": "Movies",
-                                    "file_category": "0",
-                                }
-                            ],
-                        }
+                        {"state": False, "errno": 990001, "message": "登录超时，请重新登录"}
                     )
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = DirectorySession()
-        client = U115Client(cookie="UID=1_F3_0; CID=2", session=session)
-        client.read_retry_delay = 0
-        items = client.get_dir_list()
+        client = U115Client(
+            cookie="UID=1_R2_0; CID=2",
+            client_type="alipaymini",
+            session=session,
+        )
 
-        self.assertEqual(session.requests[-1][1], "https://proapi.115.com/115android/2.0/ufile/files")
-        self.assertEqual(client._item_name(items[0]), "Movies")
-        self.assertEqual(client._item_id(items[0]), "12")
+        with self.assertRaisesRegex(U115AuthError, "Cookie 已失效"):
+            client.get_dir_list()
+
+        self.assertEqual(len(session.requests), 1)
+        self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
+
+    def test_cookie_directory_http_405_is_not_retried(self):
+        class MethodNotAllowedResponse:
+            def __init__(self, url):
+                request = httpx.Request("GET", url)
+                self.response = httpx.Response(405, request=request)
+
+            def raise_for_status(self):
+                raise httpx.HTTPStatusError(
+                    "method not allowed",
+                    request=self.response.request,
+                    response=self.response,
+                )
+
+            @staticmethod
+            def json():
+                return {"state": False}
+
+        class DirectorySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                return MethodNotAllowedResponse(url)
+
+        session = DirectorySession()
+        client = U115Client(cookie="UID=1; CID=2", session=session)
+
+        with self.assertRaises(httpx.HTTPStatusError):
+            client.get_dir_list()
+
+        self.assertEqual(len(session.requests), 1)
+        self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
 
     def test_cookie_response_with_empty_code_is_successful(self):
         self.assertTrue(U115Client._is_response_success({"state": True, "code": ""}))
@@ -181,6 +215,9 @@ class U115ClientTest(unittest.TestCase):
 
         self.assertEqual(items, [{"cid": "12", "fc": "0", "fn": "Movies"}])
         self.assertTrue(session.requests[0][1].endswith("/open/ufile/files"))
+        self.assertEqual(session.requests[0][2]["headers"]["Authorization"], "Bearer token")
+        self.assertNotIn("Cookie", session.requests[0][2]["headers"])
+        self.assertNotIn("Authorization", session.headers)
 
     def test_open_directory_listing_reads_all_pages(self):
         class PagedDirectorySession(FakeSession):
@@ -261,7 +298,10 @@ class U115ClientTest(unittest.TestCase):
             self.assertEqual(result.file_item["fileid"], "123")
             self.assertEqual(session.requests[0][2]["data"]["target"], "U_1_0")
             self.assertEqual(len(session.requests), 1)
-        self.assertEqual(session.headers["Authorization"], "Bearer token")
+        request_headers = session.requests[0][2]["headers"]
+        self.assertEqual(request_headers["Authorization"], "Bearer token")
+        self.assertNotIn("Cookie", request_headers)
+        self.assertNotIn("Authorization", session.headers)
 
     def test_download_url_forwards_playback_user_agent(self):
         class DownloadSession(FakeSession):
@@ -283,7 +323,10 @@ class U115ClientTest(unittest.TestCase):
 
         self.assertEqual(url, "https://download.example/file")
         request = session.requests[0]
-        self.assertEqual(request[2]["headers"], {"User-Agent": "Player/1.0"})
+        self.assertEqual(
+            request[2]["headers"],
+            {"User-Agent": "Player/1.0", "Authorization": "Bearer token"},
+        )
 
     def test_download_url_is_one_qps_while_download_streams_remain_concurrent(self):
         class DownloadSession(FakeSession):
@@ -394,14 +437,20 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(copied.pickcode, "copy-pickcode")
         copy_request = next(item for item in session.requests if item[1].endswith("/open/ufile/copy"))
         self.assertEqual(copy_request[2]["data"], {"file_id": 123, "pid": 99})
-        self.assertEqual(copy_request[2]["headers"], {"User-Agent": client.ios_user_agent})
+        self.assertEqual(
+            copy_request[2]["headers"],
+            {"User-Agent": client.ios_user_agent, "Authorization": "Bearer token"},
+        )
         list_request = next(item for item in session.requests if item[1].endswith("/open/ufile/files"))
         self.assertEqual(list_request[2]["params"]["o"], "user_ptime")
         self.assertEqual(list_request[2]["params"]["asc"], 0)
         self.assertEqual(list_request[2]["params"]["custom_order"], 2)
         delete_request = next(item for item in session.requests if item[1].endswith("/open/ufile/delete"))
         self.assertEqual(delete_request[2]["data"], {"file_ids": 456})
-        self.assertEqual(delete_request[2]["headers"], {"User-Agent": client.ios_user_agent})
+        self.assertEqual(
+            delete_request[2]["headers"],
+            {"User-Agent": client.ios_user_agent, "Authorization": "Bearer token"},
+        )
 
     def test_playback_copy_serializes_copy_and_latest_lookup_across_files(self):
         class ConcurrentPlaybackSession(FakeSession):
@@ -541,12 +590,19 @@ class U115ClientTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertTrue(result.reused)
         self.assertEqual(client.tokens["access_token"], "open-token")
-        self.assertEqual(session.headers["Authorization"], "Bearer open-token")
+        self.assertNotIn("Authorization", session.headers)
+        prompt_request = next(
+            request for request in session.requests if request[1].endswith("/api/2.0/prompt.php")
+        )
+        self.assertEqual(prompt_request[2]["headers"]["Cookie"], "UID=1; CID=2")
+        self.assertNotIn("Authorization", prompt_request[2]["headers"])
         token_saver.assert_called_once()
         auth_request = next(request for request in session.requests if request[1].endswith("/open/authDeviceCode"))
         self.assertEqual(auth_request[2]["data"]["client_id"], "app-id")
         upload_request = next(request for request in session.requests if request[1].endswith("/open/upload/init"))
         self.assertEqual(upload_request[2]["data"]["target"], "U_1_0")
+        self.assertEqual(upload_request[2]["headers"]["Authorization"], "Bearer open-token")
+        self.assertNotIn("Cookie", upload_request[2]["headers"])
 
     def test_expired_open_token_is_refreshed_and_persisted(self):
         class RefreshSession(FakeSession):
@@ -583,7 +639,12 @@ class U115ClientTest(unittest.TestCase):
         client.ensure_upload_ready()
 
         self.assertEqual(client.tokens["access_token"], "new-token")
-        self.assertEqual(session.headers["Authorization"], "Bearer new-token")
+        user_request = next(
+            request for request in session.requests if request[1].endswith("/open/user/info")
+        )
+        self.assertEqual(user_request[2]["headers"]["Authorization"], "Bearer new-token")
+        self.assertNotIn("Cookie", user_request[2]["headers"])
+        self.assertNotIn("Authorization", session.headers)
         token_saver.assert_called_once()
         self.assertEqual(token_saver.call_args.args[0]["refresh_token"], "new-refresh")
 
@@ -607,7 +668,7 @@ class U115ClientTest(unittest.TestCase):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
                 if url.endswith("/open/user/info"):
-                    if self.headers.get("Authorization") == "Bearer new-token":
+                    if kwargs.get("headers", {}).get("Authorization") == "Bearer new-token":
                         return FakeResponse({"code": 0, "data": {"user_id": "1"}})
                     return UnauthorizedResponse(url)
                 if url.endswith("/open/refreshToken"):
@@ -633,14 +694,18 @@ class U115ClientTest(unittest.TestCase):
         client.ensure_upload_ready()
 
         self.assertEqual(client.tokens["access_token"], "new-token")
-        self.assertEqual(session.headers["Authorization"], "Bearer new-token")
+        self.assertEqual(
+            session.requests[-1][2]["headers"]["Authorization"],
+            "Bearer new-token",
+        )
+        self.assertNotIn("Authorization", session.headers)
 
     def test_invalid_token_falls_back_to_cookie_open_authorization(self):
         class CookieFallbackSession(FakeSession):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
                 if url.endswith("/open/user/info"):
-                    if self.headers.get("Authorization") == "Bearer cookie-token":
+                    if kwargs.get("headers", {}).get("Authorization") == "Bearer cookie-token":
                         return FakeResponse({"code": 0, "data": {"user_id": "1"}})
                     return FakeResponse({"state": False, "code": 40140125, "message": "access_token 已失效"})
                 if url.endswith("/open/refreshToken"):
@@ -674,7 +739,11 @@ class U115ClientTest(unittest.TestCase):
             client.ensure_upload_ready()
 
         self.assertEqual(client.tokens["access_token"], "cookie-token")
-        self.assertEqual(session.headers["Authorization"], "Bearer cookie-token")
+        self.assertEqual(
+            session.requests[-1][2]["headers"]["Authorization"],
+            "Bearer cookie-token",
+        )
+        self.assertNotIn("Authorization", session.headers)
 
     def test_checkin_retries_failed_post_requests(self):
         class CheckinSession(FakeSession):
@@ -696,8 +765,63 @@ class U115ClientTest(unittest.TestCase):
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = CheckinSession()
-        result = U115Client(cookie="UID=1; CID=2", session=session).checkin(retry_delay=0)
+        with patch("plugins.p115liteassistant.client.time.time", return_value=1_700_000_000):
+            result = U115Client(cookie="UID=1_R2_0; CID=2", session=session).checkin(
+                retry_delay=0
+            )
 
         self.assertEqual(session.post_attempts, 3)
         self.assertEqual(result["continuous_day"], 8)
         self.assertEqual(result["points_num"], 15)
+        self.assertTrue(
+            all(
+                request[1] == "https://proapi.115.com/android/2.0/user/points_sign"
+                for request in session.requests
+            )
+        )
+        expected_token = hashlib.sha1(
+            b"1-Points_Sign@#115-1700000000"
+        ).hexdigest()
+        post_requests = [request for request in session.requests if request[0] == "POST"]
+        self.assertTrue(
+            all(
+                request[2]["data"]
+                == {"token": expected_token, "token_time": 1_700_000_000}
+                for request in post_requests
+            )
+        )
+        self.assertTrue(
+            all(request[2]["headers"]["Cookie"] == "UID=1_R2_0; CID=2" for request in session.requests)
+        )
+        self.assertTrue(
+            all("Authorization" not in request[2]["headers"] for request in session.requests)
+        )
+
+    def test_checkin_requires_numeric_uid_from_cookie(self):
+        client = U115Client(cookie="CID=2", session=FakeSession())
+
+        with self.assertRaisesRegex(U115AuthError, "缺少有效 UID"):
+            client.checkin()
+
+    def test_checkin_surfaces_upstream_error_after_retries(self):
+        class CheckinSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.post_attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if method == "GET" and url.endswith("/user/points_sign"):
+                    return FakeResponse({"state": True, "data": {"is_sign_today": 0}})
+                if method == "POST" and url.endswith("/user/points_sign"):
+                    self.post_attempts += 1
+                    return FakeResponse({"state": False, "message": "服务器开小差了，稍后再试吧"})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = CheckinSession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+
+        with self.assertRaisesRegex(U115ApiError, "服务器开小差了"):
+            client.checkin(retry_delay=0)
+
+        self.assertEqual(session.post_attempts, 3)

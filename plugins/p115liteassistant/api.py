@@ -116,7 +116,7 @@ class Api:
             if cached is not None:
                 return _ok({"cid": cache_key, "items": deepcopy(cached)})
             items = []
-            for item in retry_call(lambda: self._client_provider().get_dir_list(cache_key), attempts=3, delay=1.0):
+            for item in self._client_provider().get_dir_list(cache_key):
                 if not U115Client._is_directory(item):
                     continue
                 name = U115Client._item_name(item).strip()

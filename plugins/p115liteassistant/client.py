@@ -43,7 +43,11 @@ class U115Client:
     passport_url = "https://passportapi.115.com"
     qrcode_status_url = "https://qrcodeapi.115.com/get/status/"
     qrcode_base_url = "https://qrcodeapi.115.com"
-    points_sign_url = "https://webapi.115.com/user/points_sign"
+    points_sign_url = "https://proapi.115.com/android/2.0/user/points_sign"
+    points_sign_headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://proapi.115.com",
+    }
     web_files_url = "https://webapi.115.com/files"
     ios_user_agent = (
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
@@ -66,20 +70,6 @@ class U115Client:
         "115ipad",
         "tv",
     }
-    cookie_app_by_ssoent = {
-        "A1": "web",
-        "D1": "ios",
-        "D3": "115ios",
-        "F1": "android",
-        "F3": "115android",
-        "H1": "ipad",
-        "H3": "115ipad",
-        "I1": "tv",
-        "R1": "wechatmini",
-        "R2": "alipaymini",
-        "S1": "harmony",
-    }
-
     def __init__(
         self,
         cookie: str = "",
@@ -120,10 +110,6 @@ class U115Client:
         self.session.headers.pop("Content-Type", None)
         self.session.headers.pop("Cookie", None)
         self.session.headers.pop("Authorization", None)
-        if self.cookie:
-            self.session.headers["Cookie"] = self.cookie
-        if self.tokens.get("access_token"):
-            self.session.headers["Authorization"] = f"Bearer {self.tokens['access_token']}"
 
     def export_tokens(self) -> Dict[str, Any]:
         return dict(self.tokens)
@@ -290,13 +276,11 @@ class U115Client:
             self._request_url(
                 "GET",
                 f"{self.qrcode_base_url}/api/2.0/prompt.php",
-                require_auth=False,
                 params={"uid": uid},
             )
             self._request_url(
                 "GET",
                 f"{self.qrcode_base_url}/api/2.0/slogin.php",
-                require_auth=False,
                 params={"key": uid, "uid": uid, "client": 0},
             )
             token_payload = self._request_url(
@@ -356,11 +340,11 @@ class U115Client:
 
     def get_dir_list(self, cid: str = "0") -> list[Dict[str, Any]]:
         if self.cookie:
-            try:
-                return self._get_cookie_dir_list(cid)
-            except (httpx.HTTPError, U115ApiError, ValueError):
-                return self._get_device_dir_list(cid)
+            return self._get_cookie_dir_list(cid)
 
+        return self._get_open_dir_list(cid)
+
+    def _get_open_dir_list(self, cid: str) -> list[Dict[str, Any]]:
         items: list[Dict[str, Any]] = []
         offset = 0
         page_size = 1000
@@ -463,54 +447,6 @@ class U115Client:
                 return items
             offset += len(batch)
 
-    def _get_device_dir_list(self, cid: str) -> list[Dict[str, Any]]:
-        app = self._cookie_app()
-        if app in {"alipaymini", "wechatmini"}:
-            url = f"{self.base_url}/{app}/files"
-        else:
-            url = f"{self.base_url}/{app}/2.0/ufile/files"
-        items: list[Dict[str, Any]] = []
-        offset = 0
-        page_size = 1000
-        while True:
-            self._acquire_directory_request_slot()
-            payload = self._request_url(
-                "GET",
-                url,
-                params={
-                    "aid": 1,
-                    "cid": int(cid or 0),
-                    "count_folders": 1,
-                    "limit": page_size,
-                    "offset": offset,
-                    "record_open_time": 1,
-                    "show_dir": 1,
-                    "cur": 1,
-                    "fc_mix": 1,
-                    "asc": 1,
-                    "o": "user_ptime",
-                    "custom_order": 2,
-                },
-            )
-            data = self._response_data(payload)
-            batch = list(data) if isinstance(data, list) else []
-            items.extend(batch)
-            if self._directory_page_complete(payload, len(items), len(batch), page_size):
-                return items
-            offset += len(batch)
-
-    def _cookie_app(self) -> str:
-        if self.client_type:
-            return self.client_type
-        for part in self.cookie.split(";"):
-            key, separator, value = part.strip().partition("=")
-            if key != "UID" or not separator:
-                continue
-            uid_parts = value.split("_")
-            if len(uid_parts) > 1:
-                return self.cookie_app_by_ssoent.get(uid_parts[1], "alipaymini")
-        return "alipaymini"
-
     def iter_files(self, cid: str) -> Iterator[Dict[str, Any]]:
         root_cid = str(cid or "0")
         pending = deque([(root_cid, "")])
@@ -563,7 +499,7 @@ class U115Client:
             found = next(
                 (
                     item
-                    for item in self.get_dir_list(current["fileid"])
+                    for item in self._get_open_dir_list(current["fileid"])
                     if self._is_directory(item)
                     and self._item_name(item) == name
                 ),
@@ -588,7 +524,7 @@ class U115Client:
                 found = next(
                     (
                         item
-                        for item in self.get_dir_list(current["fileid"])
+                        for item in self._get_open_dir_list(current["fileid"])
                         if self._is_directory(item)
                         and self._item_name(item) == name
                     ),
@@ -606,7 +542,7 @@ class U115Client:
         return current
 
     def upload_file(self, target_dir: Dict[str, Any], local_path: Path) -> UploadResult:
-        self._ensure_auth()
+        self._ensure_open_auth()
         file_size = local_path.stat().st_size
         file_sha1 = self._calc_sha1(local_path)
         preid = self._calc_sha1(local_path, 128 * 1024 * 1024)
@@ -789,7 +725,12 @@ class U115Client:
 
     def checkin(self, attempts: int = 3, retry_delay: float = 3.0) -> Dict[str, Any]:
         self._ensure_cookie_auth()
-        current = self._request_url("GET", self.points_sign_url)
+        user_id = self._cookie_user_id()
+        current = self._request_url(
+            "GET",
+            self.points_sign_url,
+            headers=self.points_sign_headers,
+        )
         data = self._response_data(current) or {}
         if isinstance(data, dict) and int(data.get("is_sign_today") or 0) == 1:
             return {"already": True, "message": "今日已签到"}
@@ -797,10 +738,17 @@ class U115Client:
         last_error: Exception | None = None
         for attempt in range(1, total + 1):
             try:
-                payload = self._request_url("POST", self.points_sign_url, no_error=True)
+                token_time = int(time.time())
+                token = hashlib.sha1(
+                    f"{user_id}-Points_Sign@#115-{token_time}".encode("utf-8")
+                ).hexdigest()
+                payload = self._request_url(
+                    "POST",
+                    self.points_sign_url,
+                    headers=self.points_sign_headers,
+                    data={"token": token, "token_time": token_time},
+                )
                 data = self._response_data(payload) or {}
-                if not self._is_response_success(payload):
-                    raise U115ApiError(str(payload.get("message") or payload.get("error") or "115 签到失败"))
                 return {
                     "already": False,
                     "continuous_day": data.get("continuous_day", 0) if isinstance(data, dict) else 0,
@@ -812,6 +760,17 @@ class U115Client:
                 if attempt < total:
                     time.sleep(max(0.0, retry_delay))
         raise last_error or U115ApiError("115 签到失败")
+
+    def _cookie_user_id(self) -> int:
+        for part in self.cookie.split(";"):
+            key, separator, value = part.strip().partition("=")
+            if key.upper() != "UID" or not separator:
+                continue
+            user_id = value.partition("_")[0]
+            if user_id.isdigit():
+                return int(user_id)
+            break
+        raise U115AuthError("115 Cookie 缺少有效 UID，请重新扫码登录")
 
     def _upload_to_oss(
         self,
@@ -908,6 +867,13 @@ class U115Client:
     ) -> Dict[str, Any]:
         if require_auth:
             self._ensure_open_auth()
+            access_token = str(self.tokens.get("access_token") or "")
+            if not access_token:
+                raise U115AuthError("缺少有效的 115 Open 授权，请重新扫码登录")
+            kwargs["headers"] = self._scoped_auth_headers(
+                kwargs.get("headers"),
+                bearer=access_token,
+            )
             require_auth = False
         if endpoint == self.download_endpoint:
             self._acquire_download_request_slot()
@@ -927,8 +893,13 @@ class U115Client:
         no_error: bool = False,
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        cookie_request = require_auth
         if require_auth:
-            self._ensure_auth()
+            self._ensure_cookie_auth()
+            kwargs["headers"] = self._scoped_auth_headers(
+                kwargs.get("headers"),
+                cookie=self.cookie,
+            )
         attempts = self.read_retry_attempts if method.upper() in {"GET", "HEAD"} else 1
         for attempt in range(1, attempts + 1):
             try:
@@ -938,21 +909,51 @@ class U115Client:
                 if not isinstance(payload, dict):
                     raise U115ApiError("115 返回了无效响应")
                 if not no_error and not self._is_response_success(payload):
-                    raise U115ApiError(str(payload.get("message") or payload.get("error") or payload))
+                    message = str(payload.get("message") or payload.get("error") or payload)
+                    if cookie_request and self._is_cookie_auth_error(payload, message):
+                        raise U115AuthError("115 Cookie 已失效，请重新扫码登录")
+                    raise U115ApiError(message)
                 return payload
+            except httpx.HTTPStatusError as err:
+                status_code = err.response.status_code
+                if 400 <= status_code < 500 or attempt >= attempts:
+                    raise
+                time.sleep(self.read_retry_delay * attempt)
             except (httpx.HTTPError, U115ApiError, ValueError):
                 if attempt >= attempts:
                     raise
                 time.sleep(self.read_retry_delay * attempt)
         raise U115ApiError("115 请求失败")
 
-    def _ensure_auth(self) -> None:
-        if not self.is_authenticated():
-            raise U115AuthError("115 未登录，请配置 Cookie 或完成扫码登录")
-
     def _ensure_cookie_auth(self) -> None:
         if not self.cookie:
             raise U115AuthError("缺少有效的 115 Cookie，请重新扫码登录")
+
+    @staticmethod
+    def _scoped_auth_headers(
+        headers: Optional[Dict[str, Any]],
+        *,
+        cookie: str = "",
+        bearer: str = "",
+    ) -> Dict[str, Any]:
+        scoped = dict(headers or {})
+        for key in tuple(scoped):
+            if str(key).lower() in {"authorization", "cookie"}:
+                scoped.pop(key, None)
+        if cookie:
+            scoped["Cookie"] = cookie
+        if bearer:
+            scoped["Authorization"] = f"Bearer {bearer}"
+        return scoped
+
+    @staticmethod
+    def _is_cookie_auth_error(payload: Dict[str, Any], message: str) -> bool:
+        errno = payload.get("errno") or payload.get("code")
+        normalized = message.lower()
+        return errno in (990001, "990001") or any(
+            marker in normalized
+            for marker in ("登录超时", "请重新登录", "重新扫码", "cookie")
+        )
 
     @staticmethod
     def _is_response_success(payload: Dict[str, Any]) -> bool:
