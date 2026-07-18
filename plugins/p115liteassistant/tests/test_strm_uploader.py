@@ -504,7 +504,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(result["sidecars"], 1)
             self.assertEqual(result["errors"], 0)
 
-    def test_strm_generator_rejects_same_stem_output_collisions(self):
+    def test_strm_generator_keeps_first_same_stem_item(self):
         class ConflictingMediaClient:
             @staticmethod
             def iter_files(_cid):
@@ -517,6 +517,12 @@ class StrmAndUploaderTest(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             store = FakeStore()
+            stale_output = Path(directory) / "Film.mp4.strm"
+            stale_output.write_text("stale\n", encoding="utf-8")
+            store.strm_records["movies:Film.mp4"] = {
+                "fingerprint": "stale",
+                "path": str(stale_output),
+            }
             result = StrmGenerator(
                 ConflictingMediaClient(),
                 store,
@@ -524,11 +530,83 @@ class StrmAndUploaderTest(unittest.TestCase):
                 incremental=False,
             ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
 
-            self.assertEqual(result["added"], 0)
-            self.assertEqual(result["errors"], 1)
-            self.assertFalse((Path(directory) / "Film.strm").exists())
-            self.assertNotIn("movies:Film.mkv", store.strm_records)
+            output = Path(directory) / "Film.strm"
+            self.assertEqual(result["added"], 1)
+            self.assertEqual(result["skipped"], 1)
+            self.assertEqual(result["removed"], 1)
+            self.assertEqual(result["errors"], 0)
+            self.assertIn(f"pickcode={VALID_PICKCODE}", output.read_text(encoding="utf-8"))
+            self.assertNotIn(f"pickcode={SECOND_PICKCODE}", output.read_text(encoding="utf-8"))
+            self.assertFalse(stale_output.exists())
+            self.assertIn("movies:Film.mkv", store.strm_records)
             self.assertNotIn("movies:Film.mp4", store.strm_records)
+
+    def test_strm_generator_keeps_first_exact_duplicate_path(self):
+        class DuplicateMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {"name": "Film.mkv", "pickcode": VALID_PICKCODE, "size": 1, "rel_path": "Film.mkv"},
+                        {"name": "Film.mkv", "pickcode": SECOND_PICKCODE, "size": 2, "rel_path": "Film.mkv"},
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            store = FakeStore()
+            result = StrmGenerator(
+                DuplicateMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=False,
+            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+
+            output = Path(directory) / "Film.strm"
+            self.assertEqual(result["added"], 1)
+            self.assertEqual(result["skipped"], 1)
+            self.assertEqual(result["errors"], 0)
+            self.assertIn(f"pickcode={VALID_PICKCODE}", output.read_text(encoding="utf-8"))
+            self.assertNotIn(f"pickcode={SECOND_PICKCODE}", output.read_text(encoding="utf-8"))
+            self.assertIn("movies:Film.mkv", store.strm_records)
+
+    def test_strm_generator_keeps_latest_115_modified_duplicate(self):
+        class DuplicateMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {
+                            "name": "Film.mkv",
+                            "pickcode": VALID_PICKCODE,
+                            "size": 1,
+                            "mtime": 100,
+                            "rel_path": "Film.mkv",
+                        },
+                        {
+                            "name": "Film.mp4",
+                            "pickcode": SECOND_PICKCODE,
+                            "size": 2,
+                            "mtime": 200,
+                            "rel_path": "Film.mp4",
+                        },
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            store = FakeStore()
+            result = StrmGenerator(
+                DuplicateMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=False,
+            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+
+            output = Path(directory) / "Film.strm"
+            self.assertEqual(result["added"], 1)
+            self.assertEqual(result["skipped"], 1)
+            self.assertEqual(result["errors"], 0)
+            self.assertIn(f"pickcode={SECOND_PICKCODE}", output.read_text(encoding="utf-8"))
+            self.assertNotIn(f"pickcode={VALID_PICKCODE}", output.read_text(encoding="utf-8"))
 
     def test_strm_generator_rejects_output_owned_by_another_mapping(self):
         class SingleMediaClient:

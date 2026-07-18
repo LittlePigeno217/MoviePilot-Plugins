@@ -179,6 +179,13 @@ class StrmGenerator:
         )
 
     @staticmethod
+    def _item_mtime(item: Dict[str, Any]) -> int:
+        try:
+            return int(float(item.get("mtime") or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
     def _record_path_matches(previous: Dict[str, Any], output: Path) -> bool:
         previous_path = str(previous.get("path") or "").strip()
         if not previous_path:
@@ -279,6 +286,7 @@ class StrmGenerator:
             raise ValueError(f"STRM 输出目录不可用: {target_dir}")
 
         records = self._store.get_strm_records()
+        initial_records = dict(records)
         counts = {
             "added": 0,
             "updated": 0,
@@ -295,6 +303,9 @@ class StrmGenerator:
         }
         seen_record_keys: set[str] = set()
         claimed_outputs: Dict[Path, str] = {}
+        claimed_record_keys: Dict[Path, str] = {}
+        claimed_mtimes: Dict[Path, int] = {}
+        duplicate_logged_outputs: set[Path] = set()
         conflicting_outputs: set[Path] = set()
         output_record_keys: Dict[Path, set[str]] = {}
         completed_count_by_output: Dict[Path, str] = {}
@@ -411,14 +422,42 @@ class StrmGenerator:
                     continue
                 conflicting_path = claimed_outputs.get(output)
                 if conflicting_path is not None:
-                    conflicting_outputs.add(output)
-                    counts["errors"] += 1
-                    logger.error(
-                        "【STRM同步】输出路径冲突，跳过："
-                        f"{rel_path_text} 与 {conflicting_path} 均映射到 {output}"
-                    )
-                    continue
+                    winner_record_key = claimed_record_keys[output]
+                    candidate_mtime = self._item_mtime(item)
+                    if candidate_mtime <= claimed_mtimes[output]:
+                        if record_key != winner_record_key:
+                            seen_record_keys.discard(record_key)
+                        counts["skipped"] += 1
+                        if output not in duplicate_logged_outputs:
+                            duplicate_logged_outputs.add(output)
+                            logger.warning(
+                                "【STRM同步】输出路径存在多个媒体，按 115 更新时间保留："
+                                f"{conflicting_path}，跳过：{rel_path_text}"
+                            )
+                        continue
+
+                    drain_pending()
+                    seen_record_keys.discard(winner_record_key)
+                    seen_record_keys.add(record_key)
+                    records.pop(winner_record_key, None)
+                    counts["skipped"] += 1
+                    completed_key = completed_count_by_output.pop(output, "")
+                    if completed_key in counts and counts[completed_key] > 0:
+                        counts[completed_key] -= 1
+                    if output not in duplicate_logged_outputs:
+                        duplicate_logged_outputs.add(output)
+                        logger.warning(
+                            "【STRM同步】输出路径存在多个媒体，按 115 更新时间替换："
+                            f"{conflicting_path} -> {rel_path_text}"
+                        )
+                    else:
+                        logger.debug(
+                            "【STRM同步】输出路径存在更多媒体，按 115 更新时间替换："
+                            f"{conflicting_path} -> {rel_path_text}"
+                        )
                 claimed_outputs[output] = rel_path_text
+                claimed_record_keys[output] = record_key
+                claimed_mtimes[output] = self._item_mtime(item)
                 fingerprint = (
                     f"v{STRM_URL_FORMAT_VERSION}:{pickcode}:{item.get('size', 0)}:"
                     f"{self._moviepilot_url}"
@@ -428,7 +467,7 @@ class StrmGenerator:
                     fingerprint = f"{pickcode}:{item.get('size', 0)}"
                 else:
                     content = self._build_url(pickcode, name) + "\n"
-                previous = records.get(record_key, {})
+                previous = initial_records.get(record_key, {})
                 output_matches = (
                     strm_file_matches(output, content)
                     if kind == "strm"

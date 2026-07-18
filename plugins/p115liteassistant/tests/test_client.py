@@ -80,14 +80,14 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(client.check_login()["data"]["status"], 2)
         self.assertEqual(client.cookie, "UID=1; CID=2")
 
-    def test_cookie_login_lists_directories_from_web_api(self):
+    def test_cookie_login_lists_directories_from_open_api(self):
         class DirectorySession(FakeSession):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
-                if url == "https://webapi.115.com/files":
+                if url.endswith("/open/ufile/files"):
                     return FakeResponse(
                         {
-                            "state": True,
+                            "code": 0,
                             "data": [{"cid": "12", "fc": "0", "fn": "Movies"}],
                         }
                     )
@@ -104,95 +104,16 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(items, [{"cid": "12", "fc": "0", "fn": "Movies"}])
         self.assertEqual(session.requests[0][2]["params"]["cid"], 12)
         self.assertEqual(session.requests[0][2]["params"]["limit"], 1150)
-        self.assertEqual(session.requests[0][2]["params"]["custom_order"], 1)
+        self.assertEqual(session.requests[0][2]["params"]["o"], "user_utime")
+        self.assertEqual(session.requests[0][2]["params"]["asc"], 0)
+        self.assertNotIn("custom_order", session.requests[0][2]["params"])
         request_headers = session.requests[0][2]["headers"]
-        self.assertIn("iPhone", request_headers["User-Agent"])
-        self.assertEqual(request_headers["Cookie"], "UID=1; CID=2")
-        self.assertNotIn("Authorization", request_headers)
-        self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
+        self.assertEqual(request_headers["Authorization"], "Bearer open-token")
+        self.assertNotIn("Cookie", request_headers)
+        self.assertTrue(session.requests[0][1].endswith("/open/ufile/files"))
         self.assertNotIn("Content-Type", session.headers)
         self.assertNotIn("Cookie", session.headers)
         self.assertNotIn("Authorization", session.headers)
-
-    def test_cookie_directory_listing_reads_all_pages_without_fixed_delay(self):
-        class PagedDirectorySession(FakeSession):
-            def request(self, method, url, **kwargs):
-                self.requests.append((method, url, kwargs))
-                offset = kwargs["params"]["offset"]
-                size = 1150 if offset == 0 else 1
-                return FakeResponse(
-                    {
-                        "state": True,
-                        "count": 1151,
-                        "data": [
-                            {"fid": f"{offset + index}", "fc": "1", "fn": f"Film{offset + index}.mkv"}
-                            for index in range(size)
-                        ],
-                    }
-                )
-
-        session = PagedDirectorySession()
-        client = U115Client(cookie="UID=1; CID=2", session=session)
-        client.directory_request_interval = 0
-
-        items = client.get_dir_list("12")
-
-        self.assertEqual(len(items), 1151)
-        self.assertEqual([request[2]["params"]["offset"] for request in session.requests], [0, 1150])
-
-    def test_cookie_auth_failure_does_not_fallback_to_login_client_api(self):
-        class DirectorySession(FakeSession):
-            def request(self, method, url, **kwargs):
-                self.requests.append((method, url, kwargs))
-                if url == "https://webapi.115.com/files":
-                    return FakeResponse(
-                        {"state": False, "errno": 990001, "message": "登录超时，请重新登录"}
-                    )
-                raise AssertionError(f"unexpected request: {method} {url}")
-
-        session = DirectorySession()
-        client = U115Client(
-            cookie="UID=1_R2_0; CID=2",
-            client_type="alipaymini",
-            session=session,
-        )
-
-        with self.assertRaisesRegex(U115AuthError, "Cookie 已失效"):
-            client.get_dir_list()
-
-        self.assertEqual(len(session.requests), 1)
-        self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
-
-    def test_cookie_directory_http_405_is_not_retried(self):
-        class MethodNotAllowedResponse:
-            def __init__(self, url):
-                request = httpx.Request("GET", url)
-                self.response = httpx.Response(405, request=request)
-
-            def raise_for_status(self):
-                raise httpx.HTTPStatusError(
-                    "method not allowed",
-                    request=self.response.request,
-                    response=self.response,
-                )
-
-            @staticmethod
-            def json():
-                return {"state": False}
-
-        class DirectorySession(FakeSession):
-            def request(self, method, url, **kwargs):
-                self.requests.append((method, url, kwargs))
-                return MethodNotAllowedResponse(url)
-
-        session = DirectorySession()
-        client = U115Client(cookie="UID=1; CID=2", session=session)
-
-        with self.assertRaises(httpx.HTTPStatusError):
-            client.get_dir_list()
-
-        self.assertEqual(len(session.requests), 1)
-        self.assertEqual(session.requests[0][1], "https://webapi.115.com/files")
 
     def test_cookie_response_with_empty_code_is_successful(self):
         self.assertTrue(U115Client._is_response_success({"state": True, "code": ""}))
@@ -225,10 +146,11 @@ class U115ClientTest(unittest.TestCase):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
                 offset = kwargs["params"]["offset"]
-                size = 1000 if offset == 0 else 1
+                size = 1150 if offset == 0 else 1
                 return FakeResponse(
                     {
                         "code": 0,
+                        "count": 1151,
                         "data": [
                             {"fid": f"{offset + index}", "fc": "1", "fn": f"Film{offset + index}.mkv"}
                             for index in range(size)
@@ -242,8 +164,51 @@ class U115ClientTest(unittest.TestCase):
 
         items = client.get_dir_list("12")
 
-        self.assertEqual(len(items), 1001)
-        self.assertEqual([request[2]["params"]["offset"] for request in session.requests], [0, 1000])
+        self.assertEqual(len(items), 1151)
+        self.assertEqual([request[2]["params"]["offset"] for request in session.requests], [0, 1150])
+
+    def test_open_directory_listing_continues_after_short_page_when_count_remains(self):
+        class ShortPageDirectorySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                offset = kwargs["params"]["offset"]
+                size = 2 if offset == 0 else 1
+                return FakeResponse(
+                    {
+                        "code": 0,
+                        "count": 3,
+                        "data": [
+                            {"fid": f"{offset + index}", "fc": "1", "fn": f"Film{offset + index}.mkv"}
+                            for index in range(size)
+                        ],
+                    }
+                )
+
+        session = ShortPageDirectorySession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client.directory_request_interval = 0
+
+        items = client.get_dir_list("12")
+
+        self.assertEqual(len(items), 3)
+        self.assertEqual([request[2]["params"]["offset"] for request in session.requests], [0, 2])
+
+    def test_open_directory_invalid_page_does_not_switch_protocols(self):
+        class InvalidDirectorySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/files"):
+                    return FakeResponse({"code": 0, "data": {"items": []}})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = InvalidDirectorySession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+
+        with self.assertRaisesRegex(U115ApiError, "目录分页返回了无效响应"):
+            client.get_dir_list("12")
+
+        self.assertEqual(len(session.requests), 1)
+        self.assertTrue(session.requests[0][1].endswith("/open/ufile/files"))
 
     def test_iter_files_scans_independent_directories_concurrently(self):
         client = U115Client(session=FakeSession())
@@ -385,30 +350,67 @@ class U115ClientTest(unittest.TestCase):
             "https://download.example/nested",
         )
 
-    def test_cookie_playback_directory_uses_a_directory_name_not_a_path(self):
+    def test_cookie_playback_directory_uses_open_api_directory_name(self):
         class CookieDirectorySession(FakeSession):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
-                if method == "GET" and url == "https://webapi.115.com/files":
-                    return FakeResponse({"state": True, "count": 0, "data": []})
-                if method == "POST" and url.endswith("/files/add"):
+                if method == "GET" and url.endswith("/open/ufile/files"):
+                    return FakeResponse({"code": 0, "data": []})
+                if method == "POST" and url.endswith("/open/folder/add"):
                     return FakeResponse(
                         {
-                            "state": True,
-                            "data": {"cid": "99", "fc": "0", "fn": "多端播放"},
+                            "code": 0,
+                            "data": {"file_id": "99", "file_name": "多端播放"},
                         }
                     )
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = CookieDirectorySession()
-        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+        client = U115Client(
+            cookie="UID=1_R2_0; CID=2",
+            tokens={"access_token": "open-token"},
+            session=session,
+        )
         client.directory_request_interval = 0
 
-        directory_id = client._playback_directory_id("cookie")
+        directory_id = client._playback_directory_id()
 
         self.assertEqual(directory_id, "99")
-        create_request = next(item for item in session.requests if item[1].endswith("/files/add"))
-        self.assertEqual(create_request[2]["data"], {"cname": "多端播放", "pid": 0})
+        create_request = next(item for item in session.requests if item[1].endswith("/open/folder/add"))
+        self.assertEqual(create_request[2]["data"], {"pid": 0, "file_name": "多端播放"})
+        self.assertEqual(create_request[2]["headers"]["Authorization"], "Bearer open-token")
+
+    def test_existing_directory_response_is_resolved_before_next_path_component(self):
+        class ExistingDirectorySession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.list_calls = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if method == "GET" and url.endswith("/open/ufile/files"):
+                    self.list_calls += 1
+                    if self.list_calls == 1:
+                        return FakeResponse({"code": 0, "data": []})
+                    return FakeResponse(
+                        {"code": 0, "data": [{"cid": "99", "fc": "0", "fn": "多端播放"}]}
+                    )
+                if method == "POST" and url.endswith("/open/folder/add"):
+                    return FakeResponse({"state": False, "code": 20004, "message": "目录已存在"})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = ExistingDirectorySession()
+        client = U115Client(tokens={"access_token": "open-token"}, session=session)
+        client.directory_request_interval = 0
+
+        directory = client.ensure_remote_dir("/多端播放")
+
+        self.assertEqual(directory["fileid"], "99")
+        self.assertEqual(directory["path"], "/多端播放")
+        self.assertEqual(
+            [request[2]["data"] for request in session.requests if request[0] == "POST"],
+            [{"pid": 0, "file_name": "多端播放"}],
+        )
 
     def test_open_download_mode_does_not_send_cookie(self):
         class OpenDownloadSession(FakeSession):
@@ -573,7 +575,7 @@ class U115ClientTest(unittest.TestCase):
             {"User-Agent": client.ios_user_agent, "Authorization": "Bearer token"},
         )
 
-    def test_cookie_playback_copy_uses_cookie_copy_list_and_delete(self):
+    def test_cookie_playback_copy_uses_open_list_and_cookie_mutations(self):
         class CookiePlaybackSession(FakeSession):
             def __init__(self):
                 super().__init__()
@@ -583,7 +585,7 @@ class U115ClientTest(unittest.TestCase):
                 self.requests.append((method, url, kwargs))
                 if url.endswith("/files/copy"):
                     return FakeResponse({"state": True})
-                if url == "https://webapi.115.com/files":
+                if url.endswith("/open/ufile/files"):
                     self.list_calls += 1
                     file_id = "100" if self.list_calls == 1 else "456"
                     pickcode = (
@@ -593,7 +595,7 @@ class U115ClientTest(unittest.TestCase):
                     )
                     return FakeResponse(
                         {
-                            "state": True,
+                            "code": 0,
                             "data": [
                                 {
                                     "fid": file_id,
@@ -609,7 +611,11 @@ class U115ClientTest(unittest.TestCase):
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = CookiePlaybackSession()
-        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+        client = U115Client(
+            cookie="UID=1_R2_0; CID=2",
+            tokens={"access_token": "open-token"},
+            session=session,
+        )
         client._playback_dir_id = "99"
 
         with patch.object(client, "_pickcode_to_file_id", return_value=123):
@@ -620,8 +626,9 @@ class U115ClientTest(unittest.TestCase):
         copy_request = next(item for item in session.requests if item[1].endswith("/files/copy"))
         self.assertEqual(copy_request[2]["data"], {"fid": 123, "pid": 99})
         self.assertEqual(copy_request[2]["headers"]["Cookie"], "UID=1_R2_0; CID=2")
-        list_request = next(item for item in session.requests if item[1] == "https://webapi.115.com/files")
+        list_request = next(item for item in session.requests if item[1].endswith("/open/ufile/files"))
         self.assertEqual(list_request[2]["params"]["asc"], 0)
+        self.assertEqual(list_request[2]["headers"]["Authorization"], "Bearer open-token")
         delete_request = next(item for item in session.requests if item[1].endswith("/rb/delete"))
         self.assertEqual(delete_request[2]["data"], {"fid": 456})
 
@@ -908,13 +915,15 @@ class U115ClientTest(unittest.TestCase):
         )
         self.assertNotIn("Authorization", session.headers)
 
-    def test_invalid_token_falls_back_to_cookie_open_authorization(self):
+    def test_directory_invalid_token_falls_back_to_cookie_open_authorization(self):
         class CookieFallbackSession(FakeSession):
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
-                if url.endswith("/open/user/info"):
+                if url.endswith("/open/ufile/files"):
                     if kwargs.get("headers", {}).get("Authorization") == "Bearer cookie-token":
-                        return FakeResponse({"code": 0, "data": {"user_id": "1"}})
+                        return FakeResponse(
+                            {"code": 0, "data": [{"fid": "1", "fn": "Film.mkv"}]}
+                        )
                     return FakeResponse({"state": False, "code": 40140125, "message": "access_token 已失效"})
                 if url.endswith("/open/refreshToken"):
                     return FakeResponse({"code": 401, "message": "refresh_token 已失效"})
@@ -944,14 +953,38 @@ class U115ClientTest(unittest.TestCase):
         client.read_retry_delay = 0
 
         with patch.object(U115Client, "_open_client_id", return_value="app-id"):
-            client.ensure_upload_ready()
+            items = client.get_dir_list("12")
 
+        self.assertEqual(items, [{"fid": "1", "fn": "Film.mkv"}])
         self.assertEqual(client.tokens["access_token"], "cookie-token")
         self.assertEqual(
             session.requests[-1][2]["headers"]["Authorization"],
             "Bearer cookie-token",
         )
+        self.assertEqual(session.requests[-1][2]["params"]["cid"], 12)
         self.assertNotIn("Authorization", session.headers)
+
+    def test_open_business_error_mentioning_token_does_not_replay_post(self):
+        class BusinessErrorSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/upload/init"):
+                    return FakeResponse(
+                        {"state": False, "code": 50001, "message": "upload token generation failed"}
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = BusinessErrorSession()
+        client = U115Client(
+            tokens={"access_token": "open-token", "refresh_token": "refresh-token"},
+            session=session,
+        )
+
+        with self.assertRaisesRegex(U115ApiError, "upload token generation failed"):
+            client._request("POST", "/open/upload/init", data={"file_name": "Film.mkv"})
+
+        self.assertEqual(len(session.requests), 1)
+        self.assertTrue(session.requests[0][1].endswith("/open/upload/init"))
 
     def test_checkin_retries_failed_post_requests(self):
         class CheckinSession(FakeSession):
