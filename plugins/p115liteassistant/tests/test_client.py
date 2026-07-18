@@ -5,12 +5,20 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import threading
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 import httpx
 
-from plugins.p115liteassistant.client import PlaybackCopy, U115ApiError, U115AuthError, U115Client
+from plugins.p115liteassistant.client import (
+    PlaybackCopy,
+    U115AccessLimitError,
+    U115ApiError,
+    U115AuthError,
+    U115Client,
+)
+from plugins.p115liteassistant.resilience import retry_call
 
 
 class FakeResponse:
@@ -44,6 +52,7 @@ class FakeSession:
                         "file_name": "Film.mkv",
                         "pick_code": "pickcode",
                         "size_byte": "5",
+                        "utime": "123",
                     },
                 }
             )
@@ -60,6 +69,147 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(item["type"], "file")
         self.assertEqual(item["pickcode"], "pickcode")
         self.assertEqual(item["size"], 5)
+        self.assertEqual(item["mtime"], 123)
+
+    def test_get_item_returns_none_for_open_api_error_payload(self):
+        class MissingItemSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/folder/get_info"):
+                    return FakeResponse(
+                        {"state": False, "code": 20018, "message": "文件或目录不存在"}
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        item = U115Client(
+            tokens={"access_token": "token"},
+            session=MissingItemSession(),
+        ).get_item("/Cloud/Missing.mkv")
+
+        self.assertIsNone(item)
+
+    def test_get_item_raises_for_non_missing_open_api_error(self):
+        class FailedItemSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/folder/get_info"):
+                    return FakeResponse(
+                        {"state": False, "code": 50001, "message": "上游服务异常"}
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        client = U115Client(
+            tokens={"access_token": "token"},
+            session=FailedItemSession(),
+        )
+
+        with self.assertRaisesRegex(U115ApiError, "上游服务异常"):
+            client.get_item("/Cloud/Film.mkv")
+
+    def test_get_item_rejects_incomplete_success_payload(self):
+        class IncompleteItemSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/folder/get_info"):
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "code": 0,
+                            "data": {
+                                "file_id": "123",
+                                "file_category": "1",
+                                "file_name": "Film.mkv",
+                                "size_byte": "5",
+                                "utime": "123",
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        client = U115Client(
+            tokens={"access_token": "token"},
+            session=IncompleteItemSession(),
+        )
+
+        with self.assertRaisesRegex(U115ApiError, "缺少 pick_code"):
+            client.get_item("/Cloud/Film.mkv")
+
+    def test_get_item_rejects_file_without_size(self):
+        class IncompleteItemSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/folder/get_info"):
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "code": 0,
+                            "data": {
+                                "file_id": "123",
+                                "file_category": "1",
+                                "file_name": "Film.mkv",
+                                "pick_code": "pickcode",
+                                "utime": "123",
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        client = U115Client(
+            tokens={"access_token": "token"},
+            session=IncompleteItemSession(),
+        )
+
+        with self.assertRaisesRegex(U115ApiError, "缺少有效文件大小"):
+            client.get_item("/Cloud/Film.mkv")
+
+    def test_get_item_rejects_file_without_mtime(self):
+        class IncompleteItemSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/folder/get_info"):
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "code": 0,
+                            "data": {
+                                "file_id": "123",
+                                "file_category": "1",
+                                "file_name": "Film.mkv",
+                                "pick_code": "pickcode",
+                                "size_byte": "5",
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        client = U115Client(
+            tokens={"access_token": "token"},
+            session=IncompleteItemSession(),
+        )
+
+        with self.assertRaisesRegex(U115ApiError, "缺少有效修改时间"):
+            client.get_item("/Cloud/Film.mkv")
+
+    def test_response_success_rejects_nonzero_code_with_true_state(self):
+        self.assertFalse(
+            U115Client._is_response_success(
+                {"state": True, "code": 911, "message": "已达到当前访问上限"}
+            )
+        )
+
+    def test_upload_callback_success_requires_explicit_success_status(self):
+        self.assertFalse(U115Client._is_upload_callback_success({}))
+        self.assertFalse(
+            U115Client._is_upload_callback_success({"message": "callback received"})
+        )
+        self.assertFalse(
+            U115Client._is_upload_callback_success({"state": True, "code": 50001})
+        )
+        self.assertFalse(
+            U115Client._is_upload_callback_success({"state": False, "code": 0})
+        )
+        self.assertTrue(U115Client._is_upload_callback_success({"state": True}))
+        self.assertTrue(U115Client._is_upload_callback_success({"code": 0}))
 
     def test_qrcode_login_persists_selected_client_cookie(self):
         class QrSession(FakeSession):
@@ -242,6 +392,109 @@ class U115ClientTest(unittest.TestCase):
             [f"Dir{index}/Film.mkv" for index in range(8)],
         )
 
+    def test_iter_files_cancels_queued_directories_after_access_limit(self):
+        client = U115Client(session=FakeSession())
+        client.directory_scan_workers = 1
+        client.directory_scan_prefetch = 8
+        calls = []
+        state_lock = threading.Lock()
+
+        def get_dir_list(cid):
+            with state_lock:
+                calls.append(cid)
+            if cid == "root":
+                return [
+                    {"cid": str(index), "fc": "0", "fn": f"Dir{index}"}
+                    for index in range(8)
+                ]
+            raise U115AccessLimitError("已达到当前访问上限，请稍后再试")
+
+        client.get_dir_list = get_dir_list
+
+        with self.assertRaises(U115AccessLimitError):
+            list(client.iter_files("root"))
+
+        self.assertEqual(calls, ["root", "0"])
+
+    def test_iter_files_interrupts_inflight_retry_wait_after_access_limit(self):
+        client = U115Client(session=FakeSession())
+        client.directory_scan_workers = 2
+        client.directory_scan_prefetch = 2
+        workers_started = threading.Barrier(2)
+        interrupted = threading.Event()
+
+        def get_dir_list(cid):
+            if cid == "root":
+                return [
+                    {"cid": "1", "fc": "0", "fn": "Dir1"},
+                    {"cid": "2", "fc": "0", "fn": "Dir2"},
+                ]
+            workers_started.wait(timeout=1)
+            if cid == "1":
+                raise U115AccessLimitError("已达到当前访问上限，请稍后再试")
+            try:
+                client._wait_for_request_retry(10)
+            except U115AccessLimitError:
+                interrupted.set()
+                raise
+            raise AssertionError("in-flight directory retry was not interrupted")
+
+        client.get_dir_list = get_dir_list
+        started = time.monotonic()
+
+        with self.assertRaises(U115AccessLimitError):
+            list(client.iter_files("root"))
+
+        self.assertTrue(interrupted.is_set())
+        self.assertLess(time.monotonic() - started, 2)
+
+    def test_iter_files_stops_open_retries_on_first_access_limit(self):
+        class LimitedDirectorySession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.directory_requests = 0
+                self.request_lock = threading.Lock()
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/files"):
+                    with self.request_lock:
+                        self.directory_requests += 1
+                        request_number = self.directory_requests
+                    if request_number == 1:
+                        return FakeResponse(
+                            {
+                                "code": 0,
+                                "state": True,
+                                "data": [
+                                    {"cid": "1", "fc": "0", "fn": "Dir1"},
+                                    {"cid": "2", "fc": "0", "fn": "Dir2"},
+                                ],
+                                "count": 2,
+                            }
+                        )
+                    return FakeResponse(
+                        {
+                            "code": 911,
+                            "state": False,
+                            "message": "已达到当前访问上限，请稍后再试",
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = LimitedDirectorySession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client.directory_scan_workers = 2
+        client.directory_scan_prefetch = 2
+        client.directory_request_interval = 0
+        client.open_access_limit_attempts = 6
+        client.open_access_limit_delay = 60
+
+        with self.assertRaises(U115AccessLimitError):
+            list(client.iter_files("0"))
+
+        self.assertLessEqual(session.directory_requests, 3)
+
     def test_upload_requires_login(self):
         with TemporaryDirectory() as directory:
             with self.assertRaises(U115AuthError):
@@ -268,6 +521,395 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(request_headers["Authorization"], "Bearer token")
         self.assertNotIn("Cookie", request_headers)
         self.assertNotIn("Authorization", session.headers)
+
+    def test_second_upload_auth_preserves_first_oss_fields(self):
+        class SecondAuthSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.init_calls = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/upload/init"):
+                    self.init_calls += 1
+                    if self.init_calls == 1:
+                        return FakeResponse(
+                            {
+                                "state": True,
+                                "code": 0,
+                                "data": {
+                                    "code": 700,
+                                    "sign_check": "0-0",
+                                    "sign_key": "sign-key",
+                                    "pick_code": "pick-code",
+                                    "bucket": "bucket-name",
+                                    "object": "object-name",
+                                    "callback": {
+                                        "callback": "callback-body",
+                                        "callback_var": "callback-var",
+                                    },
+                                },
+                            }
+                        )
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "code": 0,
+                            "data": {
+                                "status": 1,
+                                "file_id": "123",
+                                "pick_code": "second-pick-code",
+                                "bucket": "second-bucket",
+                                "object": "second-object",
+                                "callback": {
+                                    "callback": "second-callback-body",
+                                    "callback_var": "second-callback-var",
+                                },
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        with TemporaryDirectory() as directory:
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"media")
+            session = SecondAuthSession()
+            client = U115Client(tokens={"access_token": "token"}, session=session)
+
+            with patch.object(client, "_upload_to_oss") as upload_to_oss:
+                result = client.upload_file({"fileid": "9", "path": "/Cloud"}, media)
+
+        self.assertTrue(result.success)
+        init_result = upload_to_oss.call_args.args[-1]
+        self.assertEqual(init_result["bucket"], "bucket-name")
+        self.assertEqual(init_result["object"], "object-name")
+        self.assertEqual(init_result["pick_code"], "pick-code")
+        self.assertEqual(init_result["callback"]["callback"], "callback-body")
+        self.assertEqual(init_result["callback"]["callback_var"], "callback-var")
+        self.assertTrue(
+            all(request[2]["timeout"] == 120.0 for request in session.requests)
+        )
+
+    @staticmethod
+    def _upload_api_response(method, endpoint, **_kwargs):
+        if method == "GET" and endpoint == "/open/upload/get_token":
+            return {
+                "code": 0,
+                "data": {
+                    "AccessKeyId": "access-key",
+                    "AccessKeySecret": "access-secret",
+                    "SecurityToken": "security-token",
+                    "endpoint": "https://oss.example.invalid",
+                },
+            }
+        if method == "POST" and endpoint == "/open/upload/resume":
+            return {
+                "code": 0,
+                "data": {
+                    "callback": {
+                        "callback": "callback-body",
+                        "callback_var": "callback-var",
+                    }
+                },
+            }
+        raise AssertionError(f"unexpected upload request: {method} {endpoint}")
+
+    def test_oss_upload_retries_part_from_original_offset(self):
+        class RetryBucket:
+            def __init__(self):
+                self.part_attempts = 0
+                self.chunks = []
+                self.completed = []
+                self.aborted = []
+
+            @staticmethod
+            def init_multipart_upload(_object_name, params=None):
+                return SimpleNamespace(upload_id="upload-1")
+
+            def upload_part(self, _object_name, _upload_id, _part_number, data):
+                self.part_attempts += 1
+                self.chunks.append(data.read())
+                if self.part_attempts == 1:
+                    raise RuntimeError("temporary part failure")
+                return SimpleNamespace(etag=f"etag-{self.part_attempts}")
+
+            def complete_multipart_upload(self, object_name, upload_id, parts, headers=None):
+                self.completed.append((object_name, upload_id, list(parts), dict(headers or {})))
+                response = SimpleNamespace(
+                    json=lambda: {"state": True, "code": 0, "message": "ok"}
+                )
+                return SimpleNamespace(
+                    status=200,
+                    resp=SimpleNamespace(response=response),
+                )
+
+            def abort_multipart_upload(self, object_name, upload_id):
+                self.aborted.append((object_name, upload_id))
+
+        with TemporaryDirectory() as directory:
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"abcde")
+            client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
+            client.upload_part_attempts = 2
+            client.upload_part_retry_delay = 0
+            bucket = RetryBucket()
+
+            with patch.object(client, "_request", side_effect=self._upload_api_response), patch(
+                "oss2.StsAuth", return_value=Mock()
+            ), patch("oss2.Bucket", return_value=bucket), patch(
+                "oss2.determine_part_size", return_value=2
+            ):
+                client._upload_to_oss(
+                    media,
+                    media.stat().st_size,
+                    hashlib.sha1(media.read_bytes()).hexdigest(),
+                    "U_1_9",
+                    {
+                        "bucket": "bucket-name",
+                        "object": "object-name",
+                        "pick_code": "pick-code",
+                    },
+                )
+
+        self.assertEqual(bucket.chunks[:2], [b"ab", b"ab"])
+        self.assertEqual(bucket.chunks[2:], [b"cd", b"e"])
+        self.assertEqual(len(bucket.completed), 1)
+        self.assertEqual(bucket.aborted, [])
+
+    def test_oss_upload_refreshes_expired_sts_credentials(self):
+        class ExpiredCredentialError(RuntimeError):
+            code = "SecurityTokenExpired"
+
+        class ExpiredBucket:
+            def __init__(self):
+                self.upload_attempts = 0
+                self.aborted = []
+
+            @staticmethod
+            def init_multipart_upload(_object_name, params=None):
+                return SimpleNamespace(upload_id="upload-1")
+
+            def upload_part(self, _object_name, _upload_id, _part_number, _data):
+                self.upload_attempts += 1
+                raise ExpiredCredentialError("expired")
+
+            def abort_multipart_upload(self, object_name, upload_id):
+                self.aborted.append((object_name, upload_id))
+
+        class HealthyBucket:
+            def __init__(self):
+                self.uploaded_parts = []
+                self.completed = []
+                self.aborted = []
+
+            def upload_part(self, object_name, upload_id, part_number, data):
+                self.uploaded_parts.append(
+                    (object_name, upload_id, part_number, data.read())
+                )
+                return SimpleNamespace(etag="etag-refreshed")
+
+            def complete_multipart_upload(self, object_name, upload_id, parts, headers=None):
+                self.completed.append((object_name, upload_id, list(parts), dict(headers or {})))
+                response = SimpleNamespace(
+                    json=lambda: {"state": True, "code": 0, "message": "ok"}
+                )
+                return SimpleNamespace(
+                    status=200,
+                    resp=SimpleNamespace(response=response),
+                )
+
+            def abort_multipart_upload(self, object_name, upload_id):
+                self.aborted.append((object_name, upload_id))
+
+        with TemporaryDirectory() as directory:
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"media")
+            client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
+            client.upload_part_attempts = 2
+            client.upload_part_retry_delay = 0
+            expired_bucket = ExpiredBucket()
+            healthy_bucket = HealthyBucket()
+
+            with patch.object(client, "_request", side_effect=self._upload_api_response) as request_mock, patch(
+                "oss2.StsAuth", return_value=Mock()
+            ), patch(
+                "oss2.Bucket",
+                side_effect=[expired_bucket, healthy_bucket],
+            ), patch(
+                "oss2.determine_part_size", return_value=5
+            ):
+                client._upload_to_oss(
+                    media,
+                    media.stat().st_size,
+                    hashlib.sha1(media.read_bytes()).hexdigest(),
+                    "U_1_9",
+                    {
+                        "bucket": "bucket-name",
+                        "object": "object-name",
+                        "pick_code": "pick-code",
+                    },
+                )
+
+        token_requests = [
+            call for call in request_mock.call_args_list if call.args[:2] == ("GET", "/open/upload/get_token")
+        ]
+        self.assertEqual(len(token_requests), 2)
+        self.assertEqual(expired_bucket.upload_attempts, 1)
+        self.assertEqual(
+            healthy_bucket.uploaded_parts,
+            [("object-name", "upload-1", 1, b"media")],
+        )
+        self.assertEqual(len(healthy_bucket.completed), 1)
+        self.assertEqual(expired_bucket.aborted, [])
+
+    def test_oss_upload_aborts_failed_multipart(self):
+        class FailedBucket:
+            def __init__(self):
+                self.aborted = []
+
+            @staticmethod
+            def init_multipart_upload(_object_name, params=None):
+                return SimpleNamespace(upload_id="upload-1")
+
+            @staticmethod
+            def upload_part(_object_name, _upload_id, _part_number, _data):
+                raise RuntimeError("permanent part failure")
+
+            def abort_multipart_upload(self, object_name, upload_id):
+                self.aborted.append((object_name, upload_id))
+
+        with TemporaryDirectory() as directory:
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"media")
+            client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
+            client.upload_part_attempts = 2
+            client.upload_part_retry_delay = 0
+            bucket = FailedBucket()
+
+            with patch.object(client, "_request", side_effect=self._upload_api_response), patch(
+                "oss2.StsAuth", return_value=Mock()
+            ), patch("oss2.Bucket", return_value=bucket), patch(
+                "oss2.determine_part_size", return_value=5
+            ):
+                with self.assertRaisesRegex(U115ApiError, "分片 1 上传失败"):
+                    client._upload_to_oss(
+                        media,
+                        media.stat().st_size,
+                        hashlib.sha1(media.read_bytes()).hexdigest(),
+                        "U_1_9",
+                        {
+                            "bucket": "bucket-name",
+                            "object": "object-name",
+                            "pick_code": "pick-code",
+                        },
+                    )
+
+        self.assertEqual(bucket.aborted, [("object-name", "upload-1")])
+
+    def test_oss_upload_rejects_failed_callback(self):
+        class FailedCallbackBucket:
+            def __init__(self):
+                self.aborted = []
+
+            @staticmethod
+            def init_multipart_upload(_object_name, params=None):
+                return SimpleNamespace(upload_id="upload-1")
+
+            @staticmethod
+            def upload_part(_object_name, _upload_id, _part_number, _data):
+                return SimpleNamespace(etag="etag")
+
+            @staticmethod
+            def complete_multipart_upload(_object_name, _upload_id, _parts, headers=None):
+                response = SimpleNamespace(
+                    json=lambda: {
+                        "state": False,
+                        "code": 50001,
+                        "message": "callback failed",
+                    }
+                )
+                return SimpleNamespace(
+                    status=200,
+                    resp=SimpleNamespace(response=response),
+                )
+
+            def abort_multipart_upload(self, object_name, upload_id):
+                self.aborted.append((object_name, upload_id))
+
+        callback_response = {
+            "code": 0,
+            "data": {
+                "callback": {
+                    "callback": "callback-body",
+                    "callback_var": "callback-var",
+                }
+            },
+        }
+
+        def upload_response(method, endpoint, **kwargs):
+            if endpoint == "/open/upload/resume":
+                return callback_response
+            return self._upload_api_response(method, endpoint, **kwargs)
+
+        with TemporaryDirectory() as directory:
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"media")
+            client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
+            bucket = FailedCallbackBucket()
+
+            with patch.object(client, "_request", side_effect=upload_response), patch(
+                "oss2.StsAuth", return_value=Mock()
+            ), patch("oss2.Bucket", return_value=bucket), patch(
+                "oss2.determine_part_size", return_value=5
+            ):
+                with self.assertRaisesRegex(U115ApiError, "上传回调失败"):
+                    client._upload_to_oss(
+                        media,
+                        media.stat().st_size,
+                        hashlib.sha1(media.read_bytes()).hexdigest(),
+                        "U_1_9",
+                        {
+                            "bucket": "bucket-name",
+                            "object": "object-name",
+                            "pick_code": "pick-code",
+                        },
+                    )
+
+        self.assertEqual(bucket.aborted, [])
+
+    def test_oss_upload_rejects_missing_callback_before_multipart_init(self):
+        class UnexpectedBucket:
+            def init_multipart_upload(self, *_args, **_kwargs):
+                raise AssertionError("multipart upload must not start without callback")
+
+        with TemporaryDirectory() as directory:
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"media")
+            client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
+            bucket = UnexpectedBucket()
+
+            def upload_response(method, endpoint, **kwargs):
+                if endpoint == "/open/upload/resume":
+                    return {"code": 0, "data": {}}
+                return self._upload_api_response(method, endpoint, **kwargs)
+
+            with patch.object(client, "_request", side_effect=upload_response), patch(
+                "oss2.StsAuth", return_value=Mock()
+            ), patch("oss2.Bucket", return_value=bucket), patch(
+                "oss2.determine_part_size", return_value=5
+            ):
+                with self.assertRaisesRegex(U115ApiError, "缺少有效回调参数"):
+                    client._upload_to_oss(
+                        media,
+                        media.stat().st_size,
+                        hashlib.sha1(media.read_bytes()).hexdigest(),
+                        "U_1_9",
+                        {
+                            "bucket": "bucket-name",
+                            "object": "object-name",
+                            "pick_code": "pick-code",
+                        },
+                    )
 
     def test_download_url_forwards_playback_user_agent(self):
         class DownloadSession(FakeSession):
@@ -411,6 +1053,36 @@ class U115ClientTest(unittest.TestCase):
             [request[2]["data"] for request in session.requests if request[0] == "POST"],
             [{"pid": 0, "file_name": "多端播放"}],
         )
+
+    def test_ensure_remote_dir_reuses_confirmed_path_ids(self):
+        class CachedDirectorySession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if method == "GET" and url.endswith("/open/ufile/files"):
+                    cid = kwargs["params"]["cid"]
+                    if cid == 0:
+                        return FakeResponse(
+                            {"code": 0, "data": [{"cid": "10", "fc": "0", "fn": "Cloud"}]}
+                        )
+                    if cid == 10:
+                        return FakeResponse(
+                            {"code": 0, "data": [{"cid": "20", "fc": "0", "fn": "Movies"}]}
+                        )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = CachedDirectorySession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client.directory_request_interval = 0
+
+        first = client.ensure_remote_dir("/Cloud/Movies")
+        second = client.ensure_remote_dir("/Cloud/Movies")
+        client.clear_remote_dir_cache()
+        after_reset = client.ensure_remote_dir("/Cloud/Movies")
+
+        self.assertEqual(first, second)
+        self.assertEqual(first, after_reset)
+        self.assertEqual(first["fileid"], "20")
+        self.assertEqual(len(session.requests), 4)
 
     def test_open_download_mode_does_not_send_cookie(self):
         class OpenDownloadSession(FakeSession):
@@ -863,6 +1535,93 @@ class U115ClientTest(unittest.TestCase):
         token_saver.assert_called_once()
         self.assertEqual(token_saver.call_args.args[0]["refresh_token"], "new-refresh")
 
+    def test_refresh_access_limit_payload_does_not_fall_back_to_cookie_auth(self):
+        class LimitedRefreshSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/refreshToken"):
+                    return FakeResponse(
+                        {
+                            "state": False,
+                            "code": 911,
+                            "message": "已达到当前访问上限，请稍后再试",
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = LimitedRefreshSession()
+        client = U115Client(
+            cookie="UID=1; CID=2",
+            tokens={
+                "access_token": "expired-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 1,
+                "refresh_time": 1,
+            },
+            session=session,
+        )
+
+        with self.assertRaises(U115AccessLimitError):
+            client.ensure_upload_ready()
+
+        self.assertEqual(len(session.requests), 1)
+        self.assertTrue(session.requests[0][1].endswith("/open/refreshToken"))
+
+    def test_refresh_http_429_does_not_fall_back_to_cookie_auth(self):
+        class LimitedRefreshSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/refreshToken"):
+                    request = httpx.Request(method, url)
+                    return httpx.Response(429, request=request)
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = LimitedRefreshSession()
+        client = U115Client(
+            cookie="UID=1; CID=2",
+            tokens={
+                "access_token": "expired-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 1,
+                "refresh_time": 1,
+            },
+            session=session,
+        )
+        client.http_rate_limit_attempts = 1
+
+        with self.assertRaises(U115AccessLimitError):
+            client.ensure_upload_ready()
+
+        self.assertEqual(len(session.requests), 1)
+        self.assertTrue(session.requests[0][1].endswith("/open/refreshToken"))
+
+    def test_cookie_open_authorization_propagates_access_limit_payload(self):
+        class LimitedAuthorizationSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/authDeviceCode"):
+                    return FakeResponse(
+                        {
+                            "state": False,
+                            "code": 911,
+                            "message": "已达到当前访问上限，请稍后再试",
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = LimitedAuthorizationSession()
+        client = U115Client(
+            cookie="UID=1; CID=2",
+            tokens={"access_token": "expired-token", "expires_in": 1, "refresh_time": 1},
+            session=session,
+        )
+
+        with self.assertRaises(U115AccessLimitError):
+            client.ensure_upload_ready()
+
+        self.assertEqual(len(session.requests), 1)
+        self.assertTrue(session.requests[0][1].endswith("/open/authDeviceCode"))
+
     def test_http_401_preflight_refreshes_open_token(self):
         class UnauthorizedResponse:
             def __init__(self, url):
@@ -964,6 +1723,55 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(session.requests[-1][2]["params"]["cid"], 12)
         self.assertNotIn("Authorization", session.headers)
 
+    def test_recovered_open_auth_failure_is_exposed_as_auth_error_once(self):
+        class RejectedTokenSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/user/info"):
+                    return FakeResponse(
+                        {
+                            "state": False,
+                            "code": 40140125,
+                            "message": "access_token 已失效",
+                        }
+                    )
+                if url.endswith("/open/refreshToken"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                "access_token": "recovered-token",
+                                "refresh_token": "recovered-refresh",
+                                "expires_in": 7200,
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = RejectedTokenSession()
+        client = U115Client(
+            tokens={
+                "access_token": "invalid-token",
+                "refresh_token": "refresh-token",
+            },
+            session=session,
+        )
+        operation = Mock(side_effect=client.ensure_upload_ready)
+
+        with self.assertRaises(U115AuthError):
+            retry_call(
+                operation,
+                attempts=3,
+                delay=0,
+                abort_on=(U115AccessLimitError, U115AuthError),
+            )
+
+        self.assertEqual(operation.call_count, 1)
+        token_requests = [
+            request for request in session.requests if request[1].endswith("/open/user/info")
+        ]
+        self.assertEqual(len(token_requests), 2)
+
     def test_open_business_error_mentioning_token_does_not_replay_post(self):
         class BusinessErrorSession(FakeSession):
             def request(self, method, url, **kwargs):
@@ -985,6 +1793,284 @@ class U115ClientTest(unittest.TestCase):
 
         self.assertEqual(len(session.requests), 1)
         self.assertTrue(session.requests[0][1].endswith("/open/upload/init"))
+
+    def test_get_business_error_is_not_retried(self):
+        class BusinessErrorSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                return FakeResponse(
+                    {"state": False, "code": 50001, "message": "business failure"}
+                )
+
+        session = BusinessErrorSession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+
+        with self.assertRaisesRegex(U115ApiError, "business failure"):
+            client._request_url("GET", "https://example.invalid/business")
+
+        self.assertEqual(len(session.requests), 1)
+
+    def test_http_429_retries_get_with_reset_header_and_bound(self):
+        class RateLimitSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                self.attempts += 1
+                request = httpx.Request(method, url)
+                return httpx.Response(
+                    429,
+                    headers={"X-RateLimit-Reset": "2"},
+                    request=request,
+                )
+
+        session = RateLimitSession()
+        client = U115Client(session=session)
+        client.read_retry_attempts = 3
+
+        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+            with self.assertRaises(U115AccessLimitError):
+                client._request_url(
+                    "GET",
+                    "https://example.invalid/rate-limit",
+                    require_auth=False,
+                )
+
+        self.assertEqual(session.attempts, 3)
+        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [7.0, 7.0])
+
+    def test_http_429_retries_post_with_reset_header_and_bound(self):
+        class RateLimitSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                self.attempts += 1
+                if self.attempts < 3:
+                    return httpx.Response(
+                        429,
+                        headers={"X-RateLimit-Reset": "2"},
+                        request=httpx.Request(method, url),
+                    )
+                return FakeResponse({"state": True, "code": 0, "data": {"ok": True}})
+
+        session = RateLimitSession()
+        client = U115Client(session=session)
+        client.http_rate_limit_attempts = 3
+
+        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+            payload = client._request_url(
+                "POST",
+                "https://example.invalid/rate-limit",
+                require_auth=False,
+            )
+
+        self.assertTrue(payload["state"])
+        self.assertEqual(session.attempts, 3)
+        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [7.0, 7.0])
+
+    def test_http_503_retries_get_with_exponential_delay(self):
+        class TemporaryFailureSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                self.attempts += 1
+                if self.attempts < 3:
+                    return httpx.Response(503, request=httpx.Request(method, url))
+                return FakeResponse({"state": True, "data": {"ok": True}})
+
+        session = TemporaryFailureSession()
+        client = U115Client(session=session)
+
+        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+            payload = client._request_url(
+                "GET",
+                "https://example.invalid/temporary",
+                require_auth=False,
+            )
+
+        self.assertTrue(payload["state"])
+        self.assertEqual(session.attempts, 3)
+        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [1.0, 2.0])
+
+    def test_open_access_limit_retries_using_upstream_delay(self):
+        class AccessLimitSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/files"):
+                    self.attempts += 1
+                    if self.attempts < 3:
+                        return FakeResponse(
+                            {
+                                "state": False,
+                                "code": 911,
+                                "message": "已达到当前访问上限，请稍后再试",
+                            }
+                        )
+                    return FakeResponse({"state": True, "data": [], "count": 0})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = AccessLimitSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+            self.assertEqual(client.get_dir_list("0"), [])
+
+        self.assertEqual(session.attempts, 3)
+        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [70.0, 70.0])
+
+    def test_open_access_limit_raises_after_bounded_retries(self):
+        class AccessLimitSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/files"):
+                    return FakeResponse(
+                        {
+                            "state": False,
+                            "code": 911,
+                            "message": "已达到当前访问上限，请稍后再试",
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = AccessLimitSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client.open_access_limit_attempts = 3
+        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+            with self.assertRaisesRegex(U115AccessLimitError, "尝试 3 次"):
+                client.get_dir_list("0")
+
+        self.assertEqual(len(session.requests), 3)
+        self.assertEqual(sleeper.call_count, 2)
+
+    def test_open_http_429_is_marked_as_access_limit(self):
+        class RateLimitSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                return httpx.Response(429, request=httpx.Request(method, url))
+
+        session = RateLimitSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        client.read_retry_attempts = 1
+        client.http_rate_limit_attempts = 1
+
+        with self.assertRaises(U115AccessLimitError):
+            client.get_dir_list("0")
+
+        self.assertEqual(len(session.requests), 1)
+
+    def test_cookie_access_limit_payload_is_marked_as_access_limit(self):
+        class CookieLimitSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                return FakeResponse(
+                    {
+                        "state": False,
+                        "code": 911,
+                        "message": "已达到当前访问上限，请稍后再试",
+                    }
+                )
+
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=CookieLimitSession())
+
+        with self.assertRaises(U115AccessLimitError):
+            client._request_url("POST", "https://example.invalid/cookie-limit")
+
+    def test_cookie_access_limit_payload_is_marked_with_no_error(self):
+        class CookieLimitSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                return FakeResponse(
+                    {
+                        "state": False,
+                        "code": 911,
+                        "message": "已达到当前访问上限，请稍后再试",
+                    }
+                )
+
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=CookieLimitSession())
+
+        with self.assertRaises(U115AccessLimitError):
+            client._request_url(
+                "POST",
+                "https://example.invalid/cookie-limit",
+                no_error=True,
+            )
+
+    def test_checkin_adds_status_stage_to_upstream_error(self):
+        class FailedStatusSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/user/points_sign"):
+                    return FakeResponse(
+                        {"state": False, "message": "服务器开小差了，稍后再试吧"}
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        client = U115Client(
+            cookie="UID=1_R2_0; CID=2",
+            session=FailedStatusSession(),
+        )
+        with patch("plugins.p115liteassistant.client.time.sleep"):
+            with self.assertRaisesRegex(U115ApiError, "查询 115 签到状态失败.*服务器开小差"):
+                client.checkin()
+
+        self.assertEqual(len(client.session.requests), 1)
+
+    def test_checkin_propagates_access_limit_during_status_check(self):
+        class LimitedStatusSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/user/points_sign"):
+                    return FakeResponse(
+                        {
+                            "state": False,
+                            "code": 911,
+                            "message": "已达到当前访问上限，请稍后再试",
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = LimitedStatusSession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+
+        with self.assertRaises(U115AccessLimitError):
+            client.checkin()
+
+        self.assertEqual(len(session.requests), 1)
+
+    def test_checkin_rejects_invalid_success_data_after_bounded_retries(self):
+        class InvalidCheckinSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.post_attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if method == "GET" and url.endswith("/user/points_sign"):
+                    return FakeResponse({"state": True, "data": {"is_sign_today": 0}})
+                if method == "POST" and url.endswith("/user/points_sign"):
+                    self.post_attempts += 1
+                    return FakeResponse({"state": True, "data": []})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = InvalidCheckinSession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+
+        with self.assertRaisesRegex(U115ApiError, "签到返回数据无效"):
+            client.checkin(retry_delay=0)
+
+        self.assertEqual(session.post_attempts, 3)
 
     def test_checkin_retries_failed_post_requests(self):
         class CheckinSession(FakeSession):
@@ -1036,6 +2122,33 @@ class U115ClientTest(unittest.TestCase):
         )
         self.assertTrue(
             all("Authorization" not in request[2]["headers"] for request in session.requests)
+        )
+
+    def test_checkin_propagates_access_limit_during_post(self):
+        class LimitedPostSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if method == "GET" and url.endswith("/user/points_sign"):
+                    return FakeResponse({"state": True, "data": {"is_sign_today": 0}})
+                if method == "POST" and url.endswith("/user/points_sign"):
+                    return FakeResponse(
+                        {
+                            "state": False,
+                            "code": 911,
+                            "message": "已达到当前访问上限，请稍后再试",
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = LimitedPostSession()
+        client = U115Client(cookie="UID=1_R2_0; CID=2", session=session)
+
+        with self.assertRaises(U115AccessLimitError):
+            client.checkin(retry_delay=0)
+
+        self.assertEqual(
+            len([request for request in session.requests if request[0] == "POST"]),
+            1,
         )
 
     def test_checkin_requires_numeric_uid_from_cookie(self):

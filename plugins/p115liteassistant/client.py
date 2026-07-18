@@ -15,12 +15,18 @@ from typing import Any, Callable, Dict, Iterator, Optional
 import httpx
 from p115cipher import rsa_decrypt, rsa_encrypt
 
+from app.log import logger
+
 
 class U115AuthError(RuntimeError):
     pass
 
 
 class U115ApiError(RuntimeError):
+    pass
+
+
+class U115AccessLimitError(U115ApiError):
     pass
 
 
@@ -64,6 +70,15 @@ class U115Client:
     )
     read_retry_attempts = 3
     read_retry_delay = 1.0
+    transient_http_statuses = frozenset({408, 425, 429, 500, 502, 503, 504})
+    rate_limit_default_delay = 60.0
+    rate_limit_delay_padding = 5.0
+    http_rate_limit_attempts = 3
+    open_access_limit_attempts = 6
+    open_access_limit_delay = 70.0
+    upload_request_timeout = 120.0
+    upload_part_attempts = 3
+    upload_part_retry_delay = 1.0
     download_endpoint = "/open/ufile/downurl"
     download_request_interval = 1.0
     directory_request_interval = 1 / 3
@@ -97,6 +112,11 @@ class U115Client:
         self._next_download_request_at = 0.0
         self._directory_rate_lock = threading.Lock()
         self._next_directory_request_at = 0.0
+        self._request_limit_context = threading.local()
+        self._remote_dir_cache_lock = threading.RLock()
+        self._remote_dir_cache: Dict[str, Dict[str, Any]] = {
+            "/": {"fileid": "0", "path": "/", "name": "", "type": "dir"}
+        }
         self._playback_dir_lock = threading.Lock()
         self._playback_copy_lock = threading.Lock()
         self._playback_dir_id = ""
@@ -108,7 +128,7 @@ class U115Client:
     def _create_session() -> Any:
         import httpx
 
-        return httpx.Client(follow_redirects=True, timeout=60.0)
+        return httpx.Client(follow_redirects=True, timeout=20.0)
 
     def _init_headers(self) -> None:
         self.session.headers.update(
@@ -244,8 +264,13 @@ class U115Client:
                     no_error=True,
                     data={"refresh_token": refresh_token},
                 )
+            except U115AccessLimitError:
+                raise
             except (httpx.HTTPError, U115ApiError, ValueError):
                 return False
+            message = str(payload.get("message") or payload.get("error") or payload)
+            if self._is_access_limit_message(message):
+                raise U115AccessLimitError(message)
             data = payload.get("data") or {}
             if payload.get("code") != 0 or not isinstance(data, dict) or not data.get("access_token"):
                 return False
@@ -326,6 +351,8 @@ class U115Client:
                 try:
                     self._authorize_open_from_cookie()
                     return
+                except U115AccessLimitError:
+                    raise
                 except (httpx.HTTPError, U115ApiError, ValueError) as err:
                     raise U115AuthError(f"无法使用 115 Cookie 获取 Open 授权: {err}") from err
             raise U115AuthError("缺少有效的 115 Open 授权，请重新扫码登录")
@@ -351,6 +378,8 @@ class U115Client:
                 raise U115AuthError("115 Open 授权已失效，请重新扫码登录") from err
             try:
                 self._authorize_open_from_cookie()
+            except U115AccessLimitError:
+                raise
             except (httpx.HTTPError, U115ApiError, U115AuthError, ValueError) as auth_err:
                 raise U115AuthError(
                     f"无法使用 115 Cookie 获取 Open 授权: {auth_err}"
@@ -397,6 +426,7 @@ class U115Client:
             offset = next_offset
 
     def _acquire_directory_request_slot(self) -> None:
+        self._raise_if_shared_access_limited()
         interval = max(0.0, float(self.directory_request_interval))
         if not interval:
             return
@@ -405,9 +435,65 @@ class U115Client:
             delay = max(0.0, self._next_directory_request_at - now)
             self._next_directory_request_at = max(now, self._next_directory_request_at) + interval
         if delay:
-            time.sleep(delay)
+            self._wait_for_request_retry(delay)
+        self._raise_if_shared_access_limited()
+
+    @staticmethod
+    def new_access_limit_state() -> Dict[str, Any]:
+        return {
+            "event": threading.Event(),
+            "lock": threading.Lock(),
+            "message": "",
+        }
+
+    def run_with_access_limit_state(
+        self,
+        state: Dict[str, Any],
+        operation: Callable[[], Any],
+    ) -> Any:
+        previous = getattr(self._request_limit_context, "limit_state", None)
+        self._request_limit_context.limit_state = state
+        try:
+            self._raise_if_shared_access_limited()
+            return operation()
+        except U115AccessLimitError as err:
+            self._mark_shared_access_limited(err)
+            raise
+        finally:
+            self._request_limit_context.limit_state = previous
+
+    def _raise_if_shared_access_limited(self) -> None:
+        state = getattr(self._request_limit_context, "limit_state", None)
+        if state is None:
+            return
+        with state["lock"]:
+            if not state["event"].is_set():
+                return
+            message = str(state.get("message") or "").strip()
+        raise U115AccessLimitError(message or "115 并发任务因访问上限中止")
+
+    def _mark_shared_access_limited(self, error: Optional[BaseException] = None) -> bool:
+        state = getattr(self._request_limit_context, "limit_state", None)
+        if state is None:
+            return False
+        with state["lock"]:
+            if error is not None and not state.get("message"):
+                state["message"] = str(error)
+            first = not state["event"].is_set()
+            state["event"].set()
+        return first
+
+    def _wait_for_request_retry(self, delay: float) -> None:
+        state = getattr(self._request_limit_context, "limit_state", None)
+        if state is None:
+            time.sleep(max(0.0, float(delay)))
+            return
+        if state["event"].wait(max(0.0, float(delay))):
+            self._raise_if_shared_access_limited()
+            raise U115AccessLimitError("115 并发任务因访问上限中止")
 
     def _acquire_download_request_slot(self) -> None:
+        self._raise_if_shared_access_limited()
         interval = max(0.0, float(self.download_request_interval))
         if not interval:
             return
@@ -416,21 +502,48 @@ class U115Client:
             delay = max(0.0, self._next_download_request_at - now)
             self._next_download_request_at = max(now, self._next_download_request_at) + interval
         if delay:
-            time.sleep(delay)
+            self._wait_for_request_retry(delay)
+        self._raise_if_shared_access_limited()
 
-    def iter_files(self, cid: str) -> Iterator[Dict[str, Any]]:
+    def iter_files(
+        self,
+        cid: str,
+        access_limit_state: Optional[Dict[str, Any]] = None,
+    ) -> Iterator[Dict[str, Any]]:
         root_cid = str(cid or "0")
         pending = deque([(root_cid, "")])
         seen_directories = {root_cid}
         in_flight = {}
         workers = max(1, int(self.directory_scan_workers))
         prefetch = max(workers, int(self.directory_scan_prefetch))
+        scan_abort = threading.Event()
+        scan_limit = (
+            access_limit_state
+            if access_limit_state is not None
+            else self.new_access_limit_state()
+        )
 
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="p115-strm-scan") as executor:
+        def fetch_directory(current_cid: str) -> list[Dict[str, Any]]:
+            if scan_abort.is_set():
+                return []
+            try:
+                return self.run_with_access_limit_state(
+                    scan_limit,
+                    lambda: self.get_dir_list(current_cid),
+                )
+            except BaseException as err:
+                scan_abort.set()
+                if isinstance(err, U115AccessLimitError):
+                    with scan_limit["lock"]:
+                        scan_limit["event"].set()
+                raise
+
+        executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="p115-strm-scan")
+        try:
             while pending or in_flight:
                 while pending and len(in_flight) < prefetch:
                     current_cid, prefix = pending.popleft()
-                    future = executor.submit(self.get_dir_list, current_cid)
+                    future = executor.submit(fetch_directory, current_cid)
                     in_flight[future] = (current_cid, prefix)
                 done, _ = wait(tuple(in_flight), return_when=FIRST_COMPLETED)
                 for future in done:
@@ -453,29 +566,73 @@ class U115Client:
                             "mtime": self._item_mtime(raw),
                             "rel_path": rel_path,
                         }
+        except BaseException:
+            scan_abort.set()
+            for future in in_flight:
+                future.cancel()
+            executor.shutdown(wait=True, cancel_futures=True)
+            raise
+        else:
+            executor.shutdown(wait=True)
 
     def get_item(self, path: str) -> Optional[Dict[str, Any]]:
         normalized = self._normalize_cloud_path(path)
         payload = self._request(
             "POST", "/open/folder/get_info", no_error=True, data={"path": normalized}
         )
-        data = self._response_data(payload)
-        return self._item_from_info(data, normalized) if isinstance(data, dict) else None
+        if not self._is_response_success(payload):
+            code = str(payload.get("code") or payload.get("errno") or "")
+            message = str(payload.get("message") or payload.get("error") or payload)
+            if code in {"10014", "20018", "404"} or any(
+                marker in message for marker in ("不存在", "未找到", "找不到")
+            ):
+                return None
+            raise U115ApiError(message)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise U115ApiError("115 文件信息响应无效")
+        file_id = self._item_id(data)
+        category = data.get("file_category", data.get("fc"))
+        name = self._item_name(data)
+        if not file_id or category in (None, "") or (not name and normalized != "/"):
+            raise U115ApiError("115 文件信息字段不完整")
+        category = str(category)
+        if category not in {"0", "1"}:
+            raise U115ApiError(f"115 文件信息类型无效: {category}")
+        if self._item_mtime(data) <= 0:
+            raise U115ApiError("115 文件信息缺少有效修改时间")
+        if category == "1":
+            if not str(
+                data.get("pick_code") or data.get("pickcode") or data.get("pc") or ""
+            ).strip():
+                raise U115ApiError("115 文件信息缺少 pick_code")
+            size = self._item_size(data)
+            if size is None or size < 0:
+                raise U115ApiError("115 文件信息缺少有效文件大小")
+        return self._item_from_info(data, normalized)
 
     def ensure_remote_dir(self, path: str) -> Dict[str, Any]:
-        current = {"fileid": "0", "path": "/", "name": "", "type": "dir"}
         cloud_path = self._normalize_cloud_path(path)
+        current = self._cached_remote_dir("/")
+        if cloud_path == "/":
+            return current
         for name in PurePosixPath(cloud_path).parts:
             if name == "/":
+                continue
+            child_path = f"{current['path'].rstrip('/')}/{name}"
+            cached = self._cached_remote_dir(child_path)
+            if cached:
+                current = cached
                 continue
             found = self._find_open_directory(current["fileid"], name)
             if found:
                 current = {
                     "fileid": self._item_id(found),
-                    "path": f"{current['path'].rstrip('/')}/{name}",
+                    "path": child_path,
                     "name": name,
                     "type": "dir",
                 }
+                self._remember_remote_dir(current)
                 continue
             payload = self._request(
                 "POST",
@@ -494,11 +651,28 @@ class U115Client:
                 raise U115ApiError(f"创建 115 目录失败: {name}，原因：{message}")
             current = {
                 "fileid": self._item_id(data),
-                "path": f"{current['path'].rstrip('/')}/{name}",
+                "path": child_path,
                 "name": name,
                 "type": "dir",
             }
+            self._remember_remote_dir(current)
         return current
+
+    def _cached_remote_dir(self, path: str) -> Optional[Dict[str, Any]]:
+        with self._remote_dir_cache_lock:
+            item = self._remote_dir_cache.get(path)
+            return dict(item) if item else None
+
+    def _remember_remote_dir(self, item: Dict[str, Any]) -> None:
+        path = self._normalize_cloud_path(str(item.get("path") or "/"))
+        with self._remote_dir_cache_lock:
+            self._remote_dir_cache[path] = dict(item)
+
+    def clear_remote_dir_cache(self) -> None:
+        with self._remote_dir_cache_lock:
+            self._remote_dir_cache = {
+                "/": {"fileid": "0", "path": "/", "name": "", "type": "dir"}
+            }
 
     def _find_open_directory(self, parent_id: str, name: str) -> Optional[Dict[str, Any]]:
         return next(
@@ -523,17 +697,32 @@ class U115Client:
             "fileid": file_sha1,
             "preid": preid,
         }
-        payload = self._request("POST", "/open/upload/init", data=init_data)
+        payload = self._request(
+            "POST",
+            "/open/upload/init",
+            data=init_data,
+            timeout=self.upload_request_timeout,
+        )
         init_result = self._response_data(payload)
         if not isinstance(init_result, dict):
             return UploadResult(False, message="115 上传初始化失败")
 
         if int(init_result.get("code") or 0) in {700, 701} and init_result.get("sign_check"):
+            first_init_result = dict(init_result)
             init_data.update(self._build_sign_check_data(local_path, init_result))
-            payload = self._request("POST", "/open/upload/init", data=init_data)
-            init_result = self._response_data(payload)
-            if not isinstance(init_result, dict):
+            payload = self._request(
+                "POST",
+                "/open/upload/init",
+                data=init_data,
+                timeout=self.upload_request_timeout,
+            )
+            second_init_result = self._response_data(payload)
+            if not isinstance(second_init_result, dict):
                 return UploadResult(False, message="115 上传二次认证失败")
+            init_result = self._merge_upload_init_results(
+                first_init_result,
+                second_init_result,
+            )
 
         file_item = self._upload_file_item(init_result, local_path.name)
         if int(init_result.get("status") or 0) == 2:
@@ -554,6 +743,17 @@ class U115Client:
         if pickcode:
             item["pickcode"] = str(pickcode)
         return item
+
+    @staticmethod
+    def _merge_upload_init_results(
+        first: Dict[str, Any],
+        second: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        merged = {**first, **second}
+        for key in ("bucket", "object", "callback", "pick_code"):
+            if first.get(key):
+                merged[key] = first[key]
+        return merged
 
     def _playback_auth_mode(self, mode: str = "") -> str:
         mode = str(mode or "").strip().lower()
@@ -647,8 +847,15 @@ class U115Client:
                 response.raise_for_status()
                 with temp_output.open("wb") as handle:
                     for chunk in response.iter_bytes():
+                        self._raise_if_shared_access_limited()
                         handle.write(chunk)
             temp_output.replace(output)
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code == 429:
+                raise U115AccessLimitError(
+                    "115 文件下载返回 HTTP 429，已停止本次任务"
+                ) from err
+            raise
         finally:
             temp_output.unlink(missing_ok=True)
 
@@ -779,13 +986,23 @@ class U115Client:
     def checkin(self, attempts: int = 3, retry_delay: float = 3.0) -> Dict[str, Any]:
         self._ensure_cookie_auth()
         user_id = self._cookie_user_id()
-        current = self._request_url(
-            "GET",
-            self.points_sign_url,
-            headers=self.points_sign_headers,
-        )
-        data = self._response_data(current) or {}
-        if isinstance(data, dict) and int(data.get("is_sign_today") or 0) == 1:
+        try:
+            current = self._request_url(
+                "GET",
+                self.points_sign_url,
+                headers=self.points_sign_headers,
+            )
+            data = current.get("data")
+            if not isinstance(data, dict):
+                raise U115ApiError("115 签到状态返回数据无效")
+            is_signed_today = int(data.get("is_sign_today") or 0) == 1
+        except U115AuthError:
+            raise
+        except U115AccessLimitError:
+            raise
+        except (httpx.HTTPError, U115ApiError, ValueError) as err:
+            raise U115ApiError(f"查询 115 签到状态失败: {err}") from err
+        if is_signed_today:
             return {"already": True, "message": "今日已签到"}
         total = max(1, int(attempts))
         last_error: Exception | None = None
@@ -801,13 +1018,17 @@ class U115Client:
                     headers=self.points_sign_headers,
                     data={"token": token, "token_time": token_time},
                 )
-                data = self._response_data(payload) or {}
+                data = payload.get("data")
+                if not isinstance(data, dict):
+                    raise U115ApiError("115 签到返回数据无效")
                 return {
                     "already": False,
-                    "continuous_day": data.get("continuous_day", 0) if isinstance(data, dict) else 0,
-                    "points_num": data.get("points_num", 0) if isinstance(data, dict) else 0,
+                    "continuous_day": data.get("continuous_day", 0),
+                    "points_num": data.get("points_num", 0),
                     "message": "签到成功",
                 }
+            except U115AccessLimitError:
+                raise
             except (httpx.HTTPError, U115ApiError, ValueError) as err:
                 last_error = err
                 if attempt < total:
@@ -840,45 +1061,188 @@ class U115Client:
         except ImportError as err:
             raise RuntimeError("缺少 oss2 依赖，无法上传未命中秒传的文件") from err
 
-        token = self._response_data(self._request("GET", "/open/upload/get_token"))
-        if not isinstance(token, dict):
-            raise U115ApiError("获取 115 上传凭证失败")
+        def get_upload_token() -> Dict[str, Any]:
+            token = self._response_data(
+                self._request(
+                    "GET",
+                    "/open/upload/get_token",
+                    timeout=self.upload_request_timeout,
+                )
+            )
+            required = ("AccessKeyId", "AccessKeySecret", "SecurityToken", "endpoint")
+            if not isinstance(token, dict) or any(not token.get(key) for key in required):
+                raise U115ApiError("获取 115 上传凭证失败")
+            return token
+
+        bucket_name = str(init_result.get("bucket") or "")
+        object_name = str(init_result.get("object") or "")
+        if not bucket_name or not object_name:
+            raise U115ApiError("115 上传初始化响应缺少对象存储信息")
+
+        def build_bucket(token: Dict[str, Any]):
+            auth = oss2.StsAuth(
+                token["AccessKeyId"],
+                token["AccessKeySecret"],
+                token["SecurityToken"],
+            )
+            return oss2.Bucket(
+                auth,
+                token["endpoint"],
+                bucket_name,
+                connect_timeout=self.upload_request_timeout,
+            )
+
+        bucket = build_bucket(get_upload_token())
         pick_code = init_result.get("pick_code")
         resume = self._response_data(
             self._request(
                 "POST",
                 "/open/upload/resume",
                 no_error=True,
+                timeout=self.upload_request_timeout,
                 data={"file_size": file_size, "target": target, "fileid": file_sha1, "pick_code": pick_code},
             )
         )
-        callback = (resume or {}).get("callback") or init_result.get("callback") or {}
-        auth = oss2.StsAuth(token.get("AccessKeyId"), token.get("AccessKeySecret"), token.get("SecurityToken"))
-        bucket = oss2.Bucket(auth, token.get("endpoint"), init_result.get("bucket"))
+        resume_callback = resume.get("callback") if isinstance(resume, dict) else None
+        callback = resume_callback or init_result.get("callback") or {}
+        if not isinstance(callback, dict) or not all(
+            str(callback.get(key) or "").strip()
+            for key in ("callback", "callback_var")
+        ):
+            raise U115ApiError("115 上传初始化响应缺少有效回调参数")
         part_size = determine_part_size(file_size, preferred_size=10 * 1024 * 1024)
-        upload_id = bucket.init_multipart_upload(
-            init_result.get("object"), params={"encoding-type": "url", "sequential": ""}
-        ).upload_id
-        parts = []
-        with local_path.open("rb") as fileobj:
-            part_number, offset = 1, 0
-            while offset < file_size:
-                size = min(part_size, file_size - offset)
-                result = bucket.upload_part(
-                    init_result.get("object"), upload_id, part_number, SizedFileAdapter(fileobj, size)
-                )
-                parts.append(PartInfo(part_number, result.etag))
-                part_number += 1
-                offset += size
-        headers = {"x-oss-forbid-overwrite": "false"}
-        if callback.get("callback") and callback.get("callback_var"):
-            headers.update(
-                {
-                    "X-oss-callback": oss2.utils.b64encode_as_string(callback["callback"]),
-                    "x-oss-callback-var": oss2.utils.b64encode_as_string(callback["callback_var"]),
-                }
+        attempts = max(1, int(self.upload_part_attempts))
+        upload_id = ""
+        upload_completed = False
+
+        def retry_delay(attempt: int) -> None:
+            time.sleep(
+                max(0.0, float(self.upload_part_retry_delay))
+                * (2 ** max(0, attempt - 1))
             )
-        bucket.complete_multipart_upload(init_result.get("object"), upload_id, parts, headers=headers)
+
+        def refresh_bucket():
+            return build_bucket(get_upload_token())
+
+        def is_credential_error(err: BaseException) -> bool:
+            return str(getattr(err, "code", "")) in {
+                "SecurityTokenExpired",
+                "InvalidAccessKeyId",
+            }
+
+        try:
+            last_error: BaseException | None = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    upload_id = str(
+                        bucket.init_multipart_upload(
+                            object_name,
+                            params={"encoding-type": "url", "sequential": ""},
+                        ).upload_id
+                    )
+                    if not upload_id:
+                        raise U115ApiError("115 未返回分片上传 ID")
+                    break
+                except Exception as err:  # noqa: BLE001
+                    last_error = err
+                    if is_credential_error(err):
+                        bucket = refresh_bucket()
+                    if attempt < attempts:
+                        retry_delay(attempt)
+            if not upload_id:
+                raise U115ApiError(f"初始化 115 分片上传失败: {last_error}") from last_error
+
+            parts = []
+            with local_path.open("rb") as fileobj:
+                part_number, offset = 1, 0
+                while offset < file_size:
+                    size = min(part_size, file_size - offset)
+                    last_error = None
+                    for attempt in range(1, attempts + 1):
+                        try:
+                            fileobj.seek(offset)
+                            result = bucket.upload_part(
+                                object_name,
+                                upload_id,
+                                part_number,
+                                SizedFileAdapter(fileobj, size),
+                            )
+                            etag = str(getattr(result, "etag", "") or "")
+                            if not etag:
+                                raise U115ApiError(
+                                    f"115 分片 {part_number} 上传未返回 ETag"
+                                )
+                            parts.append(PartInfo(part_number, etag))
+                            break
+                        except Exception as err:  # noqa: BLE001
+                            last_error = err
+                            if is_credential_error(err):
+                                bucket = refresh_bucket()
+                            if attempt < attempts:
+                                retry_delay(attempt)
+                    else:
+                        raise U115ApiError(
+                            f"115 分片 {part_number} 上传失败: {last_error}"
+                        ) from last_error
+                    part_number += 1
+                    offset += size
+
+            headers = {
+                "X-oss-callback": oss2.utils.b64encode_as_string(callback["callback"]),
+                "x-oss-callback-var": oss2.utils.b64encode_as_string(callback["callback_var"]),
+                "x-oss-forbid-overwrite": "false",
+            }
+
+            complete_result = None
+            last_error = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    complete_result = bucket.complete_multipart_upload(
+                        object_name,
+                        upload_id,
+                        parts,
+                        headers=headers,
+                    )
+                    status = getattr(complete_result, "status", 200)
+                    if status != 200:
+                        raise U115ApiError(f"完成 115 分片上传失败，HTTP 状态 {status}")
+                    upload_completed = True
+                    break
+                except Exception as err:  # noqa: BLE001
+                    last_error = err
+                    if is_credential_error(err):
+                        bucket = refresh_bucket()
+                    if attempt < attempts:
+                        retry_delay(attempt)
+            else:
+                raise U115ApiError(f"完成 115 分片上传失败: {last_error}") from last_error
+
+            try:
+                callback_payload = complete_result.resp.response.json()
+            except Exception as err:  # noqa: BLE001
+                raise U115ApiError("115 上传回调未返回有效结果") from err
+            if not isinstance(callback_payload, dict) or not self._is_upload_callback_success(
+                callback_payload
+            ):
+                message = (
+                    callback_payload.get("message")
+                    or callback_payload.get("error")
+                    or callback_payload
+                    if isinstance(callback_payload, dict)
+                    else callback_payload
+                )
+                raise U115ApiError(f"115 上传回调失败: {message}")
+        except Exception:
+            if upload_id and not upload_completed:
+                abort = getattr(bucket, "abort_multipart_upload", None)
+                if callable(abort):
+                    try:
+                        abort(object_name, upload_id)
+                    except Exception as cleanup_err:  # noqa: BLE001
+                        logger.warning(
+                            f"【115 上传】清理失败的分片任务异常: {cleanup_err}"
+                        )
+            raise
 
     def _build_sign_check_data(self, local_path: Path, init_result: Dict[str, Any]) -> Dict[str, str]:
         start_text, end_text = str(init_result["sign_check"]).split("-", maxsplit=1)
@@ -950,13 +1314,20 @@ class U115Client:
         access_token = str(self.tokens.get("access_token") or "")
         if not access_token:
             raise U115AuthError("缺少有效的 115 Open 授权，请重新扫码登录")
-        return self._request_open_with_token(
-            method,
-            url,
-            access_token,
-            no_error=no_error,
-            **kwargs,
-        )
+        try:
+            return self._request_open_with_token(
+                method,
+                url,
+                access_token,
+                no_error=no_error,
+                **kwargs,
+            )
+        except _U115OpenAuthError as err:
+            raise U115AuthError("115 Open 授权恢复后仍然无效，请重新扫码登录") from err
+        except httpx.HTTPStatusError as err:
+            if not self._is_open_auth_error(err):
+                raise
+            raise U115AuthError("115 Open 授权恢复后仍然无效，请重新扫码登录") from err
 
     def _request_open_with_token(
         self,
@@ -970,23 +1341,46 @@ class U115Client:
             kwargs.get("headers"),
             bearer=access_token,
         )
-        payload = self._request_url(
-            method,
-            url,
-            require_auth=False,
-            no_error=True,
-            **kwargs,
-        )
-        if self._is_response_success(payload):
+        total_attempts = max(1, int(self.open_access_limit_attempts))
+        for attempt in range(1, total_attempts + 1):
+            self._raise_if_shared_access_limited()
+            payload = self._request_url(
+                method,
+                url,
+                require_auth=False,
+                no_error=True,
+                **kwargs,
+            )
+            if self._is_response_success(payload):
+                return payload
+            if self._is_open_auth_payload(payload):
+                code = payload.get("code") or payload.get("errno") or ""
+                message = str(payload.get("message") or payload.get("error") or payload)
+                raise _U115OpenAuthError(f"{code}: {message}" if code else message)
+
+            message = str(payload.get("message") or payload.get("error") or payload)
+            if self._is_access_limit_message(message):
+                limit_error = U115AccessLimitError(
+                    f"{message}（并发任务已停止本次任务）"
+                )
+                if self._mark_shared_access_limited(limit_error):
+                    raise limit_error
+                self._raise_if_shared_access_limited()
+                if attempt >= total_attempts:
+                    raise U115AccessLimitError(
+                        f"{message}（已按上游策略尝试 {total_attempts} 次）"
+                    )
+                delay = max(0.0, float(self.open_access_limit_delay))
+                logger.info(
+                    "【115 Open API】达到当前访问上限，"
+                    f"等待 {delay:g} 秒后重试（{attempt}/{total_attempts - 1}）"
+                )
+                self._wait_for_request_retry(delay)
+                continue
+            if not no_error:
+                raise U115ApiError(message)
             return payload
-        if self._is_open_auth_payload(payload):
-            code = payload.get("code") or payload.get("errno") or ""
-            message = str(payload.get("message") or payload.get("error") or payload)
-            raise _U115OpenAuthError(f"{code}: {message}" if code else message)
-        if not no_error:
-            message = str(payload.get("message") or payload.get("error") or payload)
-            raise U115ApiError(message)
-        return payload
+        raise U115AccessLimitError("115 Open API 访问上限重试未返回结果")
 
     def _request_url(
         self,
@@ -1003,30 +1397,88 @@ class U115Client:
                 kwargs.get("headers"),
                 cookie=self.cookie,
             )
-        attempts = self.read_retry_attempts if method.upper() in {"GET", "HEAD"} else 1
-        for attempt in range(1, attempts + 1):
+        method = method.upper()
+        transient_attempts = (
+            max(1, int(self.read_retry_attempts)) if method in {"GET", "HEAD"} else 1
+        )
+        rate_limit_attempts = max(1, int(self.http_rate_limit_attempts))
+        total_attempts = max(transient_attempts, rate_limit_attempts)
+        for attempt in range(1, total_attempts + 1):
             try:
+                self._raise_if_shared_access_limited()
                 response = self.session.request(method, url, **kwargs)
                 response.raise_for_status()
                 payload = response.json()
                 if not isinstance(payload, dict):
                     raise U115ApiError("115 返回了无效响应")
-                if not no_error and not self._is_response_success(payload):
+                if not self._is_response_success(payload):
                     message = str(payload.get("message") or payload.get("error") or payload)
-                    if cookie_request and self._is_cookie_auth_error(payload, message):
+                    if (cookie_request or not no_error) and self._is_access_limit_message(message):
+                        limit_error = U115AccessLimitError(
+                            f"{message}（并发任务已停止本次任务）"
+                        )
+                        if self._mark_shared_access_limited(limit_error):
+                            raise limit_error
+                        self._raise_if_shared_access_limited()
+                        raise U115AccessLimitError(message)
+                    if not no_error and self._is_cookie_auth_error(payload, message):
                         raise U115AuthError("115 Cookie 已失效，请重新扫码登录")
-                    raise U115ApiError(message)
+                    if not no_error:
+                        raise U115ApiError(message)
                 return payload
             except httpx.HTTPStatusError as err:
                 status_code = err.response.status_code
-                if 400 <= status_code < 500 or attempt >= attempts:
+                if status_code == 429:
+                    limit_error = U115AccessLimitError(
+                        "115 并发任务返回 HTTP 429，已停止本次任务"
+                    )
+                    if self._mark_shared_access_limited(limit_error):
+                        raise limit_error from err
+                    self._raise_if_shared_access_limited()
+                if status_code == 429 and attempt >= rate_limit_attempts:
+                    raise U115AccessLimitError(
+                        "115 返回 HTTP 429，访问上限重试已耗尽"
+                    ) from err
+                if status_code == 429:
+                    delay = self._http_status_retry_delay(err, attempt)
+                    logger.info(
+                        f"【115 HTTP】请求返回临时状态 {status_code}，"
+                        f"等待 {delay:g} 秒后重试（{attempt}/{rate_limit_attempts - 1}）"
+                    )
+                    self._wait_for_request_retry(delay)
+                    continue
+                if (
+                    status_code not in self.transient_http_statuses
+                    or attempt >= transient_attempts
+                ):
                     raise
-                time.sleep(self.read_retry_delay * attempt)
-            except (httpx.HTTPError, U115ApiError, ValueError):
-                if attempt >= attempts:
+                delay = self._http_status_retry_delay(err, attempt)
+                logger.info(
+                    f"【115 HTTP】请求返回临时状态 {status_code}，"
+                    f"等待 {delay:g} 秒后重试（{attempt}/{transient_attempts - 1}）"
+                )
+                self._wait_for_request_retry(delay)
+            except (httpx.HTTPError, ValueError):
+                if attempt >= transient_attempts:
                     raise
-                time.sleep(self.read_retry_delay * attempt)
+                self._wait_for_request_retry(
+                    max(0.0, float(self.read_retry_delay)) * attempt
+                )
         raise U115ApiError("115 请求失败")
+
+    def _http_status_retry_delay(
+        self,
+        err: httpx.HTTPStatusError,
+        attempt: int,
+    ) -> float:
+        if err.response.status_code == 429:
+            value = err.response.headers.get("X-RateLimit-Reset")
+            try:
+                reset_delay = float(value) if value not in (None, "") else self.rate_limit_default_delay
+            except (TypeError, ValueError):
+                reset_delay = self.rate_limit_default_delay
+            return max(0.0, reset_delay) + max(0.0, float(self.rate_limit_delay_padding))
+        return max(0.0, float(self.read_retry_delay)) * (2 ** max(0, attempt - 1))
 
     def _ensure_cookie_auth(self) -> None:
         if not self.cookie:
@@ -1059,14 +1511,34 @@ class U115Client:
         )
 
     @staticmethod
+    def _is_access_limit_message(message: str) -> bool:
+        return "已达到当前访问上限" in str(message or "")
+
+    @staticmethod
     def _is_response_success(payload: Dict[str, Any]) -> bool:
+        code = payload.get("code")
+        if code in (None, "") and "errno" in payload:
+            code = payload.get("errno")
+        if code not in (None, "", 0, "0"):
+            return False
         state = payload.get("state")
+        if state in (False, 0, "0"):
+            return False
         if state in (True, 1, "1"):
             return True
-        code = payload.get("code")
-        if state in (False, 0, "0"):
-            return code in (0, "0")
         return code in (None, "", 0, "0")
+
+    @staticmethod
+    def _is_upload_callback_success(payload: Dict[str, Any]) -> bool:
+        code = payload.get("code")
+        if code in (None, "") and "errno" in payload:
+            code = payload.get("errno")
+        state = payload.get("state")
+        if code not in (None, "", 0, "0"):
+            return False
+        if state not in (None, "", True, 1, "1"):
+            return False
+        return code in (0, "0") or state in (True, 1, "1")
 
     @staticmethod
     def _is_existing_directory_response(payload: Dict[str, Any]) -> bool:
@@ -1116,6 +1588,21 @@ class U115Client:
         return 0
 
     @staticmethod
+    def _item_size(item: Dict[str, Any]) -> Optional[int]:
+        raw_size = next(
+            (
+                item.get(key)
+                for key in ("size_byte", "file_size", "size", "fs")
+                if item.get(key) is not None
+            ),
+            None,
+        )
+        try:
+            return int(raw_size) if raw_size is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _normalize_cloud_path(path: str) -> str:
         normalized = PurePosixPath((path or "/").replace("\\", "/")).as_posix()
         if normalized == ".":
@@ -1124,24 +1611,13 @@ class U115Client:
 
     @staticmethod
     def _item_from_info(info: Dict[str, Any], path: str) -> Dict[str, Any]:
-        category = str(info.get("file_category", "1"))
-        raw_size = next(
-            (
-                info.get(key)
-                for key in ("size_byte", "file_size", "size", "fs")
-                if info.get(key) is not None
-            ),
-            None,
-        )
-        try:
-            size = int(raw_size) if raw_size is not None else None
-        except (TypeError, ValueError):
-            size = None
+        category = str(info.get("file_category", info.get("fc", "1")))
         return {
             "fileid": U115Client._item_id(info),
             "path": path,
             "type": "dir" if category == "0" else "file",
             "name": U115Client._item_name(info) or PurePosixPath(path).name,
-            "pickcode": info.get("pick_code") or info.get("pickcode") or "",
-            "size": size,
+            "pickcode": info.get("pick_code") or info.get("pickcode") or info.get("pc") or "",
+            "size": U115Client._item_size(info),
+            "mtime": U115Client._item_mtime(info),
         }

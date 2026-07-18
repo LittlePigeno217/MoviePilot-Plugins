@@ -10,6 +10,7 @@ const message = ref('')
 const messageColor = ref('info')
 const history = computed(() => status.value.history || [])
 const runLabel = computed(() => status.value.running?.length ? status.value.running.join(' / ') : 'IDLE')
+const cloudTaskRunning = computed(() => status.value.running?.some(kind => ['strm', 'upload'].includes(kind)))
 
 function tell(text, color = 'info') { message.value = text; messageColor.value = color }
 
@@ -53,10 +54,10 @@ onMounted(refresh)
     </section>
 
     <section class="command-deck" aria-label="执行任务">
-      <button class="command command--strm" :disabled="status.running?.includes('strm')" @click="run('/strm/sync')"><v-icon icon="mdi-file-link-outline" size="23" /><span><b>生成 STRM</b><small>目录同步</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
-      <button class="command" :disabled="status.running?.includes('upload')" @click="run('/upload', { incremental: false })"><v-icon icon="mdi-upload-outline" size="23" /><span><b>全量上传</b><small>重新扫描</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
-      <button class="command" :disabled="status.running?.includes('upload')" @click="run('/upload', { incremental: true })"><v-icon icon="mdi-upload-network-outline" size="23" /><span><b>增量上传</b><small>仅变更项</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
-      <button class="command command--checkin" @click="run('/checkin')"><v-icon icon="mdi-calendar-check-outline" size="23" /><span><b>立即签到</b><small>115 积分</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
+      <button class="command command--strm" :disabled="cloudTaskRunning" @click="run('/strm/sync')"><v-icon icon="mdi-file-link-outline" size="23" /><span><b>生成 STRM</b><small>目录同步</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
+      <button class="command" :disabled="cloudTaskRunning" @click="run('/upload', { incremental: false })"><v-icon icon="mdi-upload-outline" size="23" /><span><b>全量上传</b><small>重新扫描</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
+      <button class="command" :disabled="cloudTaskRunning" @click="run('/upload', { incremental: true })"><v-icon icon="mdi-upload-network-outline" size="23" /><span><b>增量上传</b><small>仅变更项</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
+      <button class="command command--checkin" :disabled="cloudTaskRunning" @click="run('/checkin')"><v-icon icon="mdi-calendar-check-outline" size="23" /><span><b>立即签到</b><small>115 积分</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
     </section>
 
     <section class="ledger">

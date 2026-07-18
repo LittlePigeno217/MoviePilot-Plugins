@@ -19,7 +19,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .checkin_schedule import random_epoch_for_date, pick_next_run_epoch
-from .client import U115ApiError, U115Client
+from .client import U115AccessLimitError, U115ApiError, U115AuthError, U115Client
 from .log_utils import safe_error_text
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
@@ -36,12 +36,13 @@ def _ok(data: Any = None, message: str = "") -> Dict[str, Any]:
     return {"success": True, "message": message, "data": {} if data is None else data}
 
 
-def _error(message: str) -> Dict[str, Any]:
-    return {"success": False, "message": message, "data": {}}
+def _error(message: str, **fields: Any) -> Dict[str, Any]:
+    return {"success": False, "message": message, "data": {}, **fields}
 
 
 class Api:
     _TASK_LABELS = {"strm": "STRM同步", "upload": "目录上传"}
+    _CLOUD_TASK_KINDS = frozenset({"strm", "upload"})
     _DOWNLOAD_URL_CACHE_SAFETY_SECONDS = 300
     _PLAYBACK_COPY_CLEANUP_GRACE_SECONDS = 60
     _PLAYBACK_COPY_CLEANUP_FALLBACK_SECONDS = 300
@@ -51,6 +52,7 @@ class Api:
         self._store = store
         self._running: set[str] = set()
         self._lock = threading.Lock()
+        self._cloud_task_lock = threading.Lock()
         self._checkin_lock = threading.Lock()
         self._browse_115_cache: TtlCache[str, list[Dict[str, Any]]] = TtlCache(30)
         self._redirect_cache: TtlCache[tuple[str, str, str], str] = TtlCache(60, maxsize=8096)
@@ -304,16 +306,49 @@ class Api:
             "removed": 0,
             "sidecars": 0,
             "skipped": 0,
+            "conflicts": 0,
             "errors": 0,
             "duration_ms": 0,
         }
         for mapping in mappings:
+            access_limited = False
             source = str(mapping.get("source_path") or mapping.get("source_cid") or "-")
             target = str(mapping.get("target_dir") or "-")
             logger.info(f"【STRM同步】开始处理映射：{source} -> {target}")
             mapping_started = monotonic()
             try:
-                entry = retry_call(lambda: generator.run_mapping(mapping), attempts=3, delay=3.0)
+                entry = retry_call(
+                    lambda: generator.run_mapping(mapping),
+                    attempts=3,
+                    delay=3.0,
+                    abort_on=(U115AccessLimitError, U115AuthError),
+                )
+            except U115AccessLimitError as err:
+                access_limited = True
+                logger.error(
+                    f"【STRM同步】115 访问上限重试耗尽，停止后续映射："
+                    f"{source} -> {target}，原因：{safe_error_text(err)}"
+                )
+                entry = {
+                    "kind": "strm",
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "mapping": source,
+                    "errors": 1,
+                    "message": str(err),
+                }
+            except U115AuthError as err:
+                access_limited = True
+                logger.error(
+                    f"【STRM同步】115 授权失效，停止后续映射："
+                    f"{source} -> {target}，原因：{safe_error_text(err)}"
+                )
+                entry = {
+                    "kind": "strm",
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "mapping": source,
+                    "errors": 1,
+                    "message": str(err),
+                }
             except Exception as err:  # noqa: BLE001
                 logger.error(
                     f"【STRM同步】映射处理失败：{source} -> {target}，原因：{safe_error_text(err)}"
@@ -335,14 +370,20 @@ class Api:
                 f"清理 {int(entry.get('removed') or 0)}，"
                 f"附属文件 {int(entry.get('sidecars') or 0)}，"
                 f"跳过 {int(entry.get('skipped') or 0)}，失败 {int(entry.get('errors') or 0)}，"
+                f"冲突候选 {int(entry.get('conflicts') or 0)}，"
                 f"耗时 {int(entry.get('duration_ms') or 0)}ms"
             )
             log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
             log_result(f"【STRM同步】映射完成：{source} -> {target}，{summary}")
+            if access_limited:
+                remaining = len(mappings) - len(entries)
+                if remaining:
+                    logger.warning(f"【STRM同步】延后剩余 {remaining} 个映射至下次任务")
+                break
         total_summary = (
             f"新增 {totals['added']}，更新 {totals['updated']}，清理 {totals['removed']}，"
             f"附属文件 {totals['sidecars']}，"
-            f"跳过 {totals['skipped']}，"
+            f"跳过 {totals['skipped']}，冲突候选 {totals['conflicts']}，"
             f"失败 {totals['errors']}，耗时 {totals['duration_ms']}ms"
         )
         log_total = logger.warning if totals["errors"] else logger.info
@@ -376,6 +417,7 @@ class Api:
             f"上传 {int(entry.get('uploaded') or 0)}，秒传 {int(entry.get('instant') or 0)}，"
             f"生成 STRM {int(entry.get('strm_generated') or 0)}，"
             f"跳过 {int(entry.get('skipped') or 0)}，删除 {int(entry.get('deleted') or 0)}，"
+            f"延后 {int(entry.get('deferred') or 0)}，"
             f"失败 {int(entry.get('errors') or 0)}，耗时 {int(entry.get('duration_ms') or 0)}ms"
         )
         log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
@@ -385,7 +427,11 @@ class Api:
     def run_checkin(self) -> Dict[str, Any]:
         if not self._checkin_lock.acquire(blocking=False):
             logger.warning("【115签到】签到任务正在运行，忽略重复触发")
-            return _error("签到任务正在运行")
+            return _error("签到任务正在运行", busy=True)
+        if not self._cloud_task_lock.acquire(blocking=False):
+            self._checkin_lock.release()
+            logger.warning("【115签到】115 数据任务正在运行，忽略本次签到")
+            return _error("115 数据任务正在运行，请稍后签到", busy=True)
         logger.info("【115签到】开始执行")
         try:
             result = self._client_provider().checkin()
@@ -405,6 +451,7 @@ class Api:
             logger.error(f"【115签到】执行失败：{safe_error_text(err)}")
             return _error(str(err))
         finally:
+            self._cloud_task_lock.release()
             self._checkin_lock.release()
 
     @staticmethod
@@ -459,6 +506,8 @@ class Api:
             state["last_done_date"] = today
             tomorrow = now.date() + timedelta(days=1)
             state["next_run_ts"] = random_epoch_for_date(tomorrow, timezone, time_range)
+        elif result.get("busy"):
+            state["next_run_ts"] = now.timestamp() + 300
         else:
             state["next_run_ts"] = None
         self._store.save_checkin_schedule(state)
@@ -608,7 +657,12 @@ class Api:
                         raise U115ApiError("未获取到 115 下载地址")
                     return url
 
-                url = retry_call(fetch_url, attempts=3, delay=1.0)
+                url = retry_call(
+                    fetch_url,
+                    attempts=3,
+                    delay=1.0,
+                    abort_on=(U115AccessLimitError, U115AuthError),
+                )
                 lifetime = self._download_url_lifetime(url)
                 ttl = (
                     lifetime - self._DOWNLOAD_URL_CACHE_SAFETY_SECONDS
@@ -643,10 +697,23 @@ class Api:
 
     def _start(self, kind: str, target: Callable[[], Any], message: str) -> Dict[str, Any]:
         label = self._TASK_LABELS.get(kind, kind)
+        cloud_lock_acquired = False
         with self._lock:
             if kind in self._running:
                 logger.warning(f"【{label}】任务正在运行，忽略重复触发")
                 return _error(f"{kind} 任务正在运行")
+            if kind in self._CLOUD_TASK_KINDS:
+                cloud_lock_acquired = self._cloud_task_lock.acquire(blocking=False)
+                if not cloud_lock_acquired:
+                    running = "/".join(
+                        self._TASK_LABELS.get(item, item)
+                        for item in sorted(self._running & self._CLOUD_TASK_KINDS)
+                    )
+                    detail = f"（{running}）" if running else ""
+                    logger.warning(
+                        f"【{label}】115 数据任务正在运行{detail}，忽略本次触发"
+                    )
+                    return _error(f"115 数据任务正在运行{detail}，请稍后重试")
             self._running.add(kind)
         def run() -> None:
             try:
@@ -656,6 +723,8 @@ class Api:
             finally:
                 with self._lock:
                     self._running.discard(kind)
+                if cloud_lock_acquired:
+                    self._cloud_task_lock.release()
 
         thread = threading.Thread(target=run, name=f"p115liteassistant-{kind}", daemon=True)
         try:
@@ -663,6 +732,8 @@ class Api:
         except Exception as err:  # noqa: BLE001
             with self._lock:
                 self._running.discard(kind)
+            if cloud_lock_acquired:
+                self._cloud_task_lock.release()
             logger.error(f"【{label}】任务启动失败：{safe_error_text(err)}")
             return _error(f"{kind} 任务启动失败")
         logger.info(f"【{label}】任务已提交")

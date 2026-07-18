@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import threading
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import datetime
@@ -7,12 +8,13 @@ from hashlib import sha256
 from hmac import compare_digest, new as new_hmac
 from pathlib import Path, PurePosixPath
 from time import monotonic
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 from urllib.parse import urlencode, urlsplit
 
 from app.log import logger
 from p115pickcode import is_valid_pickcode
 
+from .client import U115AccessLimitError, U115AuthError
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
 from .resilience import retry_call
@@ -267,6 +269,7 @@ class StrmGenerator:
             lambda: self._client.download_file(pickcode, output, create_parent=False),
             attempts=3,
             delay=1.0,
+            abort_on=(U115AccessLimitError, U115AuthError),
         )
 
     def run_mapping(self, mapping: Dict[str, Any]) -> Dict[str, Any]:
@@ -293,6 +296,7 @@ class StrmGenerator:
             "removed": 0,
             "sidecars": 0,
             "skipped": 0,
+            "conflicts": 0,
             "errors": 0,
         }
         created_directories = {target_dir}
@@ -315,6 +319,30 @@ class StrmGenerator:
             tuple[str, str, str, Dict[str, Any], str, Path],
         ] = {}
         processed = 0
+        new_access_limit_state = getattr(self._client, "new_access_limit_state", None)
+        run_with_access_limit_state = getattr(
+            self._client,
+            "run_with_access_limit_state",
+            None,
+        )
+        access_limit_state = (
+            new_access_limit_state()
+            if callable(new_access_limit_state) and callable(run_with_access_limit_state)
+            else None
+        )
+
+        def submit_write(
+            executor: ThreadPoolExecutor,
+            operation: Callable[..., None],
+            *args: Any,
+        ) -> Future[None]:
+            if access_limit_state is None:
+                return executor.submit(operation, *args)
+            return executor.submit(
+                run_with_access_limit_state,
+                access_limit_state,
+                lambda: operation(*args),
+            )
 
         def collect(done: set[Future[None]]) -> None:
             nonlocal processed
@@ -344,6 +372,11 @@ class StrmGenerator:
                             )
                         counts[count_key] += 1
                         completed_count_by_output[output] = count_key
+                except (U115AccessLimitError, U115AuthError):
+                    for queued in pending:
+                        queued.cancel()
+                    self._store.save_strm_records(records)
+                    raise
                 except Exception as err:  # noqa: BLE001
                     counts["errors"] += 1
                     action = "回传附属文件" if kind == "sidecar" else "生成 STRM"
@@ -366,7 +399,28 @@ class StrmGenerator:
             thread_name_prefix="p115-strm-write",
         ) as executor:
             try:
-                items = iter(self._client.iter_files(source_cid))
+                iter_files = self._client.iter_files
+                if access_limit_state is not None:
+                    try:
+                        parameters = inspect.signature(iter_files).parameters.values()
+                    except (TypeError, ValueError):
+                        parameters = ()
+                    accepts_access_limit_state = any(
+                        parameter.name == "access_limit_state"
+                        or parameter.kind == inspect.Parameter.VAR_KEYWORD
+                        for parameter in parameters
+                    )
+                    if accepts_access_limit_state:
+                        items = iter(
+                            iter_files(
+                                source_cid,
+                                access_limit_state=access_limit_state,
+                            )
+                        )
+                    else:
+                        items = iter(iter_files(source_cid))
+                else:
+                    items = iter(iter_files(source_cid))
             except Exception:
                 self._store.save_strm_records(records)
                 raise
@@ -376,7 +430,12 @@ class StrmGenerator:
                 except StopIteration:
                     break
                 except Exception:
-                    drain_pending()
+                    try:
+                        drain_pending()
+                    except (U115AccessLimitError, U115AuthError):
+                        # A sibling worker may already have observed the same
+                        # shared cancellation; retain the scan exception.
+                        pass
                     self._store.save_strm_records(records)
                     raise
                 name = str(item.get("name") or "")
@@ -422,6 +481,7 @@ class StrmGenerator:
                     continue
                 conflicting_path = claimed_outputs.get(output)
                 if conflicting_path is not None:
+                    counts["conflicts"] += 1
                     winner_record_key = claimed_record_keys[output]
                     candidate_mtime = self._item_mtime(item)
                     if candidate_mtime <= claimed_mtimes[output]:
@@ -430,7 +490,7 @@ class StrmGenerator:
                         counts["skipped"] += 1
                         if output not in duplicate_logged_outputs:
                             duplicate_logged_outputs.add(output)
-                            logger.warning(
+                            logger.debug(
                                 "【STRM同步】输出路径存在多个媒体，按 115 更新时间保留："
                                 f"{conflicting_path}，跳过：{rel_path_text}"
                             )
@@ -446,7 +506,7 @@ class StrmGenerator:
                         counts[completed_key] -= 1
                     if output not in duplicate_logged_outputs:
                         duplicate_logged_outputs.add(output)
-                        logger.warning(
+                        logger.debug(
                             "【STRM同步】输出路径存在多个媒体，按 115 更新时间替换："
                             f"{conflicting_path} -> {rel_path_text}"
                         )
@@ -484,7 +544,8 @@ class StrmGenerator:
                     logger.debug(f"【STRM同步】文件未变化，跳过：{rel_path_text}")
                     continue
                 if kind == "strm":
-                    future = executor.submit(
+                    future = submit_write(
+                        executor,
                         self._write_strm,
                         output,
                         content,
@@ -493,7 +554,8 @@ class StrmGenerator:
                         directory_lock,
                     )
                 else:
-                    future = executor.submit(
+                    future = submit_write(
+                        executor,
                         self._download_sidecar,
                         output,
                         pickcode,
@@ -573,6 +635,11 @@ class StrmGenerator:
                 logger.error(
                     f"【STRM同步】清理失效输出失败：{stale_output}，原因：{safe_error_text(err)}"
                 )
+        if counts["conflicts"]:
+            logger.info(
+                "【STRM同步】输出路径冲突已按 115 更新时间完成选优："
+                f"冲突候选 {counts['conflicts']} 个"
+            )
         self._store.save_strm_records(records)
         return {
             "kind": "strm",

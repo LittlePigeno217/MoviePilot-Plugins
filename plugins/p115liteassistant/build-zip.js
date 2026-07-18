@@ -21,6 +21,7 @@ const legacyAssets = {
     '__federation_expose_Page-8cb7e1c8.js',
     '__federation_expose_Page-e25a15b8.js',
     '__federation_expose_Page-841bcd09.js',
+    '__federation_expose_Page-e86c3b81.js',
   ],
   helper: [
     '_plugin-vue_export-helper-12555fbe.js',
@@ -45,6 +46,7 @@ const legacyAssets = {
     'style-6b3f9aca.css',
     'style-8bf1f287.css',
     'style-5535bc3a.css',
+    'style-b8cdf4de.css',
   ],
 }
 

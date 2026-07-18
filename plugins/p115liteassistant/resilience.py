@@ -17,6 +17,7 @@ def retry_call(
     attempts: int = 3,
     delay: float = 1.0,
     retryable: Tuple[Type[BaseException], ...] = (Exception,),
+    abort_on: Tuple[Type[BaseException], ...] = (),
     sleeper: Callable[[float], None] = sleep,
 ) -> T:
     """以有限退避执行可恢复操作，最后一次失败保留原始异常。"""
@@ -25,7 +26,9 @@ def retry_call(
     for attempt in range(1, total + 1):
         try:
             return operation()
-        except retryable:
+        except retryable as err:
+            if abort_on and isinstance(err, abort_on):
+                raise
             if attempt >= total:
                 raise
             sleeper(max(0.0, delay) * attempt)

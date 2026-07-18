@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterator, Tuple
 
 from app.log import logger
 
-from .client import U115AuthError
+from .client import U115AccessLimitError, U115AuthError
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
 from .resilience import retry_call
@@ -260,7 +260,7 @@ class DirectoryUploader:
                 sleep(delay)
             try:
                 file_item = self._client.get_item(target_path)
-            except U115AuthError:
+            except (U115AccessLimitError, U115AuthError):
                 raise
             except Exception as err:  # noqa: BLE001
                 last_error = err
@@ -416,6 +416,9 @@ class DirectoryUploader:
 
     def run(self, incremental: bool = True) -> Dict[str, Any]:
         started = monotonic()
+        clear_remote_dir_cache = getattr(self._client, "clear_remote_dir_cache", None)
+        if callable(clear_remote_dir_cache):
+            clear_remote_dir_cache()
         logger.info("【目录上传】开始校验 115 上传授权")
         self._client.ensure_upload_ready()
         logger.info("【目录上传】115 上传授权校验通过")
@@ -428,6 +431,7 @@ class DirectoryUploader:
             "strm_errors": 0,
             "skipped": 0,
             "deleted": 0,
+            "deferred": 0,
             "errors": 0,
         }
         errors = []
@@ -436,7 +440,7 @@ class DirectoryUploader:
             self._validate_strm_output_paths(files)
         logger.info(f"【目录上传】目录扫描完成，待处理文件：{len(files)}")
         uploaded_paths: set[Path] = set()
-        for local_path, target_path, kind, source_root, strm_target in files:
+        for file_index, (local_path, target_path, kind, source_root, strm_target) in enumerate(files):
             self._validate_source_file(local_path, source_root)
             record_metadata = (
                 self._strm_record_metadata(strm_target)
@@ -484,6 +488,28 @@ class DirectoryUploader:
                         errors,
                     ):
                         uploaded_paths.add(local_path)
+                except (U115AccessLimitError, U115AuthError) as err:
+                    counts["strm_errors"] += 1
+                    counts["errors"] += 1
+                    counts["deferred"] = len(files) - file_index
+                    reason = (
+                        "115 访问上限重试耗尽"
+                        if isinstance(err, U115AccessLimitError)
+                        else "115 授权失效"
+                    )
+                    logger.error(
+                        f"【目录上传】{reason}，终止本次任务："
+                        f"{target_path}，原因：{safe_error_text(err)}；"
+                        f"剩余 {counts['deferred']} 个文件将在下次任务重试"
+                    )
+                    errors.append(
+                        {
+                            "path": str(local_path),
+                            "target": target_path,
+                            "message": str(err),
+                        }
+                    )
+                    break
                 except Exception as err:  # noqa: BLE001
                     counts["strm_errors"] += 1
                     counts["errors"] += 1
@@ -508,7 +534,12 @@ class DirectoryUploader:
                         raise RuntimeError(result.message or "115 上传失败")
                     return result
 
-                result = retry_call(upload_once, attempts=3, delay=1.0)
+                result = retry_call(
+                    upload_once,
+                    attempts=3,
+                    delay=1.0,
+                    abort_on=(U115AccessLimitError, U115AuthError),
+                )
                 counts["instant" if result.reused else "uploaded"] += 1
                 logger.info(
                     f"【目录上传】{'秒传成功' if result.reused else '上传成功'}："
@@ -535,6 +566,8 @@ class DirectoryUploader:
                                 local_path,
                                 {"pickcode": str(result.file_item["pickcode"])},
                             )
+                    except (U115AccessLimitError, U115AuthError):
+                        raise
                     except Exception as err:  # noqa: BLE001
                         counts["strm_errors"] += 1
                         counts["errors"] += 1
@@ -562,6 +595,21 @@ class DirectoryUploader:
                     )
                 if completed:
                     uploaded_paths.add(local_path)
+            except (U115AccessLimitError, U115AuthError) as err:
+                counts["errors"] += 1
+                counts["deferred"] = len(files) - file_index
+                reason = (
+                    "115 访问上限重试耗尽"
+                    if isinstance(err, U115AccessLimitError)
+                    else "115 授权失效"
+                )
+                logger.error(
+                    f"【目录上传】{reason}，终止本次任务："
+                    f"{local_path} -> {target_path}，原因：{safe_error_text(err)}；"
+                    f"剩余 {counts['deferred']} 个文件将在下次任务重试"
+                )
+                errors.append({"path": str(local_path), "target": target_path, "message": str(err)})
+                break
             except Exception as err:  # noqa: BLE001
                 counts["errors"] += 1
                 logger.error(

@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import threading
-from time import time
+from time import sleep, time
 import unittest
 from unittest.mock import patch
 
@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from p115pickcode import id_to_pickcode
 from plugins.p115liteassistant import P115LiteAssistant
 from plugins.p115liteassistant.api import Api
-from plugins.p115liteassistant.client import PlaybackCopy
+from plugins.p115liteassistant.client import PlaybackCopy, U115AccessLimitError
 from plugins.p115liteassistant.log_utils import safe_error_text
 from plugins.p115liteassistant.strm import build_redirect_signature
 
@@ -469,6 +469,37 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertIn("【302取链】", error_message)
         self.assertNotIn("secret", error_message)
 
+    def test_redirect_does_not_repeat_access_limit_cycle(self):
+        with patch.object(
+            self.client,
+            "get_download_url",
+            side_effect=U115AccessLimitError("已达到当前访问上限"),
+        ) as get_download_url:
+            response = self.signed_redirect(self.api, self.request())
+
+        self.assertEqual(response.status_code, 502)
+        get_download_url.assert_called_once()
+
+    def test_strm_access_limit_stops_remaining_mappings(self):
+        self.store.config["strm_mappings"] = [
+            {"enabled": True, "source_cid": "first", "target_dir": "/first"},
+            {"enabled": True, "source_cid": "second", "target_dir": "/second"},
+        ]
+        with patch("plugins.p115liteassistant.api.StrmGenerator") as generator, patch(
+            "plugins.p115liteassistant.api.logger"
+        ) as task_logger:
+            generator.return_value.run_mapping.side_effect = U115AccessLimitError(
+                "已达到当前访问上限"
+            )
+            result = self.api.run_strm("http://moviepilot:3000")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["mapping"], "first")
+        self.assertEqual(generator.return_value.run_mapping.call_count, 1)
+        self.assertTrue(
+            any("延后剩余 1 个映射" in call.args[0] for call in task_logger.warning.call_args_list)
+        )
+
     def test_task_start_failure_releases_running_state(self):
         with patch("plugins.p115liteassistant.api.threading.Thread.start", side_effect=RuntimeError("start failed")), patch(
             "plugins.p115liteassistant.api.logger"
@@ -478,6 +509,30 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertNotIn("strm", self.api._running)
         self.assertTrue(any("任务启动失败" in call.args[0] for call in task_logger.error.call_args_list))
+
+    def test_cloud_tasks_are_mutually_exclusive(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def block_upload():
+            started.set()
+            release.wait(2)
+
+        first = self.api._start("upload", block_upload, "目录上传已开始")
+        self.assertTrue(first["success"])
+        self.assertTrue(started.wait(1))
+        try:
+            second = self.api._start("strm", lambda: None, "STRM 同步已开始")
+            self.assertFalse(second["success"])
+            self.assertIn("数据任务正在运行", second["message"])
+        finally:
+            release.set()
+
+        for _ in range(20):
+            if not self.api._running:
+                break
+            sleep(0.01)
+        self.assertFalse(self.api._running)
 
     def test_error_text_redacts_credentials_and_limits_length(self):
         message = safe_error_text(
@@ -499,3 +554,15 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertEqual(self.client.checkin_calls, 1)
         self.assertTrue(self.store.schedule["last_done_date"])
         self.assertGreater(self.store.schedule["next_run_ts"], 0)
+
+    def test_scheduled_checkin_keeps_retry_slot_when_cloud_task_is_busy(self):
+        self.store.schedule["next_run_ts"] = time() - 1
+        self.assertTrue(self.api._cloud_task_lock.acquire(blocking=False))
+        try:
+            result = self.api.run_scheduled_checkin()
+        finally:
+            self.api._cloud_task_lock.release()
+
+        self.assertFalse(result["success"])
+        self.assertTrue(result["busy"])
+        self.assertGreater(self.store.schedule["next_run_ts"], time())

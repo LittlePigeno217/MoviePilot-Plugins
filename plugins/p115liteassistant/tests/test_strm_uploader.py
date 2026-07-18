@@ -8,7 +8,12 @@ from unittest.mock import patch
 from p115pickcode import id_to_pickcode
 
 from plugins.p115liteassistant.api import Api
-from plugins.p115liteassistant.client import U115AuthError, U115Client, UploadResult
+from plugins.p115liteassistant.client import (
+    U115AccessLimitError,
+    U115AuthError,
+    U115Client,
+    UploadResult,
+)
 from plugins.p115liteassistant.records import IncrementalRecordStore
 from plugins.p115liteassistant.resilience import retry_call as real_retry_call
 from plugins.p115liteassistant.strm import (
@@ -135,6 +140,21 @@ class FlakyUploadClient(FakeUploadClient):
         return super().upload_file(target, local_path)
 
 
+class AccessLimitedUploadClient(FakeUploadClient):
+    def ensure_remote_dir(self, _path):
+        raise U115AccessLimitError("已达到当前访问上限，请稍后再试")
+
+
+class AccessLimitedLookupClient(FakeUploadClient):
+    def __init__(self):
+        super().__init__()
+        self.item_checks = 0
+
+    def get_item(self, _target_path):
+        self.item_checks += 1
+        raise U115AccessLimitError("已达到当前访问上限，请稍后再试")
+
+
 class StrmAndUploaderTest(unittest.TestCase):
     def test_strm_address_requires_explicit_config(self):
         configured = Api(lambda: None, FakeStore({"moviepilot_address": "https://media.example/"}))
@@ -188,7 +208,7 @@ class StrmAndUploaderTest(unittest.TestCase):
     def test_strm_generator_rejects_invalid_pickcode(self):
         class InvalidPickcodeClient:
             @staticmethod
-            def iter_files(_cid):
+            def iter_files(_cid, access_limit_state=None):
                 return iter(
                     [{"name": "Film.mkv", "pickcode": "pick", "size": 1, "rel_path": "Film.mkv"}]
                 )
@@ -504,6 +524,193 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(result["sidecars"], 1)
             self.assertEqual(result["errors"], 0)
 
+    def test_strm_generator_interrupts_inflight_sidecars_after_access_limit(self):
+        class MinimalSession:
+            def __init__(self):
+                self.headers = {}
+
+        class ConcurrentSidecarClient(U115Client):
+            def __init__(self):
+                super().__init__(session=MinimalSession())
+                self.workers_started = threading.Barrier(2)
+                self.interrupted = threading.Event()
+
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {
+                            "name": "Film.nfo",
+                            "pickcode": SIDECAR_PICKCODE,
+                            "size": 4,
+                            "rel_path": "Movies/Film.nfo",
+                        },
+                        {
+                            "name": "Poster.nfo",
+                            "pickcode": SECOND_PICKCODE,
+                            "size": 4,
+                            "rel_path": "Movies/Poster.nfo",
+                        },
+                    ]
+                )
+
+            def download_file(self, pickcode, output, create_parent=True):
+                self.workers_started.wait(timeout=1)
+                if pickcode == SIDECAR_PICKCODE:
+                    raise U115AccessLimitError("已达到当前访问上限，请稍后再试")
+                try:
+                    self._wait_for_request_retry(10)
+                except U115AccessLimitError:
+                    self.interrupted.set()
+                    raise
+                raise AssertionError("in-flight sidecar download was not interrupted")
+
+        with TemporaryDirectory() as directory:
+            client = ConcurrentSidecarClient()
+            generator = StrmGenerator(
+                client,
+                FakeStore(),
+                "http://mp:3000",
+                incremental=True,
+                download_sidecars=True,
+                sidecar_extensions=".nfo",
+            )
+            started = time.monotonic()
+
+            with self.assertRaises(U115AccessLimitError):
+                generator.run_mapping(
+                    {"id": "movies", "source_cid": "115-root", "target_dir": directory}
+                )
+
+            self.assertTrue(client.interrupted.is_set())
+            self.assertLess(time.monotonic() - started, 2)
+
+    def test_strm_mapping_shares_scan_access_limit_with_sidecars(self):
+        class MinimalSession:
+            def __init__(self):
+                self.headers = {}
+
+        class ScanLimitedClient(U115Client):
+            def __init__(self):
+                super().__init__(session=MinimalSession())
+                self.directory_scan_workers = 2
+                self.directory_scan_prefetch = 2
+                self.sidecar_started = threading.Event()
+                self.sidecar_interrupted = threading.Event()
+
+            def get_dir_list(self, cid):
+                if cid == "root":
+                    return [
+                        {"cid": "sidecar", "fc": "0", "fn": "Sidecar"},
+                        {"cid": "limited", "fc": "0", "fn": "Limited"},
+                    ]
+                if cid == "sidecar":
+                    return [
+                        {
+                            "fid": "sidecar-file",
+                            "fc": "1",
+                            "fn": "Film.nfo",
+                            "pc": SIDECAR_PICKCODE,
+                            "fs": 4,
+                        }
+                    ]
+                if cid == "limited":
+                    if not self.sidecar_started.wait(timeout=1):
+                        raise AssertionError("sidecar worker did not start")
+                    raise U115AccessLimitError("已达到当前访问上限，请稍后再试")
+                raise AssertionError(f"unexpected directory: {cid}")
+
+            def download_file(self, _pickcode, _output, create_parent=True):
+                self.sidecar_started.set()
+                try:
+                    self._wait_for_request_retry(10)
+                except U115AccessLimitError:
+                    self.sidecar_interrupted.set()
+                    raise
+                raise AssertionError("sidecar retry wait was not interrupted")
+
+        with TemporaryDirectory() as directory:
+            client = ScanLimitedClient()
+            generator = StrmGenerator(
+                client,
+                FakeStore(),
+                "http://mp:3000",
+                incremental=True,
+                download_sidecars=True,
+                sidecar_extensions=".nfo",
+            )
+            started = time.monotonic()
+
+            with self.assertRaises(U115AccessLimitError) as caught:
+                generator.run_mapping(
+                    {"id": "movies", "source_cid": "root", "target_dir": directory}
+                )
+
+            self.assertTrue(client.sidecar_interrupted.is_set())
+            self.assertIn("已达到当前访问上限", str(caught.exception))
+            self.assertLess(time.monotonic() - started, 2)
+
+    def test_strm_mapping_shares_sidecar_access_limit_with_scan(self):
+        class MinimalSession:
+            def __init__(self):
+                self.headers = {}
+
+        class SidecarLimitedClient(U115Client):
+            def __init__(self):
+                super().__init__(session=MinimalSession())
+                self.directory_scan_workers = 1
+                self.directory_scan_prefetch = 1
+                self.child_waiting = threading.Event()
+                self.scan_interrupted = threading.Event()
+
+            def get_dir_list(self, cid):
+                if cid == "root":
+                    return [
+                        {
+                            "fid": "sidecar-file",
+                            "fc": "1",
+                            "fn": "Film.nfo",
+                            "pc": SIDECAR_PICKCODE,
+                            "fs": 4,
+                        },
+                        {"cid": "child", "fc": "0", "fn": "Child"},
+                    ]
+                if cid == "child":
+                    self.child_waiting.set()
+                    try:
+                        self._wait_for_request_retry(10)
+                    except U115AccessLimitError:
+                        self.scan_interrupted.set()
+                        raise
+                    raise AssertionError("directory retry wait was not interrupted")
+                raise AssertionError(f"unexpected directory: {cid}")
+
+            def download_file(self, _pickcode, _output, create_parent=True):
+                if not self.child_waiting.wait(timeout=1):
+                    raise AssertionError("child directory did not start")
+                raise U115AccessLimitError("已达到当前访问上限，请稍后再试")
+
+        with TemporaryDirectory() as directory:
+            client = SidecarLimitedClient()
+            generator = StrmGenerator(
+                client,
+                FakeStore(),
+                "http://mp:3000",
+                incremental=True,
+                download_sidecars=True,
+                sidecar_extensions=".nfo",
+            )
+            started = time.monotonic()
+
+            with self.assertRaises(U115AccessLimitError) as caught:
+                generator.run_mapping(
+                    {"id": "movies", "source_cid": "root", "target_dir": directory}
+                )
+
+            self.assertTrue(client.scan_interrupted.is_set())
+            self.assertIn("已达到当前访问上限", str(caught.exception))
+            self.assertLess(time.monotonic() - started, 2)
+
     def test_strm_generator_keeps_first_same_stem_item(self):
         class ConflictingMediaClient:
             @staticmethod
@@ -523,16 +730,18 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "fingerprint": "stale",
                 "path": str(stale_output),
             }
-            result = StrmGenerator(
-                ConflictingMediaClient(),
-                store,
-                "http://mp:3000",
-                incremental=False,
-            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+            with patch("plugins.p115liteassistant.strm.logger") as strm_logger:
+                result = StrmGenerator(
+                    ConflictingMediaClient(),
+                    store,
+                    "http://mp:3000",
+                    incremental=False,
+                ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
 
             output = Path(directory) / "Film.strm"
             self.assertEqual(result["added"], 1)
             self.assertEqual(result["skipped"], 1)
+            self.assertEqual(result["conflicts"], 1)
             self.assertEqual(result["removed"], 1)
             self.assertEqual(result["errors"], 0)
             self.assertIn(f"pickcode={VALID_PICKCODE}", output.read_text(encoding="utf-8"))
@@ -540,6 +749,18 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertFalse(stale_output.exists())
             self.assertIn("movies:Film.mkv", store.strm_records)
             self.assertNotIn("movies:Film.mp4", store.strm_records)
+            self.assertFalse(
+                any(
+                    "输出路径存在多个媒体" in call.args[0]
+                    for call in strm_logger.warning.call_args_list
+                )
+            )
+            self.assertTrue(
+                any(
+                    "冲突候选 1 个" in call.args[0]
+                    for call in strm_logger.info.call_args_list
+                )
+            )
 
     def test_strm_generator_keeps_first_exact_duplicate_path(self):
         class DuplicateMediaClient:
@@ -564,6 +785,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             output = Path(directory) / "Film.strm"
             self.assertEqual(result["added"], 1)
             self.assertEqual(result["skipped"], 1)
+            self.assertEqual(result["conflicts"], 1)
             self.assertEqual(result["errors"], 0)
             self.assertIn(f"pickcode={VALID_PICKCODE}", output.read_text(encoding="utf-8"))
             self.assertNotIn(f"pickcode={SECOND_PICKCODE}", output.read_text(encoding="utf-8"))
@@ -604,6 +826,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             output = Path(directory) / "Film.strm"
             self.assertEqual(result["added"], 1)
             self.assertEqual(result["skipped"], 1)
+            self.assertEqual(result["conflicts"], 1)
             self.assertEqual(result["errors"], 0)
             self.assertIn(f"pickcode={SECOND_PICKCODE}", output.read_text(encoding="utf-8"))
             self.assertNotIn(f"pickcode={VALID_PICKCODE}", output.read_text(encoding="utf-8"))
@@ -1396,6 +1619,66 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(client.attempts, 2)
             self.assertEqual(result["instant"], 1)
             self.assertEqual(result["errors"], 0)
+
+    def test_directory_uploader_defers_remaining_files_after_access_limit(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "Movies"
+            source.mkdir()
+            for name in ("A.mkv", "B.mkv", "C.mkv"):
+                (source / name).write_bytes(b"media")
+            config = {
+                "upload_mappings": [{"enabled": True, "source": str(source), "target": "/Cloud/Movies"}],
+                "upload_include_sidecars": False,
+                "upload_media_extensions": ".mkv",
+            }
+
+            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+                result = DirectoryUploader(
+                    AccessLimitedUploadClient(),
+                    FakeStore(),
+                    config,
+                ).run(incremental=True)
+
+            self.assertEqual(result["errors"], 1)
+            self.assertEqual(result["deferred"], 3)
+            self.assertTrue(
+                any("剩余 3 个文件将在下次任务重试" in call.args[0] for call in upload_logger.error.call_args_list)
+            )
+
+    def test_directory_uploader_stops_when_post_upload_lookup_hits_access_limit(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "Movies"
+            output = Path(directory) / "strm"
+            source.mkdir()
+            for name in ("A.mkv", "B.mkv", "C.mkv"):
+                (source / name).write_bytes(b"media")
+            client = AccessLimitedLookupClient()
+            config = {
+                "upload_mappings": [
+                    {
+                        "enabled": True,
+                        "source": str(source),
+                        "target": "/Cloud/Movies",
+                        "strm_target": str(output),
+                    }
+                ],
+                "upload_generate_strm": True,
+                "upload_include_sidecars": False,
+                "upload_media_extensions": ".mkv",
+            }
+
+            result = DirectoryUploader(
+                client,
+                FakeStore(),
+                config,
+                "https://moviepilot.example",
+            ).run(incremental=True)
+
+            self.assertEqual(result["instant"], 1)
+            self.assertEqual(result["errors"], 1)
+            self.assertEqual(result["deferred"], 3)
+            self.assertEqual(client.item_checks, 1)
+            self.assertEqual(len(client.uploaded), 1)
 
     def test_directory_uploader_deletes_source_only_after_success(self):
         with TemporaryDirectory() as directory:
