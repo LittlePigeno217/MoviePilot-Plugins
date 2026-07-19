@@ -9,14 +9,15 @@ from app.scheduler import Scheduler
 
 from .api import Api
 from .client import U115Client
+from .life_monitor import LifeMonitor
 from .store import Store
 
 
 class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
-    plugin_desc = "独立提供 115 登录、目录选择、STRM/302、目录上传秒传和签到。"
+    plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.1.5"
+    plugin_version = "1.1.6"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -28,12 +29,49 @@ class P115LiteAssistant(_PluginBase):
         self._store = Store(self)
         self._client: Optional[U115Client] = None
         self._client_signature: Optional[Tuple[str, ...]] = None
-        self._api = Api(self._get_client, self._store)
+        self._api = Api(
+            self._get_client,
+            self._store,
+            on_config_saved=self._on_config_saved,
+            life_monitor_status=self._is_life_monitor_running,
+        )
+        self._life_monitor = LifeMonitor(
+            self._get_client,
+            self._store,
+            self._api.cloud_task_lock,
+            self._moviepilot_url,
+        )
 
     def init_plugin(self, config: dict | None = None) -> None:
         if config:
             self._store.update_config(config)
         self._client = None
+        self._client_signature = None
+        self._sync_life_monitor()
+
+    def _moviepilot_url(self) -> str:
+        return str(self._store.get_config().get("moviepilot_address") or "").strip().rstrip("/")
+
+    def _is_life_monitor_running(self) -> bool:
+        monitor = getattr(self, "_life_monitor", None)
+        return bool(monitor and monitor.is_running)
+
+    def _on_config_saved(self) -> None:
+        self._client = None
+        self._client_signature = None
+        self._sync_life_monitor()
+
+    def _sync_life_monitor(self) -> None:
+        config = self._store.get_config()
+        mappings = [
+            mapping
+            for mapping in config.get("strm_mappings") or []
+            if isinstance(mapping, dict) and mapping.get("enabled", True)
+        ]
+        if config.get("enabled") and config.get("life_monitor_enabled") and mappings:
+            self._life_monitor.start()
+        else:
+            self._life_monitor.stop()
 
     def _get_client(self) -> U115Client:
         config = self._store.get_config()
@@ -111,6 +149,7 @@ class P115LiteAssistant(_PluginBase):
             return []
 
     def stop_service(self) -> None:
+        self._life_monitor.stop()
         try:
             Scheduler().remove_plugin_job("p115liteassistant_checkin")
         except Exception:  # noqa: BLE001

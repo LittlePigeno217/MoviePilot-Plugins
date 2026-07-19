@@ -60,6 +60,71 @@ class FakeSession:
 
 
 class U115ClientTest(unittest.TestCase):
+    def test_get_item_by_id_builds_path_from_open_ancestors(self):
+        class ItemByIdSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/folder/get_info"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "state": True,
+                            "data": {
+                                "file_id": "501",
+                                "parent_id": "10",
+                                "file_category": "1",
+                                "file_name": "Film.mkv",
+                                "pick_code": "pickcode",
+                                "file_size": "5",
+                                "user_utime": "123",
+                                "paths": [
+                                    {"file_id": "0", "file_name": "根目录"},
+                                    {"file_id": "10", "file_name": "Movies"},
+                                ],
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = ItemByIdSession()
+        item = U115Client(tokens={"access_token": "token"}, session=session).get_item_by_id("501")
+
+        self.assertEqual(item["path"], "/Movies/Film.mkv")
+        self.assertEqual(item["parent_id"], "10")
+        self.assertEqual(session.requests[0][2]["data"], {"file_id": "501"})
+
+    def test_life_event_endpoints_use_cookie_and_upstream_paths(self):
+        class LifeSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/calendar/setoption"):
+                    return FakeResponse({"state": True})
+                if url.endswith("/ios/behavior/detail"):
+                    return FakeResponse(
+                        {
+                            "state": True,
+                            "data": {
+                                "count": 1,
+                                "list": [{"id": "1", "type": 2, "update_time": 123}],
+                            },
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = LifeSession()
+        client = U115Client(cookie="UID=1; CID=2", session=session)
+        client.enable_life_events()
+        page = client.get_life_events_page(app="ios", offset=3, limit=64)
+
+        self.assertEqual(page["count"], 1)
+        self.assertEqual(page["events"][0]["type"], 2)
+        self.assertTrue(session.requests[0][1].endswith("/api/1.0/web/1.0/calendar/setoption"))
+        self.assertEqual(session.requests[0][2]["data"], {"locus": 1, "open_life": 1})
+        self.assertTrue(session.requests[1][1].endswith("/ios/behavior/detail"))
+        self.assertEqual(session.requests[1][2]["params"]["offset"], 3)
+        self.assertEqual(session.requests[1][2]["params"]["limit"], 64)
+        self.assertEqual(session.requests[1][2]["headers"]["Cookie"], "UID=1; CID=2")
+
     def test_get_item_normalizes_open_size_byte(self):
         client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
 

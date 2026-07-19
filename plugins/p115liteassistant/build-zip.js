@@ -8,6 +8,7 @@ const assetsDir = path.join(__dirname, 'dist', 'assets')
 
 const legacyAssets = {
   config: [
+    '__federation_expose_Config-7ce093ba.js',
     '__federation_expose_Config-97f7421d.js',
     '__federation_expose_Config-7f5b080b.js',
     '__federation_expose_Config-43e986fa.js',
@@ -17,6 +18,7 @@ const legacyAssets = {
     '__federation_expose_Config-ebda5443.js',
   ],
   page: [
+    '__federation_expose_Page-4e7cd70d.js',
     '__federation_expose_Page-977537ad.js',
     '__federation_expose_Page-8cb7e1c8.js',
     '__federation_expose_Page-e25a15b8.js',
@@ -24,12 +26,14 @@ const legacyAssets = {
     '__federation_expose_Page-e86c3b81.js',
   ],
   helper: [
+    '_plugin-vue_export-helper-3767dab0.js',
     '_plugin-vue_export-helper-12555fbe.js',
     '_plugin-vue_export-helper-c5cccadb.js',
     '_plugin-vue_export-helper-acbf976c.js',
     '_plugin-vue_export-helper-bb1fda24.js',
   ],
   index: [
+    'index-e397d051.js',
     'index-1be59a16.js',
     'index-95a7d879.js',
     'index-293984c5.js',
@@ -39,6 +43,7 @@ const legacyAssets = {
     'index-02f8fa5f.js',
   ],
   style: [
+    'style-b6c329b1.css',
     'style-1375dbe0.css',
     'style-c28fa672.css',
     'style-faffdeb7.css',
@@ -89,6 +94,7 @@ const backendFiles = [
   'client.py',
   'file_types.py',
   'log_utils.py',
+  'life_monitor.py',
   'records.py',
   'resilience.py',
   'store.py',

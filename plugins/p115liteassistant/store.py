@@ -28,6 +28,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "checkin_cron": "15 8 * * *",
     "checkin_time_range": "06:00-09:00",
     "same_playback": False,
+    "life_monitor_enabled": False,
 }
 
 
@@ -40,6 +41,9 @@ class Store:
     _HISTORY_KEY = "p115liteassistant_history"
     _CHECKIN_SCHEDULE_KEY = "p115liteassistant_checkin_schedule"
     _REDIRECT_SECRET_KEY = "p115liteassistant_redirect_secret"
+    _LIFE_CURSOR_KEY = "p115liteassistant_life_cursor"
+    _LIFE_API_STATE_KEY = "p115liteassistant_life_api_state"
+    _LIFE_PATHS_KEY = "p115liteassistant_life_paths"
 
     def __init__(self, plugin):
         self._plugin = plugin
@@ -51,6 +55,10 @@ class Store:
             saved = self._plugin.get_data(self._CONFIG_KEY) or {}
             if isinstance(saved, dict):
                 config.update({key: value for key, value in saved.items() if key in DEFAULT_CONFIG})
+                # Upstream calls this switch ``monitor_life_enabled``; accept it
+                # as a migration alias while keeping one canonical value here.
+                if "life_monitor_enabled" not in saved and "monitor_life_enabled" in saved:
+                    config["life_monitor_enabled"] = bool(saved["monitor_life_enabled"])
             return config
 
     def save_config(self, config: Dict[str, Any]) -> None:
@@ -59,6 +67,9 @@ class Store:
 
     def update_config(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         with self._config_lock:
+            updates = dict(updates)
+            if "monitor_life_enabled" in updates and "life_monitor_enabled" not in updates:
+                updates["life_monitor_enabled"] = updates["monitor_life_enabled"]
             config = self.get_config()
             config.update({key: value for key, value in updates.items() if key in DEFAULT_CONFIG})
             self.save_config(config)
@@ -66,10 +77,44 @@ class Store:
 
     def get_strm_records(self) -> Dict[str, Dict[str, Any]]:
         records = self._plugin.get_data(self._STRM_RECORDS_KEY) or {}
-        return records if isinstance(records, dict) else {}
+        return deepcopy(records) if isinstance(records, dict) else {}
 
     def save_strm_records(self, records: Dict[str, Dict[str, Any]]) -> None:
-        self._plugin.save_data(self._STRM_RECORDS_KEY, records)
+        self._plugin.save_data(self._STRM_RECORDS_KEY, deepcopy(records))
+
+    def get_life_cursor(self) -> Dict[str, Any]:
+        state = self._plugin.get_data(self._LIFE_CURSOR_KEY) or {}
+        if not isinstance(state, dict):
+            return {"from_time": 0, "from_id": 0}
+        try:
+            from_time = int(float(state.get("from_time") or 0))
+        except (TypeError, ValueError):
+            from_time = 0
+        try:
+            from_id = int(state.get("from_id") or 0)
+        except (TypeError, ValueError):
+            from_id = 0
+        return {"from_time": max(0, from_time), "from_id": max(0, from_id)}
+
+    def save_life_cursor(self, from_time: int, from_id: int) -> None:
+        self._plugin.save_data(
+            self._LIFE_CURSOR_KEY,
+            {"from_time": max(0, int(from_time)), "from_id": max(0, int(from_id))},
+        )
+
+    def get_life_api_state(self) -> Dict[str, Any]:
+        state = self._plugin.get_data(self._LIFE_API_STATE_KEY) or {}
+        return dict(state) if isinstance(state, dict) else {}
+
+    def save_life_api_state(self, state: Dict[str, Any]) -> None:
+        self._plugin.save_data(self._LIFE_API_STATE_KEY, dict(state))
+
+    def get_life_paths(self) -> Dict[str, Dict[str, Any]]:
+        state = self._plugin.get_data(self._LIFE_PATHS_KEY) or {}
+        return deepcopy(state) if isinstance(state, dict) else {}
+
+    def save_life_paths(self, paths: Dict[str, Dict[str, Any]]) -> None:
+        self._plugin.save_data(self._LIFE_PATHS_KEY, deepcopy(paths))
 
     def get_redirect_secret(self) -> str:
         with self._config_lock:

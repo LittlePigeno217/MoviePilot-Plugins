@@ -109,6 +109,66 @@ def strm_output_path(media_path: Path) -> Path:
     return media_path.with_suffix(".strm")
 
 
+def normalize_cloud_path(path: str) -> str:
+    normalized = PurePosixPath((path or "/").replace("\\", "/")).as_posix()
+    if normalized == ".":
+        normalized = "/"
+    return normalized if normalized.startswith("/") else f"/{normalized}"
+
+
+def mapping_cloud_path(mapping: Dict[str, Any], rel_path: str) -> str:
+    source_path = normalize_cloud_path(str(mapping.get("source_path") or "/"))
+    relative = PurePosixPath(str(rel_path or "").replace("\\", "/"))
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        raise ValueError(f"远端相对路径无效: {rel_path}")
+    if source_path == "/":
+        return normalize_cloud_path(f"/{relative.as_posix()}")
+    return normalize_cloud_path(f"{source_path.rstrip('/')}/{relative.as_posix()}")
+
+
+def build_strm_record(
+    *,
+    fingerprint: str,
+    output: Path,
+    mapping: Dict[str, Any],
+    item: Dict[str, Any],
+    kind: str = "strm",
+    cloud_path: str = "",
+) -> Dict[str, Any]:
+    """Build a record while keeping legacy fields stable for older installs."""
+
+    record: Dict[str, Any] = {
+        "fingerprint": fingerprint,
+        "path": str(output),
+        "kind": kind,
+        "mapping_id": str(mapping.get("id") or mapping.get("source_cid") or "default"),
+    }
+    if cloud_path:
+        record["cloud_path"] = normalize_cloud_path(cloud_path)
+    for key in ("fileid", "file_id"):
+        value = str(item.get(key) or "").strip()
+        if value:
+            record["file_id"] = value
+            break
+    pickcode = str(item.get("pickcode") or item.get("pick_code") or "").strip()
+    if pickcode:
+        record["pickcode"] = pickcode
+    for source_key, target_key in (("size", "size"), ("mtime", "mtime")):
+        value = item.get(source_key)
+        if value not in (None, ""):
+            try:
+                record[target_key] = int(float(value))
+            except (TypeError, ValueError):
+                pass
+    name = str(item.get("name") or item.get("file_name") or "").strip()
+    if name:
+        record["name"] = name
+    parent_id = str(item.get("parent_id") or "").strip()
+    if parent_id:
+        record["parent_id"] = parent_id
+    return record
+
+
 def _atomic_write_text(output: Path, content: str) -> None:
     temp_output = output.with_name(f".{output.name}.{threading.get_ident()}.tmp")
     try:
@@ -316,7 +376,7 @@ class StrmGenerator:
         obsolete_outputs: set[Path] = set()
         pending: Dict[
             Future[None],
-            tuple[str, str, str, Dict[str, Any], str, Path],
+            tuple[str, str, str, Dict[str, Any], str, Path, Dict[str, Any]],
         ] = {}
         processed = 0
         new_access_limit_state = getattr(self._client, "new_access_limit_state", None)
@@ -347,7 +407,15 @@ class StrmGenerator:
         def collect(done: set[Future[None]]) -> None:
             nonlocal processed
             for future in done:
-                kind, record_key, fingerprint, previous, rel_path_text, output = pending.pop(future)
+                (
+                    kind,
+                    record_key,
+                    fingerprint,
+                    previous,
+                    rel_path_text,
+                    output,
+                    next_record,
+                ) = pending.pop(future)
                 processed += 1
                 try:
                     future.result()
@@ -360,7 +428,7 @@ class StrmGenerator:
                             previous_output = Path(previous_path)
                             if previous_output != output:
                                 obsolete_outputs.add(previous_output)
-                        records[record_key] = {"fingerprint": fingerprint, "path": str(output)}
+                        records[record_key] = next_record
                         if kind == "sidecar":
                             count_key = "sidecars"
                             logger.debug(f"【STRM同步】附属文件回传成功：{rel_path_text} -> {output}")
@@ -451,6 +519,12 @@ class StrmGenerator:
                     logger.warning(f"【STRM同步】文件相对路径无效，跳过：{rel_path.as_posix()}")
                     continue
                 rel_path_text = rel_path.as_posix()
+                try:
+                    cloud_path = mapping_cloud_path(mapping, rel_path_text)
+                except ValueError:
+                    counts["errors"] += 1
+                    logger.warning(f"【STRM同步】文件远端路径无效，跳过：{rel_path_text}")
+                    continue
                 output = target_dir.joinpath(*rel_path.parts)
                 if kind == "strm":
                     output = strm_output_path(output)
@@ -527,6 +601,14 @@ class StrmGenerator:
                     fingerprint = f"{pickcode}:{item.get('size', 0)}"
                 else:
                     content = self._build_url(pickcode, name) + "\n"
+                next_record = build_strm_record(
+                    fingerprint=fingerprint,
+                    output=output,
+                    mapping=mapping,
+                    item={**item, "pickcode": pickcode},
+                    kind=kind,
+                    cloud_path=cloud_path,
+                )
                 previous = initial_records.get(record_key, {})
                 output_matches = (
                     strm_file_matches(output, content)
@@ -539,6 +621,7 @@ class StrmGenerator:
                     and self._record_path_matches(previous, output)
                     and output_matches
                 ):
+                    records[record_key] = next_record
                     counts["skipped"] += 1
                     completed_count_by_output[output] = "skipped"
                     logger.debug(f"【STRM同步】文件未变化，跳过：{rel_path_text}")
@@ -570,6 +653,7 @@ class StrmGenerator:
                     previous,
                     rel_path_text,
                     output,
+                    next_record,
                 )
                 if len(pending) >= STRM_WRITE_PREFETCH:
                     done, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)

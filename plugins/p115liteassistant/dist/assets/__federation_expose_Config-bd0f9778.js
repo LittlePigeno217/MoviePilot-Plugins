@@ -1,2 +1,2 @@
-export { default } from "./__federation_expose_Config-7ce093ba.js";
-export * from "./__federation_expose_Config-7ce093ba.js";
+export { default } from "./__federation_expose_Config-985919bf.js";
+export * from "./__federation_expose_Config-985919bf.js";

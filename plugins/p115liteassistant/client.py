@@ -63,6 +63,9 @@ class U115Client:
     }
     web_copy_url = "https://webapi.115.com/files/copy"
     web_delete_url = "https://webapi.115.com/rb/delete"
+    life_calendar_url = "https://life.115.com/api/1.0/web/1.0/calendar/setoption"
+    life_behavior_ios_url = "https://proapi.115.com/ios/behavior/detail"
+    life_behavior_web_url = "https://webapi.115.com/behavior/detail"
     cookie_download_url = "https://proapi.115.com/android/2.0/ufile/download"
     ios_user_agent = (
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
@@ -560,6 +563,8 @@ class U115Client:
                                 pending.append((child_cid, rel_path))
                             continue
                         yield {
+                            "fileid": self._item_id(raw),
+                            "parent_id": str(_current_cid),
                             "name": name,
                             "pickcode": raw.get("pc") or raw.get("pick_code") or raw.get("pickcode") or "",
                             "size": raw.get("fs") or raw.get("s") or raw.get("size_byte") or raw.get("size") or 0,
@@ -580,6 +585,37 @@ class U115Client:
         payload = self._request(
             "POST", "/open/folder/get_info", no_error=True, data={"path": normalized}
         )
+        return self._parse_open_item(payload, requested_path=normalized)
+
+    def get_item_by_id(self, file_id: str | int) -> Optional[Dict[str, Any]]:
+        normalized_id = str(file_id or "").strip()
+        if not normalized_id:
+            raise ValueError("115 文件 ID 不能为空")
+        if normalized_id == "0":
+            return {
+                "fileid": "0",
+                "parent_id": "0",
+                "path": "/",
+                "type": "dir",
+                "name": "",
+                "pickcode": "",
+                "size": None,
+                "mtime": 0,
+            }
+        payload = self._request(
+            "POST",
+            "/open/folder/get_info",
+            no_error=True,
+            data={"file_id": normalized_id},
+        )
+        return self._parse_open_item(payload, strict=False)
+
+    def _parse_open_item(
+        self,
+        payload: Dict[str, Any],
+        requested_path: str = "",
+        strict: bool = True,
+    ) -> Optional[Dict[str, Any]]:
         if not self._is_response_success(payload):
             code = str(payload.get("code") or payload.get("errno") or "")
             message = str(payload.get("message") or payload.get("error") or payload)
@@ -593,23 +629,156 @@ class U115Client:
             raise U115ApiError("115 文件信息响应无效")
         file_id = self._item_id(data)
         category = data.get("file_category", data.get("fc"))
+        if category in (None, ""):
+            category = "0" if not (
+                data.get("pick_code") or data.get("pickcode") or data.get("pc")
+            ) else "1"
         name = self._item_name(data)
-        if not file_id or category in (None, "") or (not name and normalized != "/"):
+        path = requested_path or self._path_from_open_info(data)
+        if not file_id or (not name and path != "/"):
             raise U115ApiError("115 文件信息字段不完整")
         category = str(category)
         if category not in {"0", "1"}:
             raise U115ApiError(f"115 文件信息类型无效: {category}")
-        if self._item_mtime(data) <= 0:
+        if strict and self._item_mtime(data) <= 0:
             raise U115ApiError("115 文件信息缺少有效修改时间")
         if category == "1":
             if not str(
                 data.get("pick_code") or data.get("pickcode") or data.get("pc") or ""
-            ).strip():
+            ).strip() and strict:
                 raise U115ApiError("115 文件信息缺少 pick_code")
             size = self._item_size(data)
-            if size is None or size < 0:
+            if (size is None or size < 0) and strict:
                 raise U115ApiError("115 文件信息缺少有效文件大小")
-        return self._item_from_info(data, normalized)
+        item = self._item_from_info(data, path)
+        paths = data.get("paths")
+        if isinstance(paths, list) and paths:
+            parent = paths[-1]
+            if isinstance(parent, dict):
+                item["parent_id"] = str(
+                    parent.get("file_id")
+                    or parent.get("cid")
+                    or parent.get("id")
+                    or "0"
+                )
+        if "parent_id" not in item:
+            item["parent_id"] = str(data.get("parent_id") or data.get("pid") or "0")
+        return item
+
+    @classmethod
+    def _path_from_open_info(cls, info: Dict[str, Any]) -> str:
+        direct = info.get("path") or info.get("file_path")
+        if isinstance(direct, str) and direct.strip():
+            normalized = cls._normalize_cloud_path(direct)
+            name = cls._item_name(info)
+            if name and PurePosixPath(normalized).name != name:
+                normalized = cls._normalize_cloud_path(f"{normalized.rstrip('/')}/{name}")
+            return normalized
+
+        path_value = info.get("paths")
+        if isinstance(path_value, str) and path_value.strip():
+            normalized = cls._normalize_cloud_path(path_value)
+            name = cls._item_name(info)
+            if name and PurePosixPath(normalized).name != name:
+                normalized = cls._normalize_cloud_path(f"{normalized.rstrip('/')}/{name}")
+            return normalized
+
+        parts: list[str] = []
+        if isinstance(path_value, list):
+            for entry in path_value:
+                if isinstance(entry, dict):
+                    entry_id = str(
+                        entry.get("file_id")
+                        or entry.get("cid")
+                        or entry.get("id")
+                        or ""
+                    )
+                    name = str(
+                        entry.get("file_name")
+                        or entry.get("name")
+                        or entry.get("n")
+                        or ""
+                    ).strip("/\\")
+                    if entry_id == "0" or name in {"根目录", "全部文件", "文件"}:
+                        continue
+                    if name:
+                        parts.append(name)
+                elif isinstance(entry, str):
+                    parts.extend(
+                        part for part in entry.replace("\\", "/").split("/") if part
+                    )
+        name = cls._item_name(info)
+        if name and (not parts or parts[-1] != name):
+            parts.append(name)
+        if not parts:
+            raise U115ApiError("115 文件信息缺少完整路径")
+        return cls._normalize_cloud_path("/" + "/".join(parts))
+
+    def enable_life_events(self) -> None:
+        payload = self._request_url(
+            "POST",
+            self.life_calendar_url,
+            data={"locus": 1, "open_life": 1},
+            headers={"User-Agent": self.ios_user_agent},
+        )
+        if not self._is_response_success(payload):
+            message = str(payload.get("message") or payload.get("error") or payload)
+            raise U115ApiError(f"开启 115 生活事件失败: {message}")
+
+    def get_life_events_page(
+        self,
+        *,
+        app: str = "ios",
+        offset: int = 0,
+        limit: int = 1000,
+        event_type: str = "",
+        date: str = "",
+    ) -> Dict[str, Any]:
+        normalized_app = str(app or "ios").strip().lower()
+        if normalized_app not in {"ios", "web"}:
+            raise ValueError(f"不支持的 115 生活事件接口: {normalized_app}")
+        url = (
+            self.life_behavior_web_url
+            if normalized_app == "web"
+            else self.life_behavior_ios_url
+        )
+        params = {
+            "type": str(event_type or ""),
+            "date": str(date or ""),
+            "limit": min(1000, max(1, int(limit))),
+            "offset": max(0, int(offset)),
+        }
+        payload = self._request_url(
+            "GET",
+            url,
+            params=params,
+            headers={"User-Agent": self.ios_user_agent},
+        )
+        data = payload.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("list"), list):
+            raise U115ApiError("115 生活事件响应无效")
+        return {
+            "events": [item for item in data["list"] if isinstance(item, dict)],
+            "count": int(data.get("count") or 0),
+        }
+
+    def pull_life_events(
+        self,
+        *,
+        app: str = "ios",
+        offset: int = 0,
+        limit: int = 1000,
+    ) -> list[Dict[str, Any]]:
+        """兼容上游命名的单页生活事件读取方法。"""
+
+        return list(
+            self.get_life_events_page(
+                app=app,
+                offset=offset,
+                limit=limit,
+            ).get("events")
+            or []
+        )
 
     def ensure_remote_dir(self, path: str) -> Dict[str, Any]:
         cloud_path = self._normalize_cloud_path(path)

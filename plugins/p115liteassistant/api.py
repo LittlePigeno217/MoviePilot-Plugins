@@ -47,9 +47,17 @@ class Api:
     _PLAYBACK_COPY_CLEANUP_GRACE_SECONDS = 60
     _PLAYBACK_COPY_CLEANUP_FALLBACK_SECONDS = 300
 
-    def __init__(self, client_provider: Callable[[], U115Client], store: Store):
+    def __init__(
+        self,
+        client_provider: Callable[[], U115Client],
+        store: Store,
+        on_config_saved: Callable[[], None] | None = None,
+        life_monitor_status: Callable[[], bool] | None = None,
+    ):
         self._client_provider = client_provider
         self._store = store
+        self._on_config_saved = on_config_saved
+        self._life_monitor_status = life_monitor_status
         self._running: set[str] = set()
         self._lock = threading.Lock()
         self._cloud_task_lock = threading.Lock()
@@ -69,6 +77,8 @@ class Api:
         if not isinstance(payload, dict):
             return _error("配置格式无效")
         updates = dict(payload)
+        if "monitor_life_enabled" in updates and "life_monitor_enabled" not in updates:
+            updates["life_monitor_enabled"] = updates["monitor_life_enabled"]
         if "link_redirect_mode" in updates:
             redirect_mode = str(updates.get("link_redirect_mode") or "").strip().lower()
             if redirect_mode not in {"cookie", "open"}:
@@ -99,7 +109,17 @@ class Api:
         ):
             self._browse_115_cache.clear()
             self._redirect_cache.clear()
+        if self._on_config_saved:
+            try:
+                self._on_config_saved()
+            except Exception as err:  # noqa: BLE001
+                logger.error(f"【配置】保存后刷新运行服务失败：{safe_error_text(err)}")
+                return _error(f"配置已保存，但刷新运行服务失败：{err}")
         return _ok(message="配置已保存")
+
+    @property
+    def cloud_task_lock(self) -> threading.Lock:
+        return self._cloud_task_lock
 
     def qrcode(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
         try:
@@ -218,6 +238,10 @@ class Api:
                 "authenticated": self._client_provider().is_authenticated(),
                 "strm_mappings": len(config.get("strm_mappings") or []),
                 "upload_mappings": len(config.get("upload_mappings") or []),
+                "life_monitor_enabled": bool(config.get("life_monitor_enabled")),
+                "life_monitor_running": bool(
+                    self._life_monitor_status and self._life_monitor_status()
+                ),
                 "running": running,
                 "history": self._store.get_history(),
             }

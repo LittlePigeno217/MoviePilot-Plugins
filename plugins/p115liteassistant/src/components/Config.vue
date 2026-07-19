@@ -276,6 +276,7 @@ onBeforeUnmount(clearQrPoll)
                 <v-switch v-model="config.strm_incremental" label="增量生成" color="primary" hide-details density="compact" class="head-switch" />
                 <v-switch v-model="config.strm_download_sidecars" label="回传附属文件" color="primary" hide-details density="compact" class="head-switch" />
                 <v-switch v-model="config.same_playback" label="多端播放" color="primary" hide-details density="compact" class="head-switch" />
+                <v-switch v-model="config.life_monitor_enabled" label="监控115生活事件" color="primary" hide-details density="compact" class="head-switch" />
               </div>
             </section>
             <section class="strm-address-row">
