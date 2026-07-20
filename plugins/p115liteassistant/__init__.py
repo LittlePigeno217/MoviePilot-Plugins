@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from apscheduler.triggers.cron import CronTrigger
+from app.core.event import Event, eventmanager
 from app.log import logger
 from app.plugins import _PluginBase
 from app.scheduler import Scheduler
+from app.schemas.types import EventType
 
 from .api import Api
 from .client import U115Client
@@ -17,7 +19,7 @@ class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.1.6"
+    plugin_version = "1.1.7"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -92,6 +94,22 @@ class P115LiteAssistant(_PluginBase):
 
     def get_state(self) -> bool:
         return bool(self._store.get_config().get("enabled"))
+
+    @eventmanager.register(EventType.TransferComplete)
+    def upload_after_transfer_complete(self, event: Event) -> None:
+        """媒体整理完成后触发一次增量上传。"""
+        if not event.event_data:
+            return
+        config = self._store.get_config()
+        if not config.get("enabled"):
+            return
+        if not any(
+            isinstance(mapping, dict) and mapping.get("enabled", True)
+            for mapping in config.get("upload_mappings") or []
+        ):
+            return
+        logger.info("【目录上传】媒体整理完成，触发增量上传")
+        self._api.trigger_upload(True)
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
