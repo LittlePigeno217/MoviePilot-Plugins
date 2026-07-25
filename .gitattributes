@@ -1,0 +1,5 @@
+# 统一使用 LF 行尾，消除 Windows 下的 CRLF 警告
+* text=auto eol=lf
+
+# 前端构建产物按二进制处理，避免行尾规范化与 diff 噪音
+dist/ -text
