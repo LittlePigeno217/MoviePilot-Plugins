@@ -57,6 +57,25 @@ class IncrementalRecordStore:
     def to_dict(self) -> Dict[str, Dict[str, Any]]:
         return dict(self._records)
 
+    def recent_media(self, media_extensions: set[str], limit: int = 12) -> List[Dict[str, Any]]:
+        items = []
+        for path, record in self._records.items():
+            if Path(path).suffix.lower() not in media_extensions:
+                continue
+            uploaded_at = str(record.get("uploaded_at") or "")
+            if not uploaded_at:
+                continue
+            items.append(
+                {
+                    "name": Path(path).name,
+                    "path": path,
+                    "target": str(record.get("target") or ""),
+                    "uploaded_at": uploaded_at,
+                    "method": str(record.get("method") or "upload"),
+                }
+            )
+        return sorted(items, key=lambda item: item["uploaded_at"], reverse=True)[:limit]
+
 
 class TaskHistory:
     def __init__(self, items: Iterable[Dict[str, Any]] | None = None, limit: int = 50):

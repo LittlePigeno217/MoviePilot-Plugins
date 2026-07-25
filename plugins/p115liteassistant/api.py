@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from .checkin_schedule import random_epoch_for_date, pick_next_run_epoch
 from .client import U115AccessLimitError, U115ApiError, U115AuthError, U115Client
+from .file_types import DEFAULT_MEDIA_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
@@ -244,6 +245,12 @@ class Api:
                 ),
                 "running": running,
                 "history": self._store.get_history(),
+                "recent_uploads": self._store.get_recent_uploaded_media(
+                    parse_extensions(
+                        config.get("upload_media_extensions", ""),
+                        DEFAULT_MEDIA_EXTENSIONS,
+                    )
+                ),
             }
         )
 

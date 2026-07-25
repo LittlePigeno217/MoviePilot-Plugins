@@ -132,6 +132,13 @@ class Store:
     def save_upload_records(self, records: IncrementalRecordStore) -> None:
         self._plugin.save_data(self._UPLOAD_RECORDS_KEY, records.to_dict())
 
+    def get_recent_uploaded_media(
+        self,
+        media_extensions: set[str],
+        limit: int = 12,
+    ) -> List[Dict[str, Any]]:
+        return self.get_upload_records().recent_media(media_extensions, limit)
+
     def get_history(self) -> List[Dict[str, Any]]:
         items = self._plugin.get_data(self._HISTORY_KEY) or []
         return list(items) if isinstance(items, list) else []

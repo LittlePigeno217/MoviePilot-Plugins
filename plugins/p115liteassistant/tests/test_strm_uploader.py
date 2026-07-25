@@ -156,6 +156,39 @@ class AccessLimitedLookupClient(FakeUploadClient):
 
 
 class StrmAndUploaderTest(unittest.TestCase):
+    def test_recent_media_records_only_return_media_in_reverse_upload_order(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            older = root / "Older.mkv"
+            newer = root / "Newer.mkv"
+            sidecar = root / "Newer.nfo"
+            for path in (older, newer, sidecar):
+                path.write_text(path.name, encoding="utf-8")
+            records = IncrementalRecordStore()
+            records.mark_uploaded(older, "/Cloud/Older.mkv", "2026-07-24T10:00:00")
+            records.mark_uploaded(newer, "/Cloud/Newer.mkv", "2026-07-24T11:00:00", {"method": "instant"})
+            records.mark_uploaded(sidecar, "/Cloud/Newer.nfo", "2026-07-24T12:00:00")
+
+            self.assertEqual(
+                records.recent_media({".mkv"}),
+                [
+                    {
+                        "name": "Newer.mkv",
+                        "path": str(newer),
+                        "target": "/Cloud/Newer.mkv",
+                        "uploaded_at": "2026-07-24T11:00:00",
+                        "method": "instant",
+                    },
+                    {
+                        "name": "Older.mkv",
+                        "path": str(older),
+                        "target": "/Cloud/Older.mkv",
+                        "uploaded_at": "2026-07-24T10:00:00",
+                        "method": "upload",
+                    },
+                ],
+            )
+
     def test_strm_address_requires_explicit_config(self):
         configured = Api(lambda: None, FakeStore({"moviepilot_address": "https://media.example/"}))
         missing = Api(lambda: None, FakeStore())
@@ -1721,6 +1754,30 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(result["deleted"], 2)
             self.assertFalse(movie.exists())
             self.assertFalse(sidecar.exists())
+
+    def test_directory_uploader_combines_media_and_sidecar_success_logs(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "Movies"
+            source.mkdir()
+            (source / "Film.mkv").write_bytes(b"media")
+            (source / "Film.nfo").write_text("nfo", encoding="utf-8")
+            config = {
+                "upload_mappings": [{"enabled": True, "source": str(source), "target": "/Cloud/Movies"}],
+                "upload_include_sidecars": True,
+                "upload_media_extensions": ".mkv",
+                "upload_sidecar_extensions": ".nfo",
+            }
+
+            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+                DirectoryUploader(FakeUploadClient(), FakeStore(), config).run(incremental=True)
+
+            media_logs = [
+                call.args[0]
+                for call in upload_logger.info.call_args_list
+                if "秒传成功" in call.args[0] and "Film.mkv" in call.args[0]
+            ]
+            self.assertEqual(len(media_logs), 1)
+            self.assertIn("附属文件 1（上传 1）", media_logs[0])
 
     def test_directory_uploader_deletes_an_orphan_sidecar_after_upload(self):
         with TemporaryDirectory() as directory:

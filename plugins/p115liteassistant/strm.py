@@ -431,7 +431,6 @@ class StrmGenerator:
                         records[record_key] = next_record
                         if kind == "sidecar":
                             count_key = "sidecars"
-                            logger.debug(f"【STRM同步】附属文件回传成功：{rel_path_text} -> {output}")
                         else:
                             count_key = "updated" if previous else "added"
                             logger.debug(

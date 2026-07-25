@@ -123,6 +123,62 @@ class DirectoryUploader:
             raise ValueError(f"上传源文件不可用: {local_path}")
 
     @staticmethod
+    def _log_completed_uploads(
+        files: list[Tuple[Path, str, str, Path, str]],
+        completed: Dict[Path, tuple[str, bool]],
+    ) -> None:
+        media_paths = [
+            local_path
+            for local_path, _target_path, kind, _source_root, _strm_target in files
+            if kind == "media"
+        ]
+        grouped: Dict[Path, list[tuple[Path, str, bool]]] = {
+            media_path: [] for media_path in media_paths if media_path in completed
+        }
+        standalone = []
+        for local_path, target_path, kind, _source_root, _strm_target in files:
+            result = completed.get(local_path)
+            if result is None:
+                continue
+            method, reused = result
+            if kind == "media":
+                continue
+            candidates = [
+                media_path
+                for media_path in media_paths
+                if media_path.parent == local_path.parent
+                and local_path.name.startswith(f"{media_path.stem}.")
+                and media_path in grouped
+            ]
+            if candidates:
+                grouped[max(candidates, key=lambda path: len(path.stem))].append(
+                    (local_path, method, reused)
+                )
+            else:
+                standalone.append((local_path, target_path, method, reused))
+
+        for media_path, sidecars in grouped.items():
+            target_path, reused = completed[media_path]
+            media_result = "秒传成功" if reused else "上传成功"
+            sidecar_summary = ""
+            if sidecars:
+                instant = sum(1 for _path, _target, reused in sidecars if reused)
+                uploaded = len(sidecars) - instant
+                parts = []
+                if uploaded:
+                    parts.append(f"上传 {uploaded}")
+                if instant:
+                    parts.append(f"秒传 {instant}")
+                sidecar_summary = f"，附属文件 {len(sidecars)}（{'，'.join(parts)}）"
+            logger.info(f"【目录上传】{media_result}：{media_path} -> {target_path}{sidecar_summary}")
+
+        for local_path, target_path, _method, reused in standalone:
+            logger.info(
+                f"【目录上传】{'附属文件秒传成功' if reused else '附属文件上传成功'}："
+                f"{local_path} -> {target_path}"
+            )
+
+    @staticmethod
     def _remove_empty_parents(directory: Path, source_root: Path) -> None:
         while directory != source_root:
             try:
@@ -440,6 +496,7 @@ class DirectoryUploader:
             self._validate_strm_output_paths(files)
         logger.info(f"【目录上传】目录扫描完成，待处理文件：{len(files)}")
         uploaded_paths: set[Path] = set()
+        completed_uploads: Dict[Path, tuple[str, bool]] = {}
         for file_index, (local_path, target_path, kind, source_root, strm_target) in enumerate(files):
             self._validate_source_file(local_path, source_root)
             record_metadata = (
@@ -541,13 +598,11 @@ class DirectoryUploader:
                     abort_on=(U115AccessLimitError, U115AuthError),
                 )
                 counts["instant" if result.reused else "uploaded"] += 1
-                logger.info(
-                    f"【目录上传】{'秒传成功' if result.reused else '上传成功'}："
-                    f"{local_path} -> {target_path}"
-                )
+                completed_uploads[local_path] = (target_path, result.reused)
                 upload_metadata = {}
                 if (result.file_item or {}).get("pickcode"):
                     upload_metadata["pickcode"] = str(result.file_item["pickcode"])
+                upload_metadata["method"] = "instant" if result.reused else "upload"
                 records.mark_uploaded(
                     local_path,
                     target_path,
@@ -618,6 +673,7 @@ class DirectoryUploader:
                 errors.append({"path": str(local_path), "target": target_path, "message": str(err)})
         if delete_source:
             self._delete_uploaded_sources(files, uploaded_paths, counts, errors)
+        self._log_completed_uploads(files, completed_uploads)
         self._store.save_upload_records(records)
         return {
             "kind": "upload",

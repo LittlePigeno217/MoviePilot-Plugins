@@ -4,11 +4,11 @@ import { pluginGet, pluginPost } from '../plugin.js'
 
 const props = defineProps({ api: { type: [Object, Function], default: null }, show_switch: { type: Boolean, default: false } })
 const emit = defineEmits(['switch', 'close', 'action'])
-const status = ref({ running: [], history: [] })
+const status = ref({ running: [], recent_uploads: [] })
 const loading = ref(false)
 const message = ref('')
 const messageColor = ref('info')
-const history = computed(() => status.value.history || [])
+const recentUploads = computed(() => status.value.recent_uploads || [])
 const runLabel = computed(() => status.value.running?.length ? status.value.running.join(' / ') : 'IDLE')
 const cloudTaskRunning = computed(() => status.value.running?.some(kind => ['strm', 'upload'].includes(kind)))
 
@@ -62,16 +62,19 @@ onMounted(refresh)
     </section>
 
     <section class="ledger">
-      <div class="ledger-head"><div><span>EXECUTION LOG</span><h3>最近记录</h3></div><span>{{ history.length }} 条</span></div>
-      <div class="ledger-table" role="table">
-        <div class="ledger-row ledger-label" role="row"><span>时间</span><span>类型</span><span>结果</span></div>
-        <div v-for="(item, index) in history" :key="`${item.time}-${index}`" class="ledger-row" role="row">
-          <time class="mono">{{ item.time }}</time>
-          <span class="kind"><i />{{ item.kind }}</span>
-          <span class="result">{{ item.message || `上传 ${item.uploaded || 0}，秒传 ${item.instant || 0}，删除 ${item.deleted || 0}，STRM ${item.added || 0}` }}</span>
-        </div>
-        <div v-if="!history.length" class="ledger-empty">暂无执行记录</div>
+      <div class="ledger-head"><div><span>RECENT MEDIA</span><h3>最近上传的媒体</h3></div><span>{{ recentUploads.length }} 部</span></div>
+      <div v-if="recentUploads.length" class="media-grid">
+        <article v-for="item in recentUploads" :key="`${item.path}-${item.uploaded_at}`" class="media-card">
+          <v-icon class="media-icon" icon="mdi-movie-open-outline" size="26" />
+          <div class="media-info">
+            <strong :title="item.name">{{ item.name }}</strong>
+            <span :title="item.target">{{ item.target }}</span>
+            <time>{{ item.uploaded_at }}</time>
+          </div>
+          <span class="media-method">{{ item.method === 'instant' ? '秒传' : '上传' }}</span>
+        </article>
       </div>
+      <div v-else class="ledger-empty">暂无上传媒体</div>
     </section>
   </div>
 </template>
@@ -181,6 +184,7 @@ onMounted(refresh)
 .kind i { background: var(--green); }
 .result { color: var(--muted); }
 .ledger-empty { padding: 44px 0; color: var(--muted); background: color-mix(in srgb, var(--paper) 58%, var(--paper-strong)); border: 1px dashed var(--line); border-radius: 6px; }
+.media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }.media-card { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 11px; min-height: 104px; padding: 15px; background: var(--paper-strong); border: 1px solid var(--line); border-radius: 6px; }.media-icon { color: var(--cyan); }.media-info { display: grid; min-width: 0; gap: 5px; }.media-info strong, .media-info span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.media-info strong { font-size: 13px; }.media-info span, .media-info time { color: var(--muted); font-size: 11px; }.media-method { padding: 3px 6px; color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); border-radius: 4px; font-size: 10px; font-weight: 700; }
 
 @media (max-width: 900px) {
   .station-page { border-radius: 0; }
@@ -190,6 +194,7 @@ onMounted(refresh)
   .state-ruler div { border-right: 1px solid var(--line); }
   .state-ruler div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
   .command-deck { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -200,6 +205,7 @@ onMounted(refresh)
   .state-ruler div { min-height: 78px; padding: 13px; }
   .command-deck { grid-template-columns: 1fr; }
   .command { min-height: 84px; }
+  .media-grid { grid-template-columns: 1fr; }
   .ledger { margin-top: 26px; }
   .ledger-row { grid-template-columns: 1fr auto; padding: 10px 4px; }
   .ledger-label { display: none; }

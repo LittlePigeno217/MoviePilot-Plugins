@@ -1,9 +1,9 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, p as pluginGet, a as pluginPost } from './_plugin-vue_export-helper-8a223dfe.js';
+import { _ as _export_sfc, p as pluginGet, a as pluginPost } from './_plugin-vue_export-helper-f7fd47fd.js';
 
-const Page_vue_vue_type_style_index_0_scoped_0bb0f762_lang = '';
+const Page_vue_vue_type_style_index_0_scoped_1d8fc417_lang = '';
 
-const Page_vue_vue_type_style_index_1_scoped_0bb0f762_lang = '';
+const Page_vue_vue_type_style_index_1_scoped_1d8fc417_lang = '';
 
 const {createElementVNode:_createElementVNode,normalizeClass:_normalizeClass,resolveComponent:_resolveComponent,mergeProps:_mergeProps,createVNode:_createVNode,withCtx:_withCtx,openBlock:_openBlock,createBlock:_createBlock,createCommentVNode:_createCommentVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,renderList:_renderList,Fragment:_Fragment,createElementBlock:_createElementBlock} = await importShared('vue');
 
@@ -30,14 +30,15 @@ const _hoisted_10 = ["disabled"];
 const _hoisted_11 = { class: "ledger" };
 const _hoisted_12 = { class: "ledger-head" };
 const _hoisted_13 = {
-  class: "ledger-table",
-  role: "table"
-};
-const _hoisted_14 = { class: "mono" };
-const _hoisted_15 = { class: "kind" };
-const _hoisted_16 = { class: "result" };
-const _hoisted_17 = {
   key: 0,
+  class: "media-grid"
+};
+const _hoisted_14 = { class: "media-info" };
+const _hoisted_15 = ["title"];
+const _hoisted_16 = ["title"];
+const _hoisted_17 = { class: "media-method" };
+const _hoisted_18 = {
+  key: 1,
   class: "ledger-empty"
 };
 
@@ -52,11 +53,11 @@ const _sfc_main = {
 
 const props = __props;
 const emit = __emit;
-const status = ref({ running: [], history: [] });
+const status = ref({ running: [], recent_uploads: [] });
 const loading = ref(false);
 const message = ref('');
 const messageColor = ref('info');
-const history = computed(() => status.value.history || []);
+const recentUploads = computed(() => status.value.recent_uploads || []);
 const runLabel = computed(() => status.value.running?.length ? status.value.running.join(' / ') : 'IDLE');
 const cloudTaskRunning = computed(() => status.value.running?.some(kind => ['strm', 'upload'].includes(kind)));
 
@@ -272,44 +273,43 @@ return (_ctx, _cache) => {
     _createElementVNode("section", _hoisted_11, [
       _createElementVNode("div", _hoisted_12, [
         _cache[18] || (_cache[18] = _createElementVNode("div", null, [
-          _createElementVNode("span", null, "EXECUTION LOG"),
-          _createElementVNode("h3", null, "最近记录")
+          _createElementVNode("span", null, "RECENT MEDIA"),
+          _createElementVNode("h3", null, "最近上传的媒体")
         ], -1)),
-        _createElementVNode("span", null, _toDisplayString(history.value.length) + " 条", 1)
+        _createElementVNode("span", null, _toDisplayString(recentUploads.value.length) + " 部", 1)
       ]),
-      _createElementVNode("div", _hoisted_13, [
-        _cache[20] || (_cache[20] = _createElementVNode("div", {
-          class: "ledger-row ledger-label",
-          role: "row"
-        }, [
-          _createElementVNode("span", null, "时间"),
-          _createElementVNode("span", null, "类型"),
-          _createElementVNode("span", null, "结果")
-        ], -1)),
-        (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(history.value, (item, index) => {
-          return (_openBlock(), _createElementBlock("div", {
-            key: `${item.time}-${index}`,
-            class: "ledger-row",
-            role: "row"
-          }, [
-            _createElementVNode("time", _hoisted_14, _toDisplayString(item.time), 1),
-            _createElementVNode("span", _hoisted_15, [
-              _cache[19] || (_cache[19] = _createElementVNode("i", null, null, -1)),
-              _createTextVNode(_toDisplayString(item.kind), 1)
-            ]),
-            _createElementVNode("span", _hoisted_16, _toDisplayString(item.message || `上传 ${item.uploaded || 0}，秒传 ${item.instant || 0}，删除 ${item.deleted || 0}，STRM ${item.added || 0}`), 1)
+      (recentUploads.value.length)
+        ? (_openBlock(), _createElementBlock("div", _hoisted_13, [
+            (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(recentUploads.value, (item) => {
+              return (_openBlock(), _createElementBlock("article", {
+                key: `${item.path}-${item.uploaded_at}`,
+                class: "media-card"
+              }, [
+                _createVNode(_component_v_icon, {
+                  class: "media-icon",
+                  icon: "mdi-movie-open-outline",
+                  size: "26"
+                }),
+                _createElementVNode("div", _hoisted_14, [
+                  _createElementVNode("strong", {
+                    title: item.name
+                  }, _toDisplayString(item.name), 9, _hoisted_15),
+                  _createElementVNode("span", {
+                    title: item.target
+                  }, _toDisplayString(item.target), 9, _hoisted_16),
+                  _createElementVNode("time", null, _toDisplayString(item.uploaded_at), 1)
+                ]),
+                _createElementVNode("span", _hoisted_17, _toDisplayString(item.method === 'instant' ? '秒传' : '上传'), 1)
+              ]))
+            }), 128))
           ]))
-        }), 128)),
-        (!history.value.length)
-          ? (_openBlock(), _createElementBlock("div", _hoisted_17, "暂无执行记录"))
-          : _createCommentVNode("", true)
-      ])
+        : (_openBlock(), _createElementBlock("div", _hoisted_18, "暂无上传媒体"))
     ])
   ]))
 }
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-0bb0f762"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1d8fc417"]]);
 
 export { Page as default };

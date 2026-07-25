@@ -1,6 +1,6 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
 import { p as propsFactory, i as includes, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, I as findChildrenWithProvide, J as IconValue, K as useTheme, L as useIcon, M as flattenFragments, N as useResizeObserver, O as hasEvent, Q as IN_BROWSER, R as useLocale, T as EventProp, U as filterInputAttrs, V as matchesSelector, W as pick, X as makeDisplayProps, Y as useDisplay, Z as useGoTo, _ as focusableChildren, $ as consoleError, a0 as defineComponent, a1 as deprecate, a2 as getPropertyFromItem, a3 as focusChild, a4 as CircularBuffer, a5 as defer, a6 as templateRef, a7 as isClickInsideElement, a8 as getNextElement, a9 as debounce, aa as camelizeProps, ab as ensureValidVNode, ac as checkPrintable, ad as noop, ae as pickWithRest, af as provideLocale, ag as useDate, ah as keys, ai as getEventCoordinates, aj as HSVtoRGB, ak as RGBtoHSV, al as HSVtoHSL, am as HSLtoHSV, an as HSVtoHex, ao as HexToHSV, ap as has, aq as getDecimals, ar as createRange, as as keyValues, at as SUPPORTS_EYE_DROPPER, au as HSVtoCSS, av as RGBtoCSS, aw as getContrast, ax as escapeForRegex, ay as isComposingIgnoreKey, az as deepToRaw, aA as getObjectValueByPath, aB as isEmpty, aC as defineFunctionalComponent, aD as breakpoints, aE as createDateRange, aF as daysDiff, aG as humanReadableFileSize, aH as splitKeySequence, aI as splitKeyCombination, aJ as mergeDeep, aK as useLayout, aL as extractNumber, aM as VuetifyLayoutKey, aN as refElement, aO as SUPPORTS_MATCH_MEDIA, aP as renderSlot, aQ as VClassIcon, aR as VComponentIcon, aS as VLigatureIcon, aT as VSvgIcon } from './hotkey-parsing-99b8cf0a.js';
-import Config from './__federation_expose_Config-985919bf.js';
+import Config from './__federation_expose_Config-41da8d17.js';
 
 true&&(function polyfill() {
     const relList = document.createElement('link').relList;
@@ -1242,6 +1242,7 @@ const MaybeTransition = (props, _ref) => {
     transition,
     disabled,
     group,
+    target,
     ...rest
   } = props;
   const {
@@ -1252,7 +1253,8 @@ const MaybeTransition = (props, _ref) => {
   if (isObject(transition)) {
     transitionProps = mergeProps$d(customProps, onlyDefinedProps({
       disabled,
-      group
+      group,
+      target
     }), rest);
   } else {
     transitionProps = mergeProps$d({
@@ -1382,6 +1384,7 @@ const VImg = genericComponent()({
     const state = shallowRef$U(props.eager ? 'loading' : 'idle');
     const naturalWidth = shallowRef$U();
     const naturalHeight = shallowRef$U();
+    let deferredLoadEmit = false;
     const normalisedSrc = computed$1Z(() => {
       return props.src && typeof props.src === 'object' ? {
         src: props.src.src,
@@ -1404,6 +1407,15 @@ const VImg = genericComponent()({
     watch$Q(aspectRatio, (val, oldVal) => {
       if (!val && oldVal && image.value) {
         pollForSize(image.value);
+      }
+    });
+    watch$Q(image, img => {
+      if (!img || state.value === 'idle') return;
+      if (!aspectRatio.value) pollForSize(img);
+      getSrc(img);
+      if (deferredLoadEmit) {
+        deferredLoadEmit = false;
+        emit('load', img.currentSrc || normalisedSrc.value.src);
       }
     });
 
@@ -1431,28 +1443,31 @@ const VImg = genericComponent()({
             if (state.value === 'error') return;
             if (!aspectRatio.value) pollForSize(image.value, null);
             if (state.value === 'loading') onLoad();
-          } else {
+          } else if (image.value) {
             if (!aspectRatio.value) pollForSize(image.value);
-            getSrc();
+            getSrc(image.value);
           }
         });
       });
     }
     function onLoad() {
       if (vm.isUnmounted) return;
-      getSrc();
-      pollForSize(image.value);
+      if (image.value) {
+        getSrc(image.value);
+        pollForSize(image.value);
+        emit('load', image.value.currentSrc || normalisedSrc.value.src);
+      } else {
+        deferredLoadEmit = true;
+      }
       state.value = 'loaded';
-      emit('load', image.value?.currentSrc || normalisedSrc.value.src);
     }
     function onError() {
       if (vm.isUnmounted) return;
       state.value = 'error';
       emit('error', image.value?.currentSrc || normalisedSrc.value.src);
     }
-    function getSrc() {
-      const img = image.value;
-      if (img) currentSrc.value = img.currentSrc || img.src;
+    function getSrc(img) {
+      currentSrc.value = img.currentSrc || img.src;
     }
     let timer = -1;
     onBeforeUnmount$a(() => {
@@ -10761,6 +10776,7 @@ function useVirtual(props, items) {
       offsets[i] = (offsets[i - 1] || 0) + getSize(i - 1);
     }
     updateTime.value = Math.max(updateTime.value, performance.now() - start);
+    calculateVisibleItems();
   }, updateTime);
   const unwatch = watch$w(hasInitialRender, v => {
     if (!v) return;
@@ -10869,7 +10885,10 @@ function useVirtual(props, items) {
       } else {
         // Only update the side that's reached its limit if there's still buffer left
         if (start <= 0) first.value = start;
-        if (end >= items.value.length) last.value = end;
+        if (end >= items.value.length) {
+          last.value = end;
+          first.value = start;
+        }
       }
     }
     paddingTop.value = calculateOffset(first.value);
@@ -11491,6 +11510,7 @@ const VSelect = genericComponent()({
     let keyboardLookupPrefix = '';
     let keyboardLookupIndex = 0;
     let keyboardLookupLastTime;
+    let openedByKeyboard = false;
     const displayItems = computed$1n(() => {
       const baseItems = search.value ? filteredItems.value : items.value;
       if (props.hideSelected) {
@@ -11551,6 +11571,7 @@ const VSelect = genericComponent()({
     }
     function onMousedownControl() {
       if (menuDisabled.value) return;
+      openedByKeyboard = false;
       menu.value = !menu.value;
     }
     function onMenuKeydown(e) {
@@ -11567,6 +11588,7 @@ const VSelect = genericComponent()({
         e.preventDefault();
       }
       if (['Enter', 'ArrowDown', ' '].includes(e.key)) {
+        openedByKeyboard = true;
         menu.value = true;
       }
       if (['Escape', 'Tab'].includes(e.key)) {
@@ -11683,16 +11705,27 @@ const VSelect = genericComponent()({
       }
       if (listRef.value && isFocused.value) {
         const index = getSelectedFocusableIndex();
-        listRef.value.focus(index >= 0 ? index : 'first', {
-          focusVisible: false,
-          preventScroll: props.noAutoScroll
-        });
+        if (index >= 0) {
+          listRef.value.focus(index, {
+            focusVisible: false,
+            preventScroll: props.noAutoScroll
+          });
+        } else if (openedByKeyboard) {
+          listRef.value.focus('first', {
+            focusVisible: false,
+            preventScroll: props.noAutoScroll
+          });
+        }
       }
     }
     function onAfterLeave() {
       search.value = '';
       if (isFocused.value) {
-        vTextFieldRef.value?.focus();
+        if (vMenuRef.value?.contentEl?._clickOutside?.lastMousedownWasOutside) {
+          isFocused.value = false;
+        } else {
+          vTextFieldRef.value?.focus();
+        }
       }
     }
     function onFocusin(e) {
@@ -11714,7 +11747,8 @@ const VSelect = genericComponent()({
         vTextFieldRef.value.value = '';
       }
     }
-    watch$u(menu, () => {
+    watch$u(menu, val => {
+      if (!val) openedByKeyboard = false;
       if (!props.hideSelected && menu.value && model.value.length) {
         const index = getSelectedIndex();
         IN_BROWSER && !props.noAutoScroll && window.requestAnimationFrame(() => {
@@ -11785,6 +11819,7 @@ const VSelect = genericComponent()({
             "modelValue": menu.value,
             "onUpdate:modelValue": $event => menu.value = $event,
             "activator": "parent",
+            "captureFocus": false,
             "disabled": menuDisabled.value,
             "eager": props.eager,
             "maxHeight": 310,
@@ -14128,8 +14163,12 @@ function useCalendarWithIntervals(props) {
     const time = parsedFirstTime.value;
     return time !== false && time >= 0 && time <= MINUTES_IN_DAY ? time : parsedFirstInterval.value * parsedIntervalMinutes.value;
   });
+  const effectiveIntervalCount = computed$1g(() => {
+    const dayLimit = Math.ceil((MINUTES_IN_DAY - firstMinute.value) / parsedIntervalMinutes.value);
+    return clamp(parsedIntervalCount.value, 0, dayLimit);
+  });
   const bodyHeight = computed$1g(() => {
-    return parsedIntervalCount.value * parsedIntervalHeight.value;
+    return effectiveIntervalCount.value * parsedIntervalHeight.value;
   });
   const days = computed$1g(() => {
     return createDayList(base.parsedStart.value, base.parsedEnd.value, base.times.today, base.weekdaySkips.value, props.maxDays);
@@ -14138,7 +14177,7 @@ function useCalendarWithIntervals(props) {
     const daysValue = days.value;
     const first = firstMinute.value;
     const minutes = parsedIntervalMinutes.value;
-    const count = parsedIntervalCount.value;
+    const count = effectiveIntervalCount.value;
     const now = base.times.now;
     return daysValue.map(d => createIntervalList(d, first, minutes, count, now));
   });
@@ -14187,7 +14226,7 @@ function useCalendarWithIntervals(props) {
     scope.timeDelta = timeDelta;
     scope.minutesToPixels = minutesToPixels;
     scope.week = days.value;
-    scope.intervalRange = [firstMinute.value, firstMinute.value + parsedIntervalCount.value * parsedIntervalMinutes.value];
+    scope.intervalRange = [firstMinute.value, firstMinute.value + effectiveIntervalCount.value * parsedIntervalMinutes.value];
     return scope;
   }
   function scrollToTime(time) {
@@ -14229,7 +14268,7 @@ function useCalendarWithIntervals(props) {
     if (minutes === false) {
       return false;
     }
-    const gap = parsedIntervalCount.value * parsedIntervalMinutes.value;
+    const gap = effectiveIntervalCount.value * parsedIntervalMinutes.value;
     if (targetDate && typeof time === 'object' && 'day' in time) {
       const a = getDayIdentifier(time);
       const b = getDayIdentifier(targetDate);
@@ -15681,10 +15720,6 @@ const VCalendar = genericComponent()({
     categoryText: {
       type: [String, Function]
     },
-    maxDays: {
-      type: Number,
-      default: 7
-    },
     categoryHideDynamic: {
       type: Boolean
     },
@@ -15696,7 +15731,8 @@ const VCalendar = genericComponent()({
       default: ''
     },
     ...makeCalendarBaseProps(),
-    ...makeCalendarWithEventsProps()
+    ...makeCalendarWithEventsProps(),
+    ...makeCalendarWithIntervalsProps()
   },
   setup(props, _ref) {
     let {

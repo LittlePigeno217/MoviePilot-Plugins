@@ -1,9 +1,9 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, n as normalizeConfig, c as clone, a as pluginPost, p as pluginGet } from './_plugin-vue_export-helper-8a223dfe.js';
+import { _ as _export_sfc, n as normalizeConfig, c as clone, a as pluginPost, p as pluginGet } from './_plugin-vue_export-helper-f7fd47fd.js';
 
-const Config_vue_vue_type_style_index_0_scoped_18a4dd55_lang = '';
+const Config_vue_vue_type_style_index_0_scoped_01726296_lang = '';
 
-const Config_vue_vue_type_style_index_1_scoped_18a4dd55_lang = '';
+const Config_vue_vue_type_style_index_1_scoped_01726296_lang = '';
 
 const {createElementVNode:_createElementVNode,normalizeClass:_normalizeClass,resolveComponent:_resolveComponent,mergeProps:_mergeProps,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,openBlock:_openBlock,createBlock:_createBlock,createCommentVNode:_createCommentVNode,withModifiers:_withModifiers,renderList:_renderList,Fragment:_Fragment,createElementBlock:_createElementBlock} = await importShared('vue');
 
@@ -1112,6 +1112,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-18a4dd55"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-01726296"]]);
 
 export { Config as default };
