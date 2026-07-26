@@ -19,6 +19,7 @@ from plugins.p115liteassistant.resilience import retry_call as real_retry_call
 from plugins.p115liteassistant.strm import (
     StrmGenerator,
     build_redirect_signature,
+    build_strm_content,
     build_strm_url,
     normalize_pickcode,
     write_uploaded_strm,
@@ -744,8 +745,10 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertIn("已达到当前访问上限", str(caught.exception))
             self.assertLess(time.monotonic() - started, 2)
 
-    def test_strm_generator_keeps_first_same_stem_item(self):
-        class ConflictingMediaClient:
+    def test_strm_generator_disambiguates_same_stem_media(self):
+        """Same stem, different extension: both keep their own STRM."""
+
+        class SameStemMediaClient:
             @staticmethod
             def iter_files(_cid):
                 return iter(
@@ -757,43 +760,330 @@ class StrmAndUploaderTest(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             store = FakeStore()
-            stale_output = Path(directory) / "Film.mp4.strm"
-            stale_output.write_text("stale\n", encoding="utf-8")
-            store.strm_records["movies:Film.mp4"] = {
-                "fingerprint": "stale",
-                "path": str(stale_output),
-            }
             with patch("plugins.p115liteassistant.strm.logger") as strm_logger:
                 result = StrmGenerator(
-                    ConflictingMediaClient(),
+                    SameStemMediaClient(),
                     store,
                     "http://mp:3000",
                     incremental=False,
                 ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
 
-            output = Path(directory) / "Film.strm"
-            self.assertEqual(result["added"], 1)
-            self.assertEqual(result["skipped"], 1)
-            self.assertEqual(result["conflicts"], 1)
-            self.assertEqual(result["removed"], 1)
+            bare_output = Path(directory) / "Film.strm"
+            mkv_output = Path(directory) / "Film.mkv.strm"
+            mp4_output = Path(directory) / "Film.mp4.strm"
+            self.assertEqual(result["added"], 2)
+            self.assertEqual(result["conflicts"], 0)
             self.assertEqual(result["errors"], 0)
-            self.assertIn(f"pickcode={VALID_PICKCODE}", output.read_text(encoding="utf-8"))
-            self.assertNotIn(f"pickcode={SECOND_PICKCODE}", output.read_text(encoding="utf-8"))
-            self.assertFalse(stale_output.exists())
-            self.assertIn("movies:Film.mkv", store.strm_records)
-            self.assertNotIn("movies:Film.mp4", store.strm_records)
-            self.assertFalse(
-                any(
-                    "输出路径存在多个媒体" in call.args[0]
-                    for call in strm_logger.warning.call_args_list
-                )
+            # The first item briefly owned Film.strm; it must be relocated, not
+            # left behind as an orphan.
+            self.assertFalse(bare_output.exists())
+            self.assertIn(f"pickcode={VALID_PICKCODE}", mkv_output.read_text(encoding="utf-8"))
+            self.assertIn(f"pickcode={SECOND_PICKCODE}", mp4_output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                store.strm_records["movies:Film.mkv"]["path"], str(mkv_output)
+            )
+            self.assertEqual(
+                store.strm_records["movies:Film.mp4"]["path"], str(mp4_output)
             )
             self.assertTrue(
                 any(
-                    "冲突候选 1 个" in call.args[0]
-                    for call in strm_logger.info.call_args_list
+                    "同目录存在同名不同格式的媒体" in call.args[0]
+                    for call in strm_logger.warning.call_args_list
                 )
             )
+
+    def test_strm_generator_disambiguates_case_variant_extensions(self):
+        """Regression: ``VVDV (1).MOV`` and ``VVDV (1).mp4`` used to overwrite."""
+
+        class CaseVariantMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {
+                            "name": "VVDV (1).MOV",
+                            "pickcode": VALID_PICKCODE,
+                            "size": 1,
+                            "rel_path": "VVDV (1).MOV",
+                        },
+                        {
+                            "name": "VVDV (1).mp4",
+                            "pickcode": SECOND_PICKCODE,
+                            "size": 2,
+                            "rel_path": "VVDV (1).mp4",
+                        },
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            store = FakeStore()
+            result = StrmGenerator(
+                CaseVariantMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=False,
+            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+
+            mov_output = Path(directory) / "VVDV (1).MOV.strm"
+            mp4_output = Path(directory) / "VVDV (1).mp4.strm"
+            self.assertEqual(result["added"], 2)
+            self.assertEqual(result["errors"], 0)
+            self.assertTrue(mov_output.is_file())
+            self.assertTrue(mp4_output.is_file())
+            self.assertFalse((Path(directory) / "VVDV (1).strm").exists())
+            self.assertIn(f"pickcode={VALID_PICKCODE}", mov_output.read_text(encoding="utf-8"))
+            self.assertIn(f"pickcode={SECOND_PICKCODE}", mp4_output.read_text(encoding="utf-8"))
+
+    def test_strm_generator_keeps_bare_name_for_unique_stem(self):
+        """Libraries without a stem collision keep their existing file names."""
+
+        class UniqueStemMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {"name": "Film.mkv", "pickcode": VALID_PICKCODE, "size": 1, "rel_path": "Film.mkv"},
+                        {"name": "Other.mp4", "pickcode": SECOND_PICKCODE, "size": 2, "rel_path": "Other.mp4"},
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            store = FakeStore()
+            result = StrmGenerator(
+                UniqueStemMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=False,
+            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+
+            self.assertEqual(result["added"], 2)
+            self.assertEqual(result["errors"], 0)
+            self.assertTrue((Path(directory) / "Film.strm").is_file())
+            self.assertTrue((Path(directory) / "Other.strm").is_file())
+            self.assertFalse((Path(directory) / "Film.mkv.strm").exists())
+            self.assertFalse((Path(directory) / "Other.mp4.strm").exists())
+
+    def test_strm_generator_relocates_previously_generated_bare_output(self):
+        """An install that already has Film.strm migrates on the next sync."""
+
+        class SameStemMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {"name": "Film.mkv", "pickcode": VALID_PICKCODE, "size": 1, "rel_path": "Film.mkv"},
+                        {"name": "Film.mp4", "pickcode": SECOND_PICKCODE, "size": 2, "rel_path": "Film.mp4"},
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            store = FakeStore()
+            legacy_output = Path(directory) / "Film.strm"
+            legacy_output.write_text("legacy\n", encoding="utf-8")
+            store.strm_records["movies:Film.mkv"] = {
+                "fingerprint": "legacy",
+                "path": str(legacy_output),
+            }
+            result = StrmGenerator(
+                SameStemMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=True,
+            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+
+            self.assertEqual(result["errors"], 0)
+            self.assertFalse(legacy_output.exists())
+            self.assertTrue((Path(directory) / "Film.mkv.strm").is_file())
+            self.assertTrue((Path(directory) / "Film.mp4.strm").is_file())
+            self.assertEqual(
+                store.strm_records["movies:Film.mkv"]["path"],
+                str(Path(directory) / "Film.mkv.strm"),
+            )
+
+    def test_strm_generator_second_sync_skips_settled_conflicts(self):
+        """A settled conflict must not oscillate through the bare name."""
+
+        class SameStemMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {"name": "Film.mkv", "pickcode": VALID_PICKCODE, "size": 1, "rel_path": "Film.mkv"},
+                        {"name": "Film.mp4", "pickcode": SECOND_PICKCODE, "size": 2, "rel_path": "Film.mp4"},
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            store = FakeStore()
+            mapping = {"id": "movies", "source_cid": "root", "target_dir": directory}
+            first = StrmGenerator(
+                SameStemMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=True,
+            ).run_mapping(mapping)
+            self.assertEqual(first["added"], 2)
+
+            with patch("plugins.p115liteassistant.strm.logger") as strm_logger:
+                second = StrmGenerator(
+                    SameStemMediaClient(),
+                    store,
+                    "http://mp:3000",
+                    incremental=True,
+                ).run_mapping(mapping)
+
+            self.assertEqual(second["skipped"], 2)
+            self.assertEqual(second["added"], 0)
+            self.assertEqual(second["updated"], 0)
+            self.assertEqual(second["errors"], 0)
+            self.assertFalse((Path(directory) / "Film.strm").exists())
+            self.assertTrue((Path(directory) / "Film.mkv.strm").is_file())
+            self.assertTrue((Path(directory) / "Film.mp4.strm").is_file())
+            self.assertFalse(
+                any(
+                    "同目录存在同名不同格式的媒体" in call.args[0]
+                    for call in strm_logger.warning.call_args_list
+                )
+            )
+
+    def test_strm_generator_conflict_survivor_returns_to_bare_name(self):
+        """Once the sibling is gone, the survivor reverts to its old name."""
+
+        class SurvivorMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {"name": "Film.mkv", "pickcode": VALID_PICKCODE, "size": 1, "rel_path": "Film.mkv"},
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            store = FakeStore()
+            conflict_output = Path(directory) / "Film.mkv.strm"
+            conflict_output.write_text("settled\n", encoding="utf-8")
+            store.strm_records["movies:Film.mkv"] = {
+                "fingerprint": "old",
+                "path": str(conflict_output),
+            }
+
+            result = StrmGenerator(
+                SurvivorMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=True,
+            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+
+            self.assertEqual(result["errors"], 0)
+            self.assertTrue((Path(directory) / "Film.strm").is_file())
+            self.assertFalse(conflict_output.exists())
+            self.assertEqual(
+                store.strm_records["movies:Film.mkv"]["path"],
+                str(Path(directory) / "Film.strm"),
+            )
+
+    def test_strm_generator_rejected_item_does_not_relocate_other_mappings_output(self):
+        """A cross-mapping rejection must not leave bare-name ownership behind.
+
+        Regression: the rejected first sibling used to stay registered as the
+        bare name's owner, so the second sibling renamed the other mapping's
+        live STRM away.
+        """
+
+        class SameStemMediaClient:
+            @staticmethod
+            def iter_files(_cid):
+                return iter(
+                    [
+                        {"name": "Film.MOV", "pickcode": VALID_PICKCODE, "size": 1, "rel_path": "Film.MOV"},
+                        {"name": "Film.mp4", "pickcode": SECOND_PICKCODE, "size": 2, "rel_path": "Film.mp4"},
+                    ]
+                )
+
+        with TemporaryDirectory() as directory:
+            foreign_output = Path(directory) / "Film.strm"
+            foreign_output.write_text("owned by other mapping\n", encoding="utf-8")
+            store = FakeStore()
+            store.strm_records["other:Film.mkv"] = {
+                "fingerprint": "other",
+                "path": str(foreign_output),
+            }
+
+            result = StrmGenerator(
+                SameStemMediaClient(),
+                store,
+                "http://mp:3000",
+                incremental=False,
+            ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
+
+            self.assertEqual(result["errors"], 2)
+            self.assertEqual(
+                foreign_output.read_text(encoding="utf-8"),
+                "owned by other mapping\n",
+            )
+            self.assertFalse((Path(directory) / "Film.MOV.strm").exists())
+            self.assertFalse((Path(directory) / "Film.mp4.strm").exists())
+            self.assertIn("other:Film.mkv", store.strm_records)
+
+    def test_uploader_disambiguates_against_disk_siblings_from_earlier_batches(self):
+        """A collision split across upload batches must not clobber the bare STRM."""
+
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "src"
+            target = Path(directory) / "strm"
+            source.mkdir()
+            target.mkdir()
+            local = source / "VVDV(1).mp4"
+            local.write_bytes(b"media")
+            uploader = DirectoryUploader(
+                FakeUploadClient(),
+                FakeStore(),
+                {"upload_generate_strm": False},
+                "http://mp:3000",
+            )
+            files = [(local, "/t/VVDV(1).mp4", "media", source, str(target))]
+
+            # 1) The earlier batch materialised the MOV under the bare name.
+            bare = target / "VVDV(1).strm"
+            bare.write_text(
+                build_strm_content(
+                    "http://mp:3000", VALID_PICKCODE, TEST_REDIRECT_SECRET, "VVDV(1).MOV"
+                ),
+                encoding="utf-8",
+            )
+            resolved = uploader._resolve_strm_output_paths(files)
+            self.assertEqual(resolved[local], target / "VVDV(1).mp4.strm")
+            bare.unlink()
+
+            # 2) The earlier batch left extension-qualified siblings behind.
+            sibling = target / "VVDV(1).MOV.strm"
+            sibling.write_text("sibling\n", encoding="utf-8")
+            resolved = uploader._resolve_strm_output_paths(files)
+            self.assertEqual(resolved[local], target / "VVDV(1).mp4.strm")
+            sibling.unlink()
+
+            # 3) Re-uploading the same source keeps overwriting the bare name.
+            bare.write_text(
+                build_strm_content(
+                    "http://mp:3000", SECOND_PICKCODE, TEST_REDIRECT_SECRET, "VVDV(1).mp4"
+                ),
+                encoding="utf-8",
+            )
+            resolved = uploader._resolve_strm_output_paths(files)
+            self.assertEqual(resolved[local], bare)
+            bare.unlink()
+
+            # 4) Legacy STRMs without file_name carry no information.
+            bare.write_text("http://mp:3000/legacy\n", encoding="utf-8")
+            resolved = uploader._resolve_strm_output_paths(files)
+            self.assertEqual(resolved[local], bare)
+            bare.unlink()
+
+            # 5) An iso's regular output is not a conflict marker.
+            iso_output = target / "VVDV(1).iso.strm"
+            iso_output.write_text("iso\n", encoding="utf-8")
+            resolved = uploader._resolve_strm_output_paths(files)
+            self.assertEqual(resolved[local], bare)
 
     def test_strm_generator_keeps_first_exact_duplicate_path(self):
         class DuplicateMediaClient:
@@ -838,11 +1128,11 @@ class StrmAndUploaderTest(unittest.TestCase):
                             "rel_path": "Film.mkv",
                         },
                         {
-                            "name": "Film.mp4",
+                            "name": "Film.mkv",
                             "pickcode": SECOND_PICKCODE,
                             "size": 2,
                             "mtime": 200,
-                            "rel_path": "Film.mp4",
+                            "rel_path": "Film.mkv",
                         },
                     ]
                 )
@@ -1015,8 +1305,12 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(second["skipped"], 2)
             self.assertTrue(store.upload_records.has_changed(source / "Film.mkv", "/Cloud/New/Film.mkv"))
             success_messages = [call.args[0] for call in upload_logger.info.call_args_list]
-            self.assertTrue(any("秒传成功" in message for message in success_messages))
-            self.assertTrue(any("上传成功" in message for message in success_messages))
+            self.assertTrue(
+                any(
+                    "秒传成功" in message and "附属文件 1（上传 1）" in message
+                    for message in success_messages
+                )
+            )
 
     def test_directory_uploader_generates_strm_after_media_upload(self):
         with TemporaryDirectory() as directory:
@@ -1090,7 +1384,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "未配置输出目录"):
                 uploader.run(incremental=True)
 
-    def test_directory_uploader_rejects_conflicting_strm_outputs_before_upload(self):
+    def test_directory_uploader_disambiguates_same_stem_media(self):
         with TemporaryDirectory() as directory:
             source = Path(directory) / "source"
             output = Path(directory) / "output"
@@ -1098,7 +1392,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             (source / "Film.mkv").write_bytes(b"mkv")
             (source / "Film.mp4").write_bytes(b"mp4")
             client = StrmUploadClient()
-            uploader = DirectoryUploader(
+            result = DirectoryUploader(
                 client,
                 FakeStore(),
                 {
@@ -1109,6 +1403,49 @@ class StrmAndUploaderTest(unittest.TestCase):
                             "target": "/Cloud",
                             "strm_target": str(output),
                         }
+                    ],
+                    "upload_generate_strm": True,
+                    "upload_include_sidecars": False,
+                    "upload_media_extensions": ".mkv,.mp4",
+                },
+                "https://moviepilot.example",
+            ).run(incremental=True)
+
+            self.assertEqual(result["errors"], 0)
+            self.assertEqual(len(client.uploaded), 2)
+            self.assertTrue((output / "Film.mkv.strm").is_file())
+            self.assertTrue((output / "Film.mp4.strm").is_file())
+            self.assertFalse((output / "Film.strm").exists())
+
+    def test_directory_uploader_rejects_conflicting_strm_outputs_before_upload(self):
+        """Two mappings sharing one strm_target can still collide on rel path."""
+
+        with TemporaryDirectory() as directory:
+            first = Path(directory) / "first"
+            second = Path(directory) / "second"
+            output = Path(directory) / "output"
+            first.mkdir()
+            second.mkdir()
+            (first / "Film.mkv").write_bytes(b"mkv")
+            (second / "Film.mkv").write_bytes(b"other")
+            client = StrmUploadClient()
+            uploader = DirectoryUploader(
+                client,
+                FakeStore(),
+                {
+                    "upload_mappings": [
+                        {
+                            "enabled": True,
+                            "source": str(first),
+                            "target": "/Cloud/First",
+                            "strm_target": str(output),
+                        },
+                        {
+                            "enabled": True,
+                            "source": str(second),
+                            "target": "/Cloud/Second",
+                            "strm_target": str(output),
+                        },
                     ],
                     "upload_generate_strm": True,
                     "upload_include_sidecars": False,

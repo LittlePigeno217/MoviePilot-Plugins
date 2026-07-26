@@ -9,7 +9,7 @@ from hmac import compare_digest, new as new_hmac
 from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Any, Callable, Dict
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from app.log import logger
 from p115pickcode import is_valid_pickcode
@@ -103,10 +103,61 @@ def strm_file_matches(output: Path, expected_content: str) -> bool:
         return False
 
 
+def strm_source_file_name(path: Path) -> str:
+    """Best-effort read of the ``file_name`` query param of an existing STRM.
+
+    Returns ``""`` for missing, oversized, unreadable or legacy files without
+    the parameter -- callers must treat that as "no information", not "no
+    conflict".
+    """
+
+    try:
+        if not path.is_file() or path.stat().st_size > 4096:
+            return ""
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+    for key, value in parse_qsl(urlsplit(text).query):
+        if key == "file_name":
+            return value
+    return ""
+
+
 def strm_output_path(media_path: Path) -> Path:
     if media_path.suffix.lower() == ".iso":
         return media_path.with_name(f"{media_path.stem}.iso.strm")
     return media_path.with_suffix(".strm")
+
+
+def strm_conflict_output_path(media_path: Path) -> Path:
+    """Disambiguated output used when several media share one stem.
+
+    Replacing the extension maps ``A.MOV`` and ``A.mp4`` onto the same
+    ``A.strm``, so only one of them could ever reach the media server.
+    Keeping the original extension (``A.MOV.strm`` / ``A.mp4.strm``) makes
+    the mapping injective. This is only applied to stems that actually
+    collide, so unaffected libraries keep their existing file names -- and
+    with them their sidecar pairing and scrape history.
+    """
+
+    return media_path.with_name(f"{media_path.name}.strm")
+
+
+def relocate_stem_conflict_output(base_output: Path, conflict_output: Path) -> bool:
+    """Move an already-written STRM aside once a same-stem sibling shows up.
+
+    The content is unchanged, so a rename is enough -- no re-download and no
+    second write. Returns ``False`` when there was nothing on disk to move
+    (a failed or not-yet-materialised write), which is not an error.
+    """
+
+    if base_output == conflict_output:
+        return False
+    try:
+        base_output.replace(conflict_output)
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def normalize_cloud_path(path: str) -> str:
@@ -199,15 +250,19 @@ def write_uploaded_strm(
     pickcode: str,
     moviepilot_url: str,
     redirect_secret: str,
+    output: Path | None = None,
 ) -> Path:
     pickcode = normalize_pickcode(pickcode)
     target_root = target_root.expanduser().resolve()
-    output = uploaded_strm_path(local_path, source_root, target_root)
-    write_strm_file(
-        output,
-        build_strm_content(moviepilot_url, pickcode, redirect_secret, local_path.name),
-        target_root,
-    )
+    if output is None:
+        output = uploaded_strm_path(local_path, source_root, target_root)
+    content = build_strm_content(moviepilot_url, pickcode, redirect_secret, local_path.name)
+    if output.is_file() and not strm_file_matches(output, content):
+        logger.warning(
+            "【STRM回传】覆盖内容不同的已存在 STRM："
+            f"{output}，来源：{local_path.name}"
+        )
+    write_strm_file(output, content, target_root)
     return output
 
 
@@ -371,6 +426,32 @@ class StrmGenerator:
         claimed_mtimes: Dict[Path, int] = {}
         duplicate_logged_outputs: set[Path] = set()
         conflicting_outputs: set[Path] = set()
+        # base output -> (rel_path, media path, record key) of the media that
+        # currently owns the extension-replaced name, plus the set of base
+        # names already abandoned because two stems collided.
+        base_output_owners: Dict[Path, tuple[str, Path, str]] = {}
+        relocated_bases: set[Path] = set()
+        # Seed abandoned bases from the previous run: when two or more records
+        # already map onto one bare name, the conflict is settled and both
+        # sides keep their extension-qualified outputs. Without this the first
+        # enumerated sibling would rewrite the bare name and get renamed back
+        # every sync, churning mtimes and re-logging the conflict forever.
+        seeded_base_counts: Dict[Path, int] = {}
+        for seeded_key in mapping_record_keys:
+            seeded_rel = str(seeded_key)[len(mapping_record_prefix):]
+            if seeded_rel.startswith("sidecar:"):
+                continue
+            seeded_path = PurePosixPath(seeded_rel)
+            if seeded_path.is_absolute() or any(
+                part in {"", ".", ".."} for part in seeded_path.parts
+            ):
+                continue
+            seeded_base = strm_output_path(target_dir.joinpath(*seeded_path.parts))
+            seeded_base_counts[seeded_base] = seeded_base_counts.get(seeded_base, 0) + 1
+        relocated_bases.update(
+            base for base, count in seeded_base_counts.items() if count >= 2
+        )
+        same_stem_conflicts: list[str] = []
         output_record_keys: Dict[Path, set[str]] = {}
         completed_count_by_output: Dict[Path, str] = {}
         obsolete_outputs: set[Path] = set()
@@ -524,10 +605,57 @@ class StrmGenerator:
                     counts["errors"] += 1
                     logger.warning(f"【STRM同步】文件远端路径无效，跳过：{rel_path_text}")
                     continue
-                output = target_dir.joinpath(*rel_path.parts)
+                media_output = target_dir.joinpath(*rel_path.parts)
+                output = media_output
                 if kind == "strm":
-                    output = strm_output_path(output)
+                    output = strm_output_path(media_output)
                     record_key = f"{mapping_id}:{rel_path_text}"
+                    if output in relocated_bases:
+                        # This stem already collided, so nobody keeps the bare
+                        # name any more.
+                        output = strm_conflict_output_path(media_output)
+                    else:
+                        owner = base_output_owners.get(output)
+                        if owner is not None and owner[0] != rel_path_text:
+                            base_output = output
+                            owner_rel_path, owner_media, owner_record_key = owner
+                            owner_output = strm_conflict_output_path(owner_media)
+                            # The incumbent may still be queued; make sure its
+                            # write landed before renaming it.
+                            drain_pending()
+                            try:
+                                relocate_stem_conflict_output(base_output, owner_output)
+                            except OSError as err:
+                                counts["errors"] += 1
+                                logger.error(
+                                    "【STRM同步】重命名同名媒体输出失败："
+                                    f"{base_output} -> {owner_output}，"
+                                    f"原因：{safe_error_text(err)}"
+                                )
+                            owner_record = records.get(owner_record_key)
+                            if isinstance(owner_record, dict):
+                                owner_record["path"] = str(owner_output)
+                            for bookkeeping in (
+                                claimed_outputs,
+                                claimed_record_keys,
+                                claimed_mtimes,
+                                output_record_keys,
+                                completed_count_by_output,
+                            ):
+                                if base_output in bookkeeping:
+                                    bookkeeping[owner_output] = bookkeeping.pop(base_output)
+                            obsolete_outputs.add(base_output)
+                            relocated_bases.add(base_output)
+                            base_output_owners.pop(base_output, None)
+                            output = strm_conflict_output_path(media_output)
+                            same_stem_conflicts.append(
+                                f"{owner_rel_path} + {rel_path_text}"
+                            )
+                            logger.warning(
+                                "【STRM同步】同目录存在同名不同格式的媒体，"
+                                f"改用带扩展名的输出：{owner_rel_path} -> {owner_output.name}，"
+                                f"{rel_path_text} -> {output.name}"
+                            )
                 else:
                     record_key = f"{mapping_id}:sidecar:{rel_path_text}"
                 mapping_record_keys.add(record_key)
@@ -563,9 +691,10 @@ class StrmGenerator:
                         counts["skipped"] += 1
                         if output not in duplicate_logged_outputs:
                             duplicate_logged_outputs.add(output)
-                            logger.debug(
+                            logger.warning(
                                 "【STRM同步】输出路径存在多个媒体，按 115 更新时间保留："
                                 f"{conflicting_path}，跳过：{rel_path_text}"
+                                f"（输出：{output}）"
                             )
                         continue
 
@@ -579,18 +708,36 @@ class StrmGenerator:
                         counts[completed_key] -= 1
                     if output not in duplicate_logged_outputs:
                         duplicate_logged_outputs.add(output)
-                        logger.debug(
+                        logger.warning(
                             "【STRM同步】输出路径存在多个媒体，按 115 更新时间替换："
                             f"{conflicting_path} -> {rel_path_text}"
+                            f"（输出：{output}）"
                         )
                     else:
-                        logger.debug(
+                        logger.warning(
                             "【STRM同步】输出路径存在更多媒体，按 115 更新时间替换："
                             f"{conflicting_path} -> {rel_path_text}"
+                            f"（输出：{output}）"
                         )
                 claimed_outputs[output] = rel_path_text
                 claimed_record_keys[output] = record_key
                 claimed_mtimes[output] = self._item_mtime(item)
+                if kind == "strm":
+                    # Bare-name ownership is recorded only once an item has
+                    # actually claimed the path: items rejected above (invalid
+                    # pickcode, cross-mapping claim) or outvoted by mtime must
+                    # never cause a later sibling to relocate this file. A
+                    # claimant holding the path as its conflict name is not a
+                    # bare-name owner either -- same-base contenders then go
+                    # through the mtime winner-selection instead of a rename.
+                    if output == strm_output_path(media_output):
+                        base_output_owners[output] = (
+                            rel_path_text,
+                            media_output,
+                            record_key,
+                        )
+                    else:
+                        base_output_owners.pop(output, None)
                 fingerprint = (
                     f"v{STRM_URL_FORMAT_VERSION}:{pickcode}:{item.get('size', 0)}:"
                     f"{self._moviepilot_url}"
@@ -718,6 +865,12 @@ class StrmGenerator:
                 logger.error(
                     f"【STRM同步】清理失效输出失败：{stale_output}，原因：{safe_error_text(err)}"
                 )
+        if same_stem_conflicts:
+            logger.info(
+                "【STRM同步】同名不同格式的媒体已改用带扩展名的输出："
+                f"{len(same_stem_conflicts)} 组（{'；'.join(same_stem_conflicts[:5])}"
+                f"{' 等' if len(same_stem_conflicts) > 5 else ''}）"
+            )
         if counts["conflicts"]:
             logger.info(
                 "【STRM同步】输出路径冲突已按 115 更新时间完成选优："

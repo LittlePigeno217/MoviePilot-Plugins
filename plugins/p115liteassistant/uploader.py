@@ -17,6 +17,8 @@ from .strm import (
     build_strm_content,
     normalize_pickcode,
     strm_file_matches,
+    strm_conflict_output_path,
+    strm_source_file_name,
     uploaded_strm_path,
     write_uploaded_strm,
 )
@@ -44,6 +46,7 @@ class DirectoryUploader:
             config.get("upload_sidecar_extensions", ""),
             DEFAULT_SIDECAR_EXTENSIONS,
         )
+        self._strm_outputs: Dict[Path, Path] = {}
 
     def _iter_files(self) -> Iterator[Tuple[Path, str, str, Path, str]]:
         include_sidecars = bool(self._config.get("upload_include_sidecars", True))
@@ -94,21 +97,109 @@ class DirectoryUploader:
                 rel_path = local_path.relative_to(source).as_posix()
                 yield local_path, (target / PurePosixPath(rel_path)).as_posix(), kind, source, strm_target
 
-    @staticmethod
-    def _validate_strm_output_paths(
+    def _resolve_strm_output_paths(
+        self,
         files: list[Tuple[Path, str, str, Path, str]],
-    ) -> None:
-        claimed: Dict[Path, Path] = {}
+    ) -> Dict[Path, Path]:
+        """Decide each media file's STRM output before anything is uploaded.
+
+        Same-stem media (``A.MOV`` plus ``A.mp4``) would otherwise both map to
+        ``A.strm``; those keep their original extension instead. The check
+        covers the current batch and siblings already materialised by an
+        earlier run (a bare STRM built from a different source name, or
+        extension-qualified sibling STRMs on disk), so a collision split
+        across batches cannot silently overwrite the bare output. Any
+        collision that survives that is a real mapping mistake and still
+        aborts the run.
+        """
+
+        candidates: list[Tuple[Path, Path, Path]] = []
+        by_base: Dict[Path, set[Path]] = {}
         for local_path, _target_path, kind, source_root, strm_target in files:
             if kind != "media" or not strm_target:
                 continue
-            output = uploaded_strm_path(local_path, source_root, Path(strm_target))
+            base_output = uploaded_strm_path(local_path, source_root, Path(strm_target))
+            candidates.append((local_path, source_root, base_output))
+            by_base.setdefault(base_output, set()).add(local_path)
+        resolved: Dict[Path, Path] = {}
+        claimed: Dict[Path, Path] = {}
+        conflicted_bases = {
+            base for base, owners in by_base.items() if len(owners) > 1
+        }
+        directory_listings: Dict[Path, list[str]] = {}
+        for local_path, source_root, base_output in candidates:
+            if base_output in conflicted_bases or self._has_disk_stem_sibling(
+                base_output,
+                local_path.name,
+                directory_listings,
+            ):
+                output = strm_conflict_output_path(
+                    base_output.parent / local_path.relative_to(source_root).name
+                )
+                if output != base_output:
+                    logger.warning(
+                        "【目录上传】存在同名不同格式的媒体，改用带扩展名的 STRM 输出："
+                        f"{local_path.name} -> {output.name}"
+                    )
+            else:
+                output = base_output
             previous = claimed.get(output)
             if previous is not None and previous != local_path:
                 raise ValueError(
                     f"STRM 输出路径冲突: {previous} 与 {local_path} 均映射到 {output}"
                 )
             claimed[output] = local_path
+            resolved[local_path] = output
+        return resolved
+
+    def _has_disk_stem_sibling(
+        self,
+        base_output: Path,
+        local_name: str,
+        directory_listings: Dict[Path, list[str]],
+    ) -> bool:
+        """Detect a same-stem sibling left on disk by an earlier batch.
+
+        Either an extension-qualified sibling (``stem.ext.strm``) sits next to
+        the bare output, or the bare output itself was generated from a
+        different source file name. ``.iso`` is excluded from the sibling
+        scan because its regular output already carries the extension.
+        """
+
+        stem = base_output.name[: -len(".strm")]
+        own_conflict_name = f"{local_name}.strm"
+        parent = base_output.parent
+        if parent not in directory_listings:
+            try:
+                directory_listings[parent] = [entry.name for entry in parent.iterdir()]
+            except OSError:
+                directory_listings[parent] = []
+        for name in directory_listings[parent]:
+            if name == own_conflict_name or not name.endswith(".strm"):
+                continue
+            if not name.startswith(f"{stem}."):
+                continue
+            middle = name[len(stem) + 1 : -len(".strm")]
+            if (
+                middle
+                and "." not in middle
+                and middle.lower() != "iso"
+                and f".{middle.lower()}" in self._media_extensions
+            ):
+                return True
+        existing_source = strm_source_file_name(base_output)
+        return bool(existing_source) and existing_source != local_name
+
+    def _strm_output_for(
+        self,
+        local_path: Path,
+        source_root: Path,
+        strm_target: str,
+    ) -> Path:
+        resolved = self._strm_outputs.get(local_path)
+        if resolved is not None:
+            return resolved
+        return uploaded_strm_path(local_path, source_root, Path(strm_target))
 
     @staticmethod
     def _validate_source_file(local_path: Path, source_root: Path) -> None:
@@ -263,6 +354,7 @@ class DirectoryUploader:
             pickcode=pickcode,
             moviepilot_url=self._moviepilot_url,
             redirect_secret=self._redirect_secret,
+            output=self._strm_output_for(local_path, source_root, strm_target),
         )
         logger.info(f"【目录上传】生成 STRM 成功：{output}")
         return output
@@ -292,7 +384,7 @@ class DirectoryUploader:
             )
         except ValueError:
             return False
-        output = uploaded_strm_path(local_path, source_root, Path(strm_target))
+        output = self._strm_output_for(local_path, source_root, strm_target)
         return strm_file_matches(output, expected)
 
     def _resolve_uploaded_file_item(
@@ -493,7 +585,7 @@ class DirectoryUploader:
         errors = []
         files = list(self._iter_files())
         if self._generate_strm:
-            self._validate_strm_output_paths(files)
+            self._strm_outputs = self._resolve_strm_output_paths(files)
         logger.info(f"【目录上传】目录扫描完成，待处理文件：{len(files)}")
         uploaded_paths: set[Path] = set()
         completed_uploads: Dict[Path, tuple[str, bool]] = {}

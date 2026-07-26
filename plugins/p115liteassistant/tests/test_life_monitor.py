@@ -9,6 +9,7 @@ import httpx
 from p115pickcode import id_to_pickcode
 
 from plugins.p115liteassistant.life_monitor import LifeEventRetryError, LifeMonitor
+from plugins.p115liteassistant.strm import build_strm_content
 
 
 VALID_PICKCODE = id_to_pickcode(101)
@@ -206,6 +207,181 @@ class LifeMonitorTest(unittest.TestCase):
             self.assertFalse(renamed.exists())
             self.assertNotIn("movies:Renamed.mkv", self.store.records)
             self.assertTrue(copy.exists())
+
+    def add_same_stem_items(self, mov_name="VVDV(1).MOV", other_name="VVDV(1).mp4", other_mtime=100):
+        self.client.items["601"] = {
+            "fileid": "601",
+            "path": f"/Movies/{mov_name}",
+            "type": "file",
+            "name": mov_name,
+            "pickcode": VALID_PICKCODE,
+            "size": 21,
+            "mtime": 101,
+        }
+        self.client.items["602"] = {
+            "fileid": "602",
+            "path": f"/Movies/{other_name}",
+            "type": "file",
+            "name": other_name,
+            "pickcode": COPY_PICKCODE,
+            "size": 22,
+            "mtime": other_mtime,
+        }
+
+    def test_same_stem_media_generate_extension_qualified_strms(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            # 第二个文件的 115 更新时间更早，旧逻辑会因 mtime 较旧被直接跳过
+            self.add_same_stem_items(other_mtime=100)
+
+            monitor.process_events([{"id": 1, "update_time": 101, "type": 2, "file_id": "601"}])
+            base = Path(directory) / "VVDV(1).strm"
+            self.assertTrue(base.is_file())
+
+            monitor.process_events([{"id": 2, "update_time": 102, "type": 2, "file_id": "602"}])
+
+            mov = Path(directory) / "VVDV(1).MOV.strm"
+            mp4 = Path(directory) / "VVDV(1).mp4.strm"
+            self.assertFalse(base.exists())
+            self.assertTrue(mov.is_file())
+            self.assertTrue(mp4.is_file())
+            self.assertIn(VALID_PICKCODE, mov.read_text(encoding="utf-8"))
+            self.assertIn(COPY_PICKCODE, mp4.read_text(encoding="utf-8"))
+            self.assertEqual(self.store.records["movies:VVDV(1).MOV"]["path"], str(mov))
+            self.assertEqual(self.store.records["movies:VVDV(1).mp4"]["path"], str(mp4))
+
+    def test_resync_keeps_extension_qualified_output_while_sibling_remains(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            self.add_same_stem_items()
+            monitor.process_events(
+                [
+                    {"id": 1, "update_time": 101, "type": 2, "file_id": "601"},
+                    {"id": 2, "update_time": 102, "type": 2, "file_id": "602"},
+                ]
+            )
+
+            self.client.items["602"].update({"size": 23, "mtime": 103})
+            monitor.process_events([{"id": 3, "update_time": 103, "type": 2, "file_id": "602"}])
+
+            self.assertFalse((Path(directory) / "VVDV(1).strm").exists())
+            self.assertTrue((Path(directory) / "VVDV(1).MOV.strm").is_file())
+            mp4 = Path(directory) / "VVDV(1).mp4.strm"
+            self.assertTrue(mp4.is_file())
+            self.assertEqual(self.store.records["movies:VVDV(1).mp4"]["path"], str(mp4))
+
+    def test_sibling_removal_restores_plain_output_on_resync(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            self.add_same_stem_items()
+            monitor.process_events(
+                [
+                    {"id": 1, "update_time": 101, "type": 2, "file_id": "601"},
+                    {"id": 2, "update_time": 102, "type": 2, "file_id": "602"},
+                ]
+            )
+            monitor.process_events(
+                [
+                    {
+                        "id": 3,
+                        "update_time": 103,
+                        "type": 22,
+                        "file_id": "601",
+                        "parent_id": "10",
+                        "file_name": "VVDV(1).MOV",
+                    }
+                ]
+            )
+            self.assertFalse((Path(directory) / "VVDV(1).MOV.strm").exists())
+
+            self.client.items["602"].update({"size": 23, "mtime": 104})
+            monitor.process_events([{"id": 4, "update_time": 104, "type": 2, "file_id": "602"}])
+
+            base = Path(directory) / "VVDV(1).strm"
+            self.assertTrue(base.is_file())
+            self.assertFalse((Path(directory) / "VVDV(1).mp4.strm").exists())
+            self.assertEqual(self.store.records["movies:VVDV(1).mp4"]["path"], str(base))
+
+    def test_extension_changing_rename_does_not_self_collide(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            self.client.items["602"] = {
+                "fileid": "602",
+                "path": "/Movies/VVDV(1).mp4",
+                "type": "file",
+                "name": "VVDV(1).mp4",
+                "pickcode": COPY_PICKCODE,
+                "size": 22,
+                "mtime": 101,
+            }
+            monitor.process_events([{"id": 1, "update_time": 101, "type": 2, "file_id": "602"}])
+            base = Path(directory) / "VVDV(1).strm"
+            self.assertTrue(base.is_file())
+
+            self.client.items["602"] = {
+                **self.client.items["602"],
+                "path": "/Movies/VVDV(1).MOV",
+                "name": "VVDV(1).MOV",
+                "mtime": 102,
+            }
+            monitor.process_events([{"id": 2, "update_time": 102, "type": 24, "file_id": "602"}])
+
+            self.assertTrue(base.is_file())
+            self.assertFalse((Path(directory) / "VVDV(1).MOV.strm").exists())
+            self.assertFalse((Path(directory) / "VVDV(1).mp4.strm").exists())
+            self.assertIn("movies:VVDV(1).MOV", self.store.records)
+            self.assertNotIn("movies:VVDV(1).mp4", self.store.records)
+            self.assertIn("file_name=VVDV%281%29.MOV", base.read_text(encoding="utf-8"))
+
+    def test_relocation_rebuilds_clobbered_bare_strm_content(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            self.add_same_stem_items()
+            # 记录声称裸名属于 mp4，但文件内容已被其他路径覆盖为 MOV 的链接
+            bare = Path(directory) / "VVDV(1).strm"
+            bare.write_text(
+                build_strm_content(
+                    "http://moviepilot:3000",
+                    VALID_PICKCODE,
+                    self.store.get_redirect_secret(),
+                    "VVDV(1).MOV",
+                ),
+                encoding="utf-8",
+            )
+            self.store.records["movies:VVDV(1).mp4"] = {
+                "fingerprint": "stale",
+                "path": str(bare),
+                "kind": "strm",
+                "mapping_id": "movies",
+                "file_id": "602",
+                "pickcode": COPY_PICKCODE,
+                "name": "VVDV(1).mp4",
+                "cloud_path": "/Movies/VVDV(1).mp4",
+                "mtime": 100,
+            }
+
+            monitor.process_events([{"id": 1, "update_time": 101, "type": 2, "file_id": "601"}])
+
+            mp4 = Path(directory) / "VVDV(1).mp4.strm"
+            mov = Path(directory) / "VVDV(1).MOV.strm"
+            self.assertFalse(bare.exists())
+            self.assertIn(COPY_PICKCODE, mp4.read_text(encoding="utf-8"))
+            self.assertIn(VALID_PICKCODE, mov.read_text(encoding="utf-8"))
+
+    def test_iso_and_media_with_same_stem_do_not_conflict(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            self.add_same_stem_items(mov_name="VVDV(1).iso")
+            monitor.process_events(
+                [
+                    {"id": 1, "update_time": 101, "type": 2, "file_id": "601"},
+                    {"id": 2, "update_time": 102, "type": 2, "file_id": "602"},
+                ]
+            )
+
+            self.assertTrue((Path(directory) / "VVDV(1).iso.strm").is_file())
+            self.assertTrue((Path(directory) / "VVDV(1).strm").is_file())
+            self.assertFalse((Path(directory) / "VVDV(1).mp4.strm").exists())
 
     def test_failed_event_does_not_advance_cursor(self):
         with TemporaryDirectory() as directory:

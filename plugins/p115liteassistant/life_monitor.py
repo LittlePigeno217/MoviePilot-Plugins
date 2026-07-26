@@ -19,6 +19,9 @@ from .strm import (
     mapping_cloud_path,
     normalize_cloud_path,
     normalize_pickcode,
+    relocate_stem_conflict_output,
+    strm_conflict_output_path,
+    strm_file_matches,
     strm_output_path,
     write_strm_file,
 )
@@ -1033,7 +1036,23 @@ class LifeMonitor:
         relative = PurePosixPath(cloud_path).relative_to(PurePosixPath(source_path))
         rel_text = relative.as_posix()
         record_key = f"{mapping_id}:{rel_text}"
-        output = strm_output_path(Path(str(mapping["target_dir"])).expanduser().resolve().joinpath(*relative.parts))
+        previous = records.get(record_key)
+        previous_path = (
+            str(previous.get("path") or "").strip() if isinstance(previous, dict) else ""
+        )
+        target_dir = Path(str(mapping["target_dir"])).expanduser().resolve()
+        media_output = target_dir.joinpath(*relative.parts)
+        output = self._resolve_media_strm_output(
+            mapping_id,
+            PurePosixPath(source_path),
+            relative,
+            cloud_path,
+            target_dir,
+            media_output,
+            records,
+            record_key,
+            old_keys,
+        )
         resolved_output = output.resolve()
         existing = []
         for key, record in records.items():
@@ -1068,7 +1087,6 @@ class LifeMonitor:
             self._store.get_redirect_secret(),
             str(item.get("name") or PurePosixPath(cloud_path).name),
         )
-        target_dir = Path(str(mapping["target_dir"])).expanduser().resolve()
         write_strm_file(output, content, target_dir)
         records[record_key] = build_strm_record(
             fingerprint=fingerprint,
@@ -1077,8 +1095,130 @@ class LifeMonitor:
             item={**item, "pickcode": pickcode},
             cloud_path=cloud_path,
         )
+        if previous_path and not self._same_path(previous_path, resolved_output):
+            self._cleanup_replaced_output(previous_path, target_dir, records)
         logger.info(f"【115生活监控】生成 STRM：{cloud_path} -> {output}")
         return record_key
+
+    def _resolve_media_strm_output(
+        self,
+        mapping_id: str,
+        source_prefix: PurePosixPath,
+        relative: PurePosixPath,
+        cloud_path: str,
+        target_dir: Path,
+        media_output: Path,
+        records: Dict[str, Dict[str, Any]],
+        record_key: str,
+        old_keys: set[str],
+    ) -> Path:
+        """同目录同名不同格式的媒体各自使用带扩展名的 STRM 输出。
+
+        与全量同步保持一致：替换扩展名会让 ``A.MOV`` 与 ``A.mp4`` 抢占同一个
+        ``A.strm``，仅在裸名实际碰撞时改用 ``A.MOV.strm`` / ``A.mp4.strm``，
+        未受影响的文件保持原命名。
+        """
+
+        base_output = strm_output_path(media_output)
+        output = base_output
+        for key, record in records.items():
+            if key in old_keys or key == record_key or not isinstance(record, dict):
+                continue
+            if ":sidecar:" in str(key):
+                continue
+            if str(record.get("mapping_id") or str(key).split(":", 1)[0]) != mapping_id:
+                continue
+            sibling_cloud = str(record.get("cloud_path") or "").strip()
+            if not sibling_cloud:
+                continue
+            try:
+                sibling_relative = PurePosixPath(sibling_cloud).relative_to(source_prefix)
+            except ValueError:
+                continue
+            if sibling_relative == relative:
+                continue
+            sibling_media = target_dir.joinpath(*sibling_relative.parts)
+            if strm_output_path(sibling_media) != base_output:
+                continue
+            output = strm_conflict_output_path(media_output)
+            record_path = str(record.get("path") or "").strip()
+            if not record_path or not self._same_path(record_path, base_output.resolve()):
+                continue
+            sibling_output = strm_conflict_output_path(sibling_media)
+            try:
+                relocate_stem_conflict_output(base_output, sibling_output)
+            except OSError as err:
+                raise LifeEventRetryError(
+                    f"重命名同名媒体输出失败，暂不消费事件："
+                    f"{base_output} -> {sibling_output}，原因：{err}"
+                ) from err
+            record["path"] = str(sibling_output)
+            self._heal_relocated_strm(record, sibling_output, target_dir)
+            logger.warning(
+                "【115生活监控】同目录存在同名不同格式的媒体，改用带扩展名的输出："
+                f"{sibling_cloud} -> {sibling_output.name}，{cloud_path} -> {output.name}"
+            )
+        return output
+
+    def _heal_relocated_strm(
+        self,
+        record: Dict[str, Any],
+        output: Path,
+        target_dir: Path,
+    ) -> None:
+        """确保改名后的 STRM 内容与其记录一致。
+
+        改名假设内容未变；若裸名文件曾被目录上传等路径覆盖为其他媒体的
+        链接（或从未落盘），仅改名会让记录指向错误内容，这里按记录重建。
+        """
+
+        pickcode = str(record.get("pickcode") or "").strip()
+        if not pickcode:
+            return
+        name = str(record.get("name") or "").strip()
+        try:
+            expected = build_strm_content(
+                self._moviepilot_url_provider().strip().rstrip("/"),
+                pickcode,
+                self._store.get_redirect_secret(),
+                name or PurePosixPath(str(record.get("cloud_path") or "")).name,
+            )
+        except ValueError:
+            return
+        if strm_file_matches(output, expected):
+            return
+        try:
+            write_strm_file(output, expected, target_dir)
+        except OSError as err:
+            raise LifeEventRetryError(
+                f"重建改名 STRM 失败，暂不消费事件：{output}，原因：{err}"
+            ) from err
+        logger.info(f"【115生活监控】重建改名后的 STRM 内容：{output}")
+
+    def _cleanup_replaced_output(
+        self,
+        previous_path: str,
+        target_dir: Path,
+        records: Dict[str, Dict[str, Any]],
+    ) -> None:
+        try:
+            stale = Path(previous_path).expanduser().resolve()
+            stale.relative_to(target_dir)
+        except (OSError, RuntimeError, ValueError):
+            logger.warning(f"【115生活监控】旧输出路径无法解析，保留：{previous_path}")
+            return
+        if any(
+            isinstance(record, dict)
+            and str(record.get("path") or "").strip()
+            and self._same_path(str(record.get("path")), stale)
+            for record in records.values()
+        ):
+            return
+        try:
+            stale.unlink(missing_ok=True)
+            logger.debug(f"【115生活监控】清理旧输出 STRM：{stale}")
+        except OSError as err:
+            logger.warning(f"【115生活监控】清理旧输出 STRM 失败：{stale}，原因：{err}")
 
     @staticmethod
     def _item_size(item: Dict[str, Any]) -> int:
