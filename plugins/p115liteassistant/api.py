@@ -22,6 +22,7 @@ from .checkin_schedule import random_epoch_for_date, pick_next_run_epoch
 from .client import U115AccessLimitError, U115ApiError, U115AuthError, U115Client
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
+from .notify import CHANNELS as NOTIFY_CHANNELS, Notifier, normalize_notify_type
 from .rate_limiter import RateLimiter
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
@@ -59,11 +60,13 @@ class Api:
         store: Store,
         on_config_saved: Callable[[], None] | None = None,
         life_monitor_status: Callable[[], bool] | None = None,
+        notifier: Notifier | None = None,
     ):
         self._client_provider = client_provider
         self._store = store
         self._on_config_saved = on_config_saved
         self._life_monitor_status = life_monitor_status
+        self._notifier = notifier or Notifier(store.get_config)
         self._running: set[str] = set()
         self._lock = threading.Lock()
         self._cloud_task_lock = threading.Lock()
@@ -102,6 +105,11 @@ class Api:
                 except ValueError as err:
                     return _error(str(err))
             updates["moviepilot_address"] = moviepilot_address
+        # 消息类型只接受白名单里的枚举名，界面传了别的就退回 Plugin
+        for meta in NOTIFY_CHANNELS.values():
+            type_key = meta["type_key"]
+            if type_key in updates:
+                updates[type_key] = normalize_notify_type(updates[type_key])
         allowed = set(DEFAULT_CONFIG) - {"tokens"}
         current = self._store.get_config()
         saved_updates = {key: updates[key] for key in allowed if key in updates}
@@ -432,7 +440,46 @@ class Api:
         )
         log_total = logger.warning if totals["errors"] else logger.info
         log_total(f"【STRM同步】执行完成，{total_summary}")
+        self._notify_strm(entries, totals, incremental)
         return entries
+
+    def _notify_strm(
+        self,
+        entries: list[Dict[str, Any]],
+        totals: Dict[str, int],
+        incremental: bool,
+    ) -> None:
+        """STRM 通道执行完成后的通知，逐条映射列出变化。"""
+        if not self._notifier.is_enabled("strm"):
+            return
+        headline = "有失败" if totals["errors"] else "完成"
+        lines = [
+            f"模式：{'增量' if incremental else '全量'}",
+            f"映射：{len(entries)} 条",
+            f"新增 {totals['added']}，更新 {totals['updated']}，清理 {totals['removed']}",
+            f"附属 {totals['sidecars']}，跳过 {totals['skipped']}，失败 {totals['errors']}",
+            f"耗时：{self._duration_text(totals['duration_ms'])}",
+        ]
+        for entry in entries:
+            mapping = str(entry.get("mapping") or "-")
+            detail = (
+                f"失败 {int(entry.get('errors') or 0)}"
+                if int(entry.get("errors") or 0)
+                else f"新增 {int(entry.get('added') or 0)}，更新 {int(entry.get('updated') or 0)}"
+            )
+            message = str(entry.get("message") or "").strip()
+            lines.append(f"· {mapping}：{detail}" + (f"（{message}）" if message else ""))
+        self._notifier.notify("strm", headline, lines)
+
+    @staticmethod
+    def _duration_text(duration_ms: Any) -> str:
+        try:
+            value = int(duration_ms or 0)
+        except (TypeError, ValueError):
+            return "-"
+        if value <= 0:
+            return "-"
+        return f"{value}ms" if value < 1000 else f"{value / 1000:.1f}s"
 
     def run_upload(self, incremental: bool = True, moviepilot_url: str = "") -> Dict[str, Any]:
         config = self._store.get_config()
@@ -466,7 +513,24 @@ class Api:
         )
         log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
         log_result(f"【目录上传】执行完成，{summary}")
+        self._notify_upload(entry, incremental)
         return entry
+
+    def _notify_upload(self, entry: Dict[str, Any], incremental: bool) -> None:
+        """上传通道执行完成后的通知。"""
+        if not self._notifier.is_enabled("upload"):
+            return
+        errors = int(entry.get("errors") or 0)
+        lines = [
+            f"模式：{'增量' if incremental else '全量'}",
+            f"上传 {int(entry.get('uploaded') or 0)}，秒传 {int(entry.get('instant') or 0)}",
+            f"生成 STRM {int(entry.get('strm_generated') or 0)}，跳过 {int(entry.get('skipped') or 0)}",
+            f"删除 {int(entry.get('deleted') or 0)}，延后 {int(entry.get('deferred') or 0)}，失败 {errors}",
+            f"耗时：{self._duration_text(entry.get('duration_ms'))}",
+        ]
+        if message := str(entry.get("message") or "").strip():
+            lines.append(f"说明：{message}")
+        self._notifier.notify("upload", "有失败" if errors else "完成", lines)
 
     def run_checkin(self) -> Dict[str, Any]:
         if not self._checkin_lock.acquire(blocking=False):
@@ -488,15 +552,39 @@ class Api:
                     f"【115签到】执行完成：{result.get('message') or '签到成功'}，"
                     f"连续 {int(result.get('continuous_day') or 0)} 天，本次积分 {int(result.get('points_num') or 0)}"
                 )
+            self._notify_checkin(entry, True)
             return _ok(entry, result.get("message") or "签到完成")
         except Exception as err:  # noqa: BLE001
             entry = {"kind": "checkin", "time": datetime.now().isoformat(timespec="seconds"), "message": str(err)}
             self._store.append_history(entry)
             logger.error(f"【115签到】执行失败：{safe_error_text(err)}")
+            self._notify_checkin(entry, False)
             return _error(str(err))
         finally:
             self._cloud_task_lock.release()
             self._checkin_lock.release()
+
+    def _notify_checkin(self, entry: Dict[str, Any], success: bool) -> None:
+        """每日签到通知，成功和失败都发，失败时带上原因。"""
+        if not self._notifier.is_enabled("checkin"):
+            return
+        message = str(entry.get("message") or "").strip()
+        if not success:
+            self._notifier.notify(
+                "checkin",
+                "失败",
+                [f"时间：{entry.get('time') or '-'}", f"原因：{message or '未知错误'}"],
+            )
+            return
+        headline = "今日已签到" if entry.get("already") else "签到成功"
+        lines = [f"时间：{entry.get('time') or '-'}"]
+        if continuous := int(entry.get("continuous_day") or 0):
+            lines.append(f"连续签到：{continuous} 天")
+        if points := int(entry.get("points_num") or 0):
+            lines.append(f"本次积分：+{points}")
+        if message:
+            lines.append(f"回执：{message}")
+        self._notifier.notify("checkin", headline, lines)
 
     @staticmethod
     def _checkin_timezone():

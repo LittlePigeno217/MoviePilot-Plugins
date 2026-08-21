@@ -3,6 +3,7 @@ import { computed, inject, onMounted, reactive, ref, watch } from 'vue'
 import AppBar from './ui/AppBar.vue'
 import Conduit from './ui/Conduit.vue'
 import DirPicker from './ui/DirPicker.vue'
+import NotifyRow from './ui/NotifyRow.vue'
 import QrLogin from './ui/QrLogin.vue'
 import { clone, newId, normalizeConfig, pluginGet, pluginPost, useHostNotice } from '../plugin.js'
 import '../styles/kit.scss'
@@ -296,6 +297,12 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                   label="一并下载刮削文件和字幕"
                 />
               </div>
+              <NotifyRow
+                v-model:enabled="config.strm_notify"
+                v-model:type="config.strm_notify_type"
+                label="STRM 同步完成后发送通知"
+                hint="每次同步结束发一条，逐条列出映射的新增、更新与失败数。"
+              />
             </div>
           </div>
 
@@ -367,6 +374,12 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 />
               </div>
               <p class="p115-hint">用英文逗号分隔，带上点号，例如 <span class="p115-mono">.mp4,.mkv</span>。</p>
+              <NotifyRow
+                v-model:enabled="config.upload_notify"
+                v-model:type="config.upload_notify_type"
+                label="上传完成后发送通知"
+                hint="汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。"
+              />
             </div>
           </div>
 
@@ -419,6 +432,12 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 />
               </div>
               <p class="p115-hint">时间窗留空就在 cron 命中的那一刻直接签到。</p>
+              <NotifyRow
+                v-model:enabled="config.checkin_notify"
+                v-model:type="config.checkin_notify_type"
+                label="签到后发送通知"
+                hint="成功带上连续天数和本次积分，失败带上原因。"
+              />
             </div>
           </div>
         </section>

@@ -101,6 +101,16 @@ const AppBar = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-bc4e1f9
 
 const PLUGIN_ID = 'P115LiteAssistant';
 
+// 与后端 notify.py 的 NOTIFY_TYPE_NAMES 一一对应，顺序即界面顺序
+const NOTIFY_TYPES = [
+  { title: '插件', value: 'Plugin' },
+  { title: '整理入库', value: 'Organize' },
+  { title: '站点', value: 'SiteMessage' },
+  { title: '媒体服务器', value: 'MediaServer' },
+  { title: '手动处理', value: 'Manual' },
+  { title: '其它', value: 'Other' },
+];
+
 const DEFAULT_CONFIG = {
   enabled: false,
   cookie: '',
@@ -108,8 +118,12 @@ const DEFAULT_CONFIG = {
   link_redirect_mode: 'cookie',
   strm_incremental: true,
   strm_download_sidecars: false,
+  strm_notify: false,
+  strm_notify_type: 'Plugin',
   strm_mappings: [],
   upload_mappings: [],
+  upload_notify: false,
+  upload_notify_type: 'Plugin',
   upload_include_sidecars: true,
   upload_generate_strm: false,
   upload_delete_source: false,
@@ -118,6 +132,8 @@ const DEFAULT_CONFIG = {
   checkin_enabled: false,
   checkin_cron: '15 8 * * *',
   checkin_time_range: '06:00-09:00',
+  checkin_notify: false,
+  checkin_notify_type: 'Plugin',
   same_playback: false,
   life_monitor_enabled: false,
 };
@@ -195,4 +211,4 @@ function useHostNotice(injected, local) {
 
 const kit = '';
 
-export { AppBar as A, _export_sfc as _, pluginPost as a, newId as b, clone as c, normalizeConfig as n, pluginGet as p, useHostNotice as u };
+export { AppBar as A, NOTIFY_TYPES as N, _export_sfc as _, pluginPost as a, newId as b, clone as c, normalizeConfig as n, pluginGet as p, useHostNotice as u };

@@ -1,14 +1,14 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, p as pluginGet, a as pluginPost, n as normalizeConfig, u as useHostNotice, A as AppBar, c as clone, b as newId } from './kit-c8759fd3.js';
+import { _ as _export_sfc, p as pluginGet, N as NOTIFY_TYPES, a as pluginPost, n as normalizeConfig, u as useHostNotice, A as AppBar, c as clone, b as newId } from './kit-9d862ea5.js';
 
 const Conduit_vue_vue_type_style_index_0_scoped_1ac6f414_lang = '';
 
-const {resolveComponent:_resolveComponent$3,createVNode:_createVNode$3,toDisplayString:_toDisplayString$3,createElementVNode:_createElementVNode$3,renderList:_renderList$3,Fragment:_Fragment$3,openBlock:_openBlock$3,createElementBlock:_createElementBlock$3,createCommentVNode:_createCommentVNode$3,createTextVNode:_createTextVNode$3,normalizeClass:_normalizeClass$1} = await importShared('vue');
+const {resolveComponent:_resolveComponent$4,createVNode:_createVNode$4,toDisplayString:_toDisplayString$4,createElementVNode:_createElementVNode$4,renderList:_renderList$3,Fragment:_Fragment$3,openBlock:_openBlock$4,createElementBlock:_createElementBlock$4,createCommentVNode:_createCommentVNode$4,createTextVNode:_createTextVNode$3,normalizeClass:_normalizeClass$1} = await importShared('vue');
 
 
-const _hoisted_1$3 = { class: "conduit__bar" };
-const _hoisted_2$3 = { class: "conduit__ordinal p115-mono" };
-const _hoisted_3$3 = { class: "conduit__track" };
+const _hoisted_1$4 = { class: "conduit__bar" };
+const _hoisted_2$4 = { class: "conduit__ordinal p115-mono" };
+const _hoisted_3$4 = { class: "conduit__track" };
 const _hoisted_4$3 = {
   key: 0,
   class: "conduit__flow",
@@ -29,7 +29,7 @@ const {computed: computed$3} = await importShared('vue');
 
 
 
-const _sfc_main$3 = {
+const _sfc_main$4 = {
   __name: 'Conduit',
   props: {
   enabled: { type: Boolean, default: true },
@@ -53,16 +53,16 @@ const emit = __emit;
 const live = computed$3(() => props.enabled);
 
 return (_ctx, _cache) => {
-  const _component_v_switch = _resolveComponent$3("v-switch");
-  const _component_v_spacer = _resolveComponent$3("v-spacer");
-  const _component_v_btn = _resolveComponent$3("v-btn");
-  const _component_v_icon = _resolveComponent$3("v-icon");
+  const _component_v_switch = _resolveComponent$4("v-switch");
+  const _component_v_spacer = _resolveComponent$4("v-spacer");
+  const _component_v_btn = _resolveComponent$4("v-btn");
+  const _component_v_icon = _resolveComponent$4("v-icon");
 
-  return (_openBlock$3(), _createElementBlock$3("div", {
+  return (_openBlock$4(), _createElementBlock$4("div", {
     class: _normalizeClass$1(["conduit", { 'conduit--live': live.value }])
   }, [
-    _createElementVNode$3("div", _hoisted_1$3, [
-      _createVNode$3(_component_v_switch, {
+    _createElementVNode$4("div", _hoisted_1$4, [
+      _createVNode$4(_component_v_switch, {
         "model-value": __props.enabled,
         color: "primary",
         density: "compact",
@@ -70,9 +70,9 @@ return (_ctx, _cache) => {
         "aria-label": __props.enabled ? '停用这条通道' : '启用这条通道',
         "onUpdate:modelValue": _cache[0] || (_cache[0] = value => emit('update:enabled', Boolean(value)))
       }, null, 8, ["model-value", "aria-label"]),
-      _createElementVNode$3("span", _hoisted_2$3, "通道 " + _toDisplayString$3(__props.index + 1), 1),
-      _createVNode$3(_component_v_spacer),
-      _createVNode$3(_component_v_btn, {
+      _createElementVNode$4("span", _hoisted_2$4, "通道 " + _toDisplayString$4(__props.index + 1), 1),
+      _createVNode$4(_component_v_spacer),
+      _createVNode$4(_component_v_btn, {
         icon: "mdi-close",
         variant: "text",
         size: "x-small",
@@ -80,36 +80,36 @@ return (_ctx, _cache) => {
         onClick: _cache[1] || (_cache[1] = $event => (emit('remove')))
       })
     ]),
-    _createElementVNode$3("div", _hoisted_3$3, [
-      (_openBlock$3(true), _createElementBlock$3(_Fragment$3, null, _renderList$3(__props.stops, (stop, position) => {
-        return (_openBlock$3(), _createElementBlock$3(_Fragment$3, {
+    _createElementVNode$4("div", _hoisted_3$4, [
+      (_openBlock$4(true), _createElementBlock$4(_Fragment$3, null, _renderList$3(__props.stops, (stop, position) => {
+        return (_openBlock$4(), _createElementBlock$4(_Fragment$3, {
           key: stop.key
         }, [
           position
-            ? (_openBlock$3(), _createElementBlock$3("span", _hoisted_4$3, [
-                _cache[2] || (_cache[2] = _createElementVNode$3("span", { class: "conduit__flow-line" }, null, -1)),
-                _createVNode$3(_component_v_icon, {
+            ? (_openBlock$4(), _createElementBlock$4("span", _hoisted_4$3, [
+                _cache[2] || (_cache[2] = _createElementVNode$4("span", { class: "conduit__flow-line" }, null, -1)),
+                _createVNode$4(_component_v_icon, {
                   icon: "mdi-chevron-right",
                   size: "16",
                   class: "conduit__flow-head"
                 })
               ]))
-            : _createCommentVNode$3("", true),
-          _createElementVNode$3("button", {
+            : _createCommentVNode$4("", true),
+          _createElementVNode$4("button", {
             type: "button",
             class: "conduit__stop",
             onClick: $event => (emit('pick', stop.key))
           }, [
-            _createElementVNode$3("span", _hoisted_6$3, [
-              _createVNode$3(_component_v_icon, {
+            _createElementVNode$4("span", _hoisted_6$3, [
+              _createVNode$4(_component_v_icon, {
                 icon: stop.icon,
                 size: "13"
               }, null, 8, ["icon"]),
-              _createTextVNode$3(" " + _toDisplayString$3(stop.tag), 1)
+              _createTextVNode$3(" " + _toDisplayString$4(stop.tag), 1)
             ]),
             (stop.value)
-              ? (_openBlock$3(), _createElementBlock$3("span", _hoisted_7$3, _toDisplayString$3(stop.value), 1))
-              : (_openBlock$3(), _createElementBlock$3("span", _hoisted_8$3, _toDisplayString$3(stop.placeholder), 1))
+              ? (_openBlock$4(), _createElementBlock$4("span", _hoisted_7$3, _toDisplayString$4(stop.value), 1))
+              : (_openBlock$4(), _createElementBlock$4("span", _hoisted_8$3, _toDisplayString$4(stop.placeholder), 1))
           ], 8, _hoisted_5$3)
         ], 64))
       }), 128))
@@ -119,16 +119,16 @@ return (_ctx, _cache) => {
 }
 
 };
-const Conduit = /*#__PURE__*/_export_sfc(_sfc_main$3, [['__scopeId',"data-v-1ac6f414"]]);
+const Conduit = /*#__PURE__*/_export_sfc(_sfc_main$4, [['__scopeId',"data-v-1ac6f414"]]);
 
 const DirPicker_vue_vue_type_style_index_0_scoped_753346c2_lang = '';
 
-const {toDisplayString:_toDisplayString$2,createElementVNode:_createElementVNode$2,resolveComponent:_resolveComponent$2,createVNode:_createVNode$2,openBlock:_openBlock$2,createBlock:_createBlock$2,createCommentVNode:_createCommentVNode$2,createElementBlock:_createElementBlock$2,renderList:_renderList$2,Fragment:_Fragment$2,withCtx:_withCtx$2,createTextVNode:_createTextVNode$2} = await importShared('vue');
+const {toDisplayString:_toDisplayString$3,createElementVNode:_createElementVNode$3,resolveComponent:_resolveComponent$3,createVNode:_createVNode$3,openBlock:_openBlock$3,createBlock:_createBlock$2,createCommentVNode:_createCommentVNode$3,createElementBlock:_createElementBlock$3,renderList:_renderList$2,Fragment:_Fragment$2,withCtx:_withCtx$2,createTextVNode:_createTextVNode$2} = await importShared('vue');
 
 
-const _hoisted_1$2 = { class: "picker__head" };
-const _hoisted_2$2 = { class: "p115-endpoint-tag" };
-const _hoisted_3$2 = { class: "picker__title" };
+const _hoisted_1$3 = { class: "picker__head" };
+const _hoisted_2$3 = { class: "p115-endpoint-tag" };
+const _hoisted_3$3 = { class: "picker__title" };
 const _hoisted_4$2 = { class: "picker__here" };
 const _hoisted_5$2 = { class: "picker__path p115-mono" };
 const _hoisted_6$2 = {
@@ -144,7 +144,7 @@ const _hoisted_8$2 = { class: "picker__foot" };
 const {computed: computed$2,reactive: reactive$2,ref: ref$2,watch: watch$2} = await importShared('vue');
 
 
-const _sfc_main$2 = {
+const _sfc_main$3 = {
   __name: 'DirPicker',
   props: {
   modelValue: { type: Boolean, default: false },
@@ -249,30 +249,30 @@ watch$2(
 );
 
 return (_ctx, _cache) => {
-  const _component_v_btn = _resolveComponent$2("v-btn");
-  const _component_v_select = _resolveComponent$2("v-select");
-  const _component_v_progress_linear = _resolveComponent$2("v-progress-linear");
-  const _component_v_list_item = _resolveComponent$2("v-list-item");
-  const _component_v_list = _resolveComponent$2("v-list");
-  const _component_v_card_text = _resolveComponent$2("v-card-text");
-  const _component_v_card = _resolveComponent$2("v-card");
-  const _component_v_dialog = _resolveComponent$2("v-dialog");
+  const _component_v_btn = _resolveComponent$3("v-btn");
+  const _component_v_select = _resolveComponent$3("v-select");
+  const _component_v_progress_linear = _resolveComponent$3("v-progress-linear");
+  const _component_v_list_item = _resolveComponent$3("v-list-item");
+  const _component_v_list = _resolveComponent$3("v-list");
+  const _component_v_card_text = _resolveComponent$3("v-card-text");
+  const _component_v_card = _resolveComponent$3("v-card");
+  const _component_v_dialog = _resolveComponent$3("v-dialog");
 
-  return (_openBlock$2(), _createBlock$2(_component_v_dialog, {
+  return (_openBlock$3(), _createBlock$2(_component_v_dialog, {
     "model-value": __props.modelValue,
     "max-width": "620",
     scrollable: "",
     "onUpdate:modelValue": _cache[2] || (_cache[2] = value => emit('update:modelValue', value))
   }, {
     default: _withCtx$2(() => [
-      _createVNode$2(_component_v_card, { class: "picker p115-portal" }, {
+      _createVNode$3(_component_v_card, { class: "picker p115-portal" }, {
         default: _withCtx$2(() => [
-          _createElementVNode$2("div", _hoisted_1$2, [
-            _createElementVNode$2("div", null, [
-              _createElementVNode$2("div", _hoisted_2$2, _toDisplayString$2(__props.remote ? '115 云端' : 'MOVIEPILOT 本地'), 1),
-              _createElementVNode$2("h2", _hoisted_3$2, _toDisplayString$2(__props.title), 1)
+          _createElementVNode$3("div", _hoisted_1$3, [
+            _createElementVNode$3("div", null, [
+              _createElementVNode$3("div", _hoisted_2$3, _toDisplayString$3(__props.remote ? '115 云端' : 'MOVIEPILOT 本地'), 1),
+              _createElementVNode$3("h2", _hoisted_3$3, _toDisplayString$3(__props.title), 1)
             ]),
-            _createVNode$2(_component_v_btn, {
+            _createVNode$3(_component_v_btn, {
               icon: "mdi-close",
               variant: "text",
               size: "small",
@@ -280,8 +280,8 @@ return (_ctx, _cache) => {
               onClick: _cache[0] || (_cache[0] = $event => (emit('update:modelValue', false)))
             })
           ]),
-          _createElementVNode$2("div", _hoisted_4$2, [
-            _createVNode$2(_component_v_btn, {
+          _createElementVNode$3("div", _hoisted_4$2, [
+            _createVNode$3(_component_v_btn, {
               icon: "mdi-arrow-up",
               variant: "text",
               size: "x-small",
@@ -289,10 +289,10 @@ return (_ctx, _cache) => {
               "aria-label": "回到上一级",
               onClick: ascend
             }, null, 8, ["disabled"]),
-            _createElementVNode$2("span", _hoisted_5$2, _toDisplayString$2(here.value), 1)
+            _createElementVNode$3("span", _hoisted_5$2, _toDisplayString$3(here.value), 1)
           ]),
           (!__props.remote && roots.value.length > 1)
-            ? (_openBlock$2(), _createBlock$2(_component_v_select, {
+            ? (_openBlock$3(), _createBlock$2(_component_v_select, {
                 key: 0,
                 "model-value": localBase.value,
                 items: roots.value,
@@ -305,28 +305,28 @@ return (_ctx, _cache) => {
                 class: "mx-4 mb-3",
                 "onUpdate:modelValue": switchRoot
               }, null, 8, ["model-value", "items"]))
-            : _createCommentVNode$2("", true),
-          _createVNode$2(_component_v_card_text, { class: "picker__list" }, {
+            : _createCommentVNode$3("", true),
+          _createVNode$3(_component_v_card_text, { class: "picker__list" }, {
             default: _withCtx$2(() => [
               (loading.value)
-                ? (_openBlock$2(), _createBlock$2(_component_v_progress_linear, {
+                ? (_openBlock$3(), _createBlock$2(_component_v_progress_linear, {
                     key: 0,
                     indeterminate: "",
                     color: "primary"
                   }))
-                : _createCommentVNode$2("", true),
+                : _createCommentVNode$3("", true),
               (state.failed)
-                ? (_openBlock$2(), _createElementBlock$2("p", _hoisted_6$2, _toDisplayString$2(state.failed), 1))
+                ? (_openBlock$3(), _createElementBlock$3("p", _hoisted_6$2, _toDisplayString$3(state.failed), 1))
                 : (items.value.length)
-                  ? (_openBlock$2(), _createBlock$2(_component_v_list, {
+                  ? (_openBlock$3(), _createBlock$2(_component_v_list, {
                       key: 2,
                       density: "compact",
                       lines: "one",
                       "bg-color": "transparent"
                     }, {
                       default: _withCtx$2(() => [
-                        (_openBlock$2(true), _createElementBlock$2(_Fragment$2, null, _renderList$2(items.value, (item) => {
-                          return (_openBlock$2(), _createBlock$2(_component_v_list_item, {
+                        (_openBlock$3(true), _createElementBlock$3(_Fragment$2, null, _renderList$2(items.value, (item) => {
+                          return (_openBlock$3(), _createBlock$2(_component_v_list_item, {
                             key: item.cid || item.path,
                             "prepend-icon": "mdi-folder-outline",
                             title: item.name,
@@ -337,13 +337,13 @@ return (_ctx, _cache) => {
                       _: 1
                     }))
                   : (!loading.value)
-                    ? (_openBlock$2(), _createElementBlock$2("p", _hoisted_7$2, "这一层没有子目录，可直接选它。"))
-                    : _createCommentVNode$2("", true)
+                    ? (_openBlock$3(), _createElementBlock$3("p", _hoisted_7$2, "这一层没有子目录，可直接选它。"))
+                    : _createCommentVNode$3("", true)
             ]),
             _: 1
           }),
-          _createElementVNode$2("div", _hoisted_8$2, [
-            _createVNode$2(_component_v_btn, {
+          _createElementVNode$3("div", _hoisted_8$2, [
+            _createVNode$3(_component_v_btn, {
               variant: "text",
               size: "small",
               onClick: _cache[1] || (_cache[1] = $event => (emit('update:modelValue', false)))
@@ -353,7 +353,7 @@ return (_ctx, _cache) => {
               ]))]),
               _: 1
             }),
-            _createVNode$2(_component_v_btn, {
+            _createVNode$3(_component_v_btn, {
               color: "primary",
               variant: "flat",
               size: "small",
@@ -376,7 +376,74 @@ return (_ctx, _cache) => {
 }
 
 };
-const DirPicker = /*#__PURE__*/_export_sfc(_sfc_main$2, [['__scopeId',"data-v-753346c2"]]);
+const DirPicker = /*#__PURE__*/_export_sfc(_sfc_main$3, [['__scopeId',"data-v-753346c2"]]);
+
+const NotifyRow_vue_vue_type_style_index_0_scoped_db171d2a_lang = '';
+
+const {resolveComponent:_resolveComponent$2,createVNode:_createVNode$2,unref:_unref$1,createElementVNode:_createElementVNode$2,toDisplayString:_toDisplayString$2,openBlock:_openBlock$2,createElementBlock:_createElementBlock$2,createCommentVNode:_createCommentVNode$2} = await importShared('vue');
+
+
+const _hoisted_1$2 = { class: "ntf" };
+const _hoisted_2$2 = { class: "ntf__line" };
+const _hoisted_3$2 = {
+  key: 0,
+  class: "p115-hint"
+};
+
+
+const _sfc_main$2 = {
+  __name: 'NotifyRow',
+  props: {
+  enabled: { type: Boolean, default: false },
+  type: { type: String, default: 'Plugin' },
+  label: { type: String, default: '执行后发送通知' },
+  hint: { type: String, default: '' },
+},
+  emits: ['update:enabled', 'update:type'],
+  setup(__props, { emit: __emit }) {
+
+/**
+ * 通道通知开关。一条通道一个实例，开关和消息类型都是独立字段——
+ * STRM 只关心自己的，签到失败不会因为上传没开通知而静默。
+ */
+const props = __props;
+const emit = __emit;
+
+return (_ctx, _cache) => {
+  const _component_v_switch = _resolveComponent$2("v-switch");
+  const _component_v_select = _resolveComponent$2("v-select");
+
+  return (_openBlock$2(), _createElementBlock$2("div", _hoisted_1$2, [
+    _createElementVNode$2("div", _hoisted_2$2, [
+      _createVNode$2(_component_v_switch, {
+        "model-value": props.enabled,
+        color: "primary",
+        density: "compact",
+        "hide-details": "",
+        label: props.label,
+        "onUpdate:modelValue": _cache[0] || (_cache[0] = value => emit('update:enabled', Boolean(value)))
+      }, null, 8, ["model-value", "label"]),
+      _createVNode$2(_component_v_select, {
+        "model-value": props.type,
+        items: _unref$1(NOTIFY_TYPES),
+        disabled: !props.enabled,
+        class: "ntf__type",
+        label: "消息类型",
+        variant: "outlined",
+        density: "compact",
+        "hide-details": "",
+        "onUpdate:modelValue": _cache[1] || (_cache[1] = value => emit('update:type', value))
+      }, null, 8, ["model-value", "items", "disabled"])
+    ]),
+    (props.hint)
+      ? (_openBlock$2(), _createElementBlock$2("p", _hoisted_3$2, _toDisplayString$2(props.hint), 1))
+      : _createCommentVNode$2("", true)
+  ]))
+}
+}
+
+};
+const NotifyRow = /*#__PURE__*/_export_sfc(_sfc_main$2, [['__scopeId',"data-v-db171d2a"]]);
 
 const QrLogin_vue_vue_type_style_index_0_scoped_fb3a5ece_lang = '';
 
@@ -613,7 +680,7 @@ return (_ctx, _cache) => {
 };
 const QrLogin = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-fb3a5ece"]]);
 
-const Config_vue_vue_type_style_index_0_scoped_f906c890_lang = '';
+const Config_vue_vue_type_style_index_0_scoped_b736fabd_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,withCtx:_withCtx,createBlock:_createBlock,unref:_unref} = await importShared('vue');
 
@@ -842,7 +909,7 @@ return (_ctx, _cache) => {
           onClick: _cache[2] || (_cache[2] = $event => (local.text = ''))
         }, [
           _createTextVNode(_toDisplayString(local.text) + " ", 1),
-          _cache[22] || (_cache[22] = _createElementVNode("span", { class: "cfg__local-dismiss" }, "知道了", -1))
+          _cache[28] || (_cache[28] = _createElementVNode("span", { class: "cfg__local-dismiss" }, "知道了", -1))
         ], 2))
       : _createCommentVNode("", true),
     _createElementVNode("div", _hoisted_2, [
@@ -871,7 +938,7 @@ return (_ctx, _cache) => {
           ? (_openBlock(), _createElementBlock("section", _hoisted_9, [
               _createElementVNode("div", _hoisted_10, [
                 _createElementVNode("div", _hoisted_11, [
-                  _cache[24] || (_cache[24] = _createElementVNode("div", null, [
+                  _cache[30] || (_cache[30] = _createElementVNode("div", null, [
                     _createElementVNode("h3", { class: "p115-section-title" }, "115 授权"),
                     _createElementVNode("p", { class: "p115-hint" }, "扫码后 Cookie 由后端写入，也可以手动粘贴已有的 Cookie。")
                   ], -1)),
@@ -882,7 +949,7 @@ return (_ctx, _cache) => {
                     "prepend-icon": "mdi-qrcode-scan",
                     onClick: _cache[3] || (_cache[3] = $event => (qrOpen.value = true))
                   }, {
-                    default: _withCtx(() => [...(_cache[23] || (_cache[23] = [
+                    default: _withCtx(() => [...(_cache[29] || (_cache[29] = [
                       _createTextVNode(" 扫码登录 ", -1)
                     ]))]),
                     _: 1
@@ -900,11 +967,11 @@ return (_ctx, _cache) => {
                     autocomplete: "off",
                     placeholder: "UID=...; CID=...; SEID=..."
                   }, null, 8, ["modelValue"]),
-                  _cache[25] || (_cache[25] = _createElementVNode("p", { class: "p115-hint" }, "Cookie 只保存在 MoviePilot 本地配置里，界面不会回显明文。", -1))
+                  _cache[31] || (_cache[31] = _createElementVNode("p", { class: "p115-hint" }, "Cookie 只保存在 MoviePilot 本地配置里，界面不会回显明文。", -1))
                 ])
               ]),
               _createElementVNode("div", _hoisted_13, [
-                _cache[27] || (_cache[27] = _createElementVNode("div", { class: "p115-panel__head" }, [
+                _cache[33] || (_cache[33] = _createElementVNode("div", { class: "p115-panel__head" }, [
                   _createElementVNode("div", null, [
                     _createElementVNode("h3", { class: "p115-section-title" }, "播放地址"),
                     _createElementVNode("p", { class: "p115-hint" }, "STRM 里写入的回源地址，播放器要能访问到它。")
@@ -927,7 +994,7 @@ return (_ctx, _cache) => {
                           size: "x-small",
                           onClick: useThisSite
                         }, {
-                          default: _withCtx(() => [...(_cache[26] || (_cache[26] = [
+                          default: _withCtx(() => [...(_cache[32] || (_cache[32] = [
                             _createTextVNode("用当前站点", -1)
                           ]))]),
                           _: 1
@@ -978,7 +1045,7 @@ return (_ctx, _cache) => {
             ? (_openBlock(), _createElementBlock("section", _hoisted_17, [
                 _createElementVNode("div", _hoisted_18, [
                   _createElementVNode("div", _hoisted_19, [
-                    _cache[29] || (_cache[29] = _createElementVNode("div", null, [
+                    _cache[35] || (_cache[35] = _createElementVNode("div", null, [
                       _createElementVNode("h3", { class: "p115-section-title" }, "STRM 通道"),
                       _createElementVNode("p", { class: "p115-hint" }, "每条通道把一个 115 目录的媒体文件生成为本地 STRM。")
                     ], -1)),
@@ -988,7 +1055,7 @@ return (_ctx, _cache) => {
                       "prepend-icon": "mdi-plus",
                       onClick: addStrm
                     }, {
-                      default: _withCtx(() => [...(_cache[28] || (_cache[28] = [
+                      default: _withCtx(() => [...(_cache[34] || (_cache[34] = [
                         _createTextVNode("加一条通道", -1)
                       ]))]),
                       _: 1
@@ -1012,7 +1079,15 @@ return (_ctx, _cache) => {
                         "hide-details": "",
                         label: "一并下载刮削文件和字幕"
                       }, null, 8, ["modelValue"])
-                    ])
+                    ]),
+                    _createVNode(NotifyRow, {
+                      enabled: config.strm_notify,
+                      "onUpdate:enabled": _cache[12] || (_cache[12] = $event => ((config.strm_notify) = $event)),
+                      type: config.strm_notify_type,
+                      "onUpdate:type": _cache[13] || (_cache[13] = $event => ((config.strm_notify_type) = $event)),
+                      label: "STRM 同步完成后发送通知",
+                      hint: "每次同步结束发一条，逐条列出映射的新增、更新与失败数。"
+                    }, null, 8, ["enabled", "type"])
                   ])
                 ]),
                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.strm_mappings, (mapping, index) => {
@@ -1034,7 +1109,7 @@ return (_ctx, _cache) => {
               ? (_openBlock(), _createElementBlock("section", _hoisted_23, [
                   _createElementVNode("div", _hoisted_24, [
                     _createElementVNode("div", _hoisted_25, [
-                      _cache[31] || (_cache[31] = _createElementVNode("div", null, [
+                      _cache[37] || (_cache[37] = _createElementVNode("div", null, [
                         _createElementVNode("h3", { class: "p115-section-title" }, "上传通道"),
                         _createElementVNode("p", { class: "p115-hint" }, "每条通道把一个本地目录的媒体文件上传到 115。")
                       ], -1)),
@@ -1044,7 +1119,7 @@ return (_ctx, _cache) => {
                         "prepend-icon": "mdi-plus",
                         onClick: addUpload
                       }, {
-                        default: _withCtx(() => [...(_cache[30] || (_cache[30] = [
+                        default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
                           _createTextVNode("加一条通道", -1)
                         ]))]),
                         _: 1
@@ -1054,7 +1129,7 @@ return (_ctx, _cache) => {
                       _createElementVNode("div", _hoisted_27, [
                         _createVNode(_component_v_switch, {
                           modelValue: config.upload_include_sidecars,
-                          "onUpdate:modelValue": _cache[12] || (_cache[12] = $event => ((config.upload_include_sidecars) = $event)),
+                          "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((config.upload_include_sidecars) = $event)),
                           color: "primary",
                           density: "compact",
                           "hide-details": "",
@@ -1062,7 +1137,7 @@ return (_ctx, _cache) => {
                         }, null, 8, ["modelValue"]),
                         _createVNode(_component_v_switch, {
                           modelValue: config.upload_generate_strm,
-                          "onUpdate:modelValue": _cache[13] || (_cache[13] = $event => ((config.upload_generate_strm) = $event)),
+                          "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((config.upload_generate_strm) = $event)),
                           color: "primary",
                           density: "compact",
                           "hide-details": "",
@@ -1070,7 +1145,7 @@ return (_ctx, _cache) => {
                         }, null, 8, ["modelValue"]),
                         _createVNode(_component_v_switch, {
                           modelValue: config.upload_delete_source,
-                          "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((config.upload_delete_source) = $event)),
+                          "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((config.upload_delete_source) = $event)),
                           color: "primary",
                           density: "compact",
                           "hide-details": "",
@@ -1080,7 +1155,7 @@ return (_ctx, _cache) => {
                       _createElementVNode("div", _hoisted_28, [
                         _createVNode(_component_v_textarea, {
                           modelValue: config.upload_media_extensions,
-                          "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((config.upload_media_extensions) = $event)),
+                          "onUpdate:modelValue": _cache[17] || (_cache[17] = $event => ((config.upload_media_extensions) = $event)),
                           label: "媒体文件后缀",
                           variant: "outlined",
                           density: "compact",
@@ -1090,7 +1165,7 @@ return (_ctx, _cache) => {
                         }, null, 8, ["modelValue"]),
                         _createVNode(_component_v_textarea, {
                           modelValue: config.upload_sidecar_extensions,
-                          "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((config.upload_sidecar_extensions) = $event)),
+                          "onUpdate:modelValue": _cache[18] || (_cache[18] = $event => ((config.upload_sidecar_extensions) = $event)),
                           label: "刮削文件后缀",
                           variant: "outlined",
                           density: "compact",
@@ -1099,11 +1174,19 @@ return (_ctx, _cache) => {
                           "hide-details": ""
                         }, null, 8, ["modelValue"])
                       ]),
-                      _cache[32] || (_cache[32] = _createElementVNode("p", { class: "p115-hint" }, [
+                      _cache[38] || (_cache[38] = _createElementVNode("p", { class: "p115-hint" }, [
                         _createTextVNode("用英文逗号分隔，带上点号，例如 "),
                         _createElementVNode("span", { class: "p115-mono" }, ".mp4,.mkv"),
                         _createTextVNode("。")
-                      ], -1))
+                      ], -1)),
+                      _createVNode(NotifyRow, {
+                        enabled: config.upload_notify,
+                        "onUpdate:enabled": _cache[19] || (_cache[19] = $event => ((config.upload_notify) = $event)),
+                        type: config.upload_notify_type,
+                        "onUpdate:type": _cache[20] || (_cache[20] = $event => ((config.upload_notify_type) = $event)),
+                        label: "上传完成后发送通知",
+                        hint: "汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。"
+                      }, null, 8, ["enabled", "type"])
                     ])
                   ]),
                   (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.upload_mappings, (mapping, index) => {
@@ -1124,13 +1207,13 @@ return (_ctx, _cache) => {
               : (_openBlock(), _createElementBlock("section", _hoisted_30, [
                   _createElementVNode("div", _hoisted_31, [
                     _createElementVNode("div", _hoisted_32, [
-                      _cache[33] || (_cache[33] = _createElementVNode("div", null, [
+                      _cache[39] || (_cache[39] = _createElementVNode("div", null, [
                         _createElementVNode("h3", { class: "p115-section-title" }, "每日签到"),
                         _createElementVNode("p", { class: "p115-hint" }, "按 cron 触发，在时间窗内随机挑一刻执行，看起来更像人在操作。")
                       ], -1)),
                       _createVNode(_component_v_switch, {
                         modelValue: config.checkin_enabled,
-                        "onUpdate:modelValue": _cache[17] || (_cache[17] = $event => ((config.checkin_enabled) = $event)),
+                        "onUpdate:modelValue": _cache[21] || (_cache[21] = $event => ((config.checkin_enabled) = $event)),
                         color: "primary",
                         density: "compact",
                         "hide-details": "",
@@ -1141,7 +1224,7 @@ return (_ctx, _cache) => {
                       _createElementVNode("div", _hoisted_34, [
                         _createVNode(_component_v_text_field, {
                           modelValue: config.checkin_cron,
-                          "onUpdate:modelValue": _cache[18] || (_cache[18] = $event => ((config.checkin_cron) = $event)),
+                          "onUpdate:modelValue": _cache[22] || (_cache[22] = $event => ((config.checkin_cron) = $event)),
                           label: "cron 表达式",
                           variant: "outlined",
                           density: "compact",
@@ -1150,7 +1233,7 @@ return (_ctx, _cache) => {
                         }, null, 8, ["modelValue"]),
                         _createVNode(_component_v_text_field, {
                           modelValue: config.checkin_time_range,
-                          "onUpdate:modelValue": _cache[19] || (_cache[19] = $event => ((config.checkin_time_range) = $event)),
+                          "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((config.checkin_time_range) = $event)),
                           label: "随机时间窗",
                           variant: "outlined",
                           density: "compact",
@@ -1158,14 +1241,22 @@ return (_ctx, _cache) => {
                           placeholder: "06:00-09:00"
                         }, null, 8, ["modelValue"])
                       ]),
-                      _cache[34] || (_cache[34] = _createElementVNode("p", { class: "p115-hint" }, "时间窗留空就在 cron 命中的那一刻直接签到。", -1))
+                      _cache[40] || (_cache[40] = _createElementVNode("p", { class: "p115-hint" }, "时间窗留空就在 cron 命中的那一刻直接签到。", -1)),
+                      _createVNode(NotifyRow, {
+                        enabled: config.checkin_notify,
+                        "onUpdate:enabled": _cache[24] || (_cache[24] = $event => ((config.checkin_notify) = $event)),
+                        type: config.checkin_notify_type,
+                        "onUpdate:type": _cache[25] || (_cache[25] = $event => ((config.checkin_notify_type) = $event)),
+                        label: "签到后发送通知",
+                        hint: "成功带上连续天数和本次积分，失败带上原因。"
+                      }, null, 8, ["enabled", "type"])
                     ])
                   ])
                 ]))
       ])
     ]),
     _createElementVNode("footer", _hoisted_35, [
-      _cache[37] || (_cache[37] = _createElementVNode("span", { class: "cfg__foot-note p115-muted" }, "保存后立即生效，无需重启 MoviePilot。", -1)),
+      _cache[43] || (_cache[43] = _createElementVNode("span", { class: "cfg__foot-note p115-muted" }, "保存后立即生效，无需重启 MoviePilot。", -1)),
       _createElementVNode("div", _hoisted_36, [
         _createVNode(_component_v_btn, {
           variant: "text",
@@ -1173,7 +1264,7 @@ return (_ctx, _cache) => {
           disabled: busy.value,
           onClick: reload
         }, {
-          default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
+          default: _withCtx(() => [...(_cache[41] || (_cache[41] = [
             _createTextVNode("放弃改动", -1)
           ]))]),
           _: 1
@@ -1185,7 +1276,7 @@ return (_ctx, _cache) => {
           loading: busy.value || __props.saving,
           onClick: save
         }, {
-          default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
+          default: _withCtx(() => [...(_cache[42] || (_cache[42] = [
             _createTextVNode("保存配置", -1)
           ]))]),
           _: 1
@@ -1194,14 +1285,14 @@ return (_ctx, _cache) => {
     ]),
     _createVNode(QrLogin, {
       modelValue: qrOpen.value,
-      "onUpdate:modelValue": _cache[20] || (_cache[20] = $event => ((qrOpen).value = $event)),
+      "onUpdate:modelValue": _cache[26] || (_cache[26] = $event => ((qrOpen).value = $event)),
       api: __props.api,
       onAuthenticated: reload,
       onError: _unref(notice).error
     }, null, 8, ["modelValue", "api", "onError"]),
     _createVNode(DirPicker, {
       modelValue: pick.open,
-      "onUpdate:modelValue": _cache[21] || (_cache[21] = $event => ((pick.open) = $event)),
+      "onUpdate:modelValue": _cache[27] || (_cache[27] = $event => ((pick.open) = $event)),
       api: __props.api,
       remote: pick.remote,
       title: pick.title,
@@ -1213,6 +1304,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-f906c890"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-b736fabd"]]);
 
 export { Config as default };

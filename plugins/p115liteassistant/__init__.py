@@ -12,6 +12,7 @@ from app.schemas.types import EventType
 from .api import Api
 from .client import U115Client
 from .life_monitor import LifeMonitor
+from .notify import Notifier
 from .store import Store
 
 
@@ -19,7 +20,7 @@ class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.2.0"
+    plugin_version = "1.2.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -31,11 +32,18 @@ class P115LiteAssistant(_PluginBase):
         self._store = Store(self)
         self._client: Optional[U115Client] = None
         self._client_signature: Optional[Tuple[str, ...]] = None
+        # 通知走宿主的 post_message，通道开关和消息类型都存在插件配置里
+        self._notifier = Notifier(
+            self._store.get_config,
+            poster=self.post_message,
+            title_prefix=self.plugin_name,
+        )
         self._api = Api(
             self._get_client,
             self._store,
             on_config_saved=self._on_config_saved,
             life_monitor_status=self._is_life_monitor_running,
+            notifier=self._notifier,
         )
         self._life_monitor = LifeMonitor(
             self._get_client,
@@ -116,7 +124,7 @@ class P115LiteAssistant(_PluginBase):
         return []
 
     def get_render_mode(self) -> Tuple[str, Optional[str]]:
-        return "vue", "dist/assets-v120"
+        return "vue", "dist/assets-v121"
 
     def get_form(self) -> Tuple[Optional[List[dict]], Dict[str, Any]]:
         config = self._store.get_config()

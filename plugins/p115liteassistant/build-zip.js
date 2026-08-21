@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // 联邦资源放在带版本号的目录里，浏览器不会再复用上一版的 remoteEntry.js，
 // 所以不需要为旧文件名写别名桩文件。换目录名即完成缓存失效。
-const assetsDir = path.join(__dirname, 'dist', 'assets-v120')
+const assetsDir = path.join(__dirname, 'dist', 'assets-v121')
 
 const requiredAssets = [
   /^remoteEntry\.js$/,
@@ -39,6 +39,7 @@ const backendFiles = [
   'file_types.py',
   'log_utils.py',
   'life_monitor.py',
+  'notify.py',
   'rate_limiter.py',
   'records.py',
   'resilience.py',

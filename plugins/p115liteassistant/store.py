@@ -8,6 +8,7 @@ from threading import RLock
 from typing import Any, Dict, List
 
 from .crypto import decrypt, decrypt_tokens, encrypt, encrypt_tokens
+from .notify import DEFAULT_NOTIFY_TYPE
 from .records import IncrementalRecordStore, TaskHistory
 
 
@@ -20,8 +21,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "link_redirect_mode": "cookie",
     "strm_incremental": True,
     "strm_download_sidecars": False,
+    "strm_notify": False,
+    "strm_notify_type": DEFAULT_NOTIFY_TYPE,
     "strm_mappings": [],
     "upload_mappings": [],
+    "upload_notify": False,
+    "upload_notify_type": DEFAULT_NOTIFY_TYPE,
     "upload_include_sidecars": True,
     "upload_generate_strm": False,
     "upload_delete_source": False,
@@ -30,6 +35,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "checkin_enabled": False,
     "checkin_cron": "15 8 * * *",
     "checkin_time_range": "06:00-09:00",
+    "checkin_notify": False,
+    "checkin_notify_type": DEFAULT_NOTIFY_TYPE,
     "same_playback": False,
     "life_monitor_enabled": False,
 }

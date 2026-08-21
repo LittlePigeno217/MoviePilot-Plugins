@@ -1,5 +1,15 @@
 export const PLUGIN_ID = 'P115LiteAssistant'
 
+// 与后端 notify.py 的 NOTIFY_TYPE_NAMES 一一对应，顺序即界面顺序
+export const NOTIFY_TYPES = [
+  { title: '插件', value: 'Plugin' },
+  { title: '整理入库', value: 'Organize' },
+  { title: '站点', value: 'SiteMessage' },
+  { title: '媒体服务器', value: 'MediaServer' },
+  { title: '手动处理', value: 'Manual' },
+  { title: '其它', value: 'Other' },
+]
+
 export const DEFAULT_CONFIG = {
   enabled: false,
   cookie: '',
@@ -7,8 +17,12 @@ export const DEFAULT_CONFIG = {
   link_redirect_mode: 'cookie',
   strm_incremental: true,
   strm_download_sidecars: false,
+  strm_notify: false,
+  strm_notify_type: 'Plugin',
   strm_mappings: [],
   upload_mappings: [],
+  upload_notify: false,
+  upload_notify_type: 'Plugin',
   upload_include_sidecars: true,
   upload_generate_strm: false,
   upload_delete_source: false,
@@ -17,6 +31,8 @@ export const DEFAULT_CONFIG = {
   checkin_enabled: false,
   checkin_cron: '15 8 * * *',
   checkin_time_range: '06:00-09:00',
+  checkin_notify: false,
+  checkin_notify_type: 'Plugin',
   same_playback: false,
   life_monitor_enabled: false,
 }
