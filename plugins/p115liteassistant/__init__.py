@@ -143,6 +143,8 @@ class P115LiteAssistant(_PluginBase):
                 "path": "/redirect",
                 "endpoint": self._api.redirect,
                 "methods": ["GET", "POST", "HEAD"],
+                # STRM 里的地址要交给播放器直接打开，带不了 MoviePilot 的 JWT，
+                # 所以只能匿名。访问控制由逐文件 HMAC 签名 + 按来源 IP 限流承担。
                 "allow_anonymous": True,
                 "summary": "115 302 跳转",
             },

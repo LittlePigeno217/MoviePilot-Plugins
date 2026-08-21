@@ -22,6 +22,7 @@ from .checkin_schedule import random_epoch_for_date, pick_next_run_epoch
 from .client import U115AccessLimitError, U115ApiError, U115AuthError, U115Client
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
+from .rate_limiter import RateLimiter
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
 from .strm import (
@@ -47,6 +48,10 @@ class Api:
     _DOWNLOAD_URL_CACHE_SAFETY_SECONDS = 300
     _PLAYBACK_COPY_CLEANUP_GRACE_SECONDS = 60
     _PLAYBACK_COPY_CLEANUP_FALLBACK_SECONDS = 300
+    # /redirect 是匿名接口（播放器带不了 MoviePilot 的 JWT），签名之外再按来源 IP 限流，
+    # 免得签名泄漏后被人当免费下载中转。上限按单个播放器的正常请求量留足余量。
+    _REDIRECT_RATE_LIMIT = 60
+    _REDIRECT_RATE_WINDOW = 60.0
 
     def __init__(
         self,
@@ -67,6 +72,10 @@ class Api:
         self._redirect_cache: TtlCache[tuple[str, str, str], str] = TtlCache(60, maxsize=8096)
         self._redirect_flights_guard = threading.Lock()
         self._redirect_flights: Dict[str, tuple[Any, int]] = {}
+        self._redirect_rate_limiter = RateLimiter(
+            self._REDIRECT_RATE_LIMIT,
+            self._REDIRECT_RATE_WINDOW,
+        )
 
     def get_config(self) -> Dict[str, Any]:
         config = deepcopy(self._store.get_config())
@@ -632,6 +641,25 @@ class Api:
                     else:
                         self._redirect_flights[pickcode] = (flight_lock, current[1] - 1)
 
+    @staticmethod
+    def _client_ip(request: Request) -> str:
+        """取限流用的来源标识。
+
+        反代后面 request.client 是反代自己的地址，优先看 X-Forwarded-For 的第一跳。
+        取不到就退回固定串，让所有匿名请求共用一个桶——宁可粗糙也不要漏掉限流。
+        """
+        forwarded = str(request.headers.get("x-forwarded-for") or "")
+        if forwarded:
+            first = forwarded.split(",")[0].strip()
+            if first:
+                return first
+        real_ip = str(request.headers.get("x-real-ip") or "").strip()
+        if real_ip:
+            return real_ip
+        client = getattr(request, "client", None)
+        host = getattr(client, "host", "") if client else ""
+        return str(host or "unknown")
+
     def redirect(
         self,
         request: Request,
@@ -639,6 +667,15 @@ class Api:
         file_name: str = "",
         sign: str = "",
     ):
+        source = self._client_ip(request)
+        if not self._redirect_rate_limiter.check(source):
+            retry_after = self._redirect_rate_limiter.retry_after(source) or 1
+            logger.warning(f"【302跳转服务】{source} 请求过于频繁，已限流 {retry_after}s")
+            return JSONResponse(
+                {"success": False, "message": "请求过于频繁，请稍后再试"},
+                status_code=429,
+                headers={"Retry-After": str(retry_after)},
+            )
         try:
             pickcode = normalize_pickcode(pickcode)
         except ValueError as err:
