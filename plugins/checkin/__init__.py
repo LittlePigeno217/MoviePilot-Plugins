@@ -662,7 +662,7 @@ class Checkin(_PluginBase):
     plugin_name = "自用签到工具"
     plugin_desc = "用于自用站点签到的统一工具，支持自动登录、Cookie 签到、通知与历史记录。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.5.0"
+    plugin_version = "1.6.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "checkin_"
@@ -848,7 +848,8 @@ class Checkin(_PluginBase):
         return []
 
     def get_render_mode(self) -> Tuple[str, Optional[str]]:
-        return "vue", "dist/assets"
+        # 目录带版本号，升级后浏览器不会命中旧的 remoteEntry / style 缓存
+        return "vue", "dist/assets-v160"
 
     def get_form(self) -> Tuple[Optional[List[dict]], Dict[str, Any]]:
         return None, self._get_config()

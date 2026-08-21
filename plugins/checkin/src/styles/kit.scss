@@ -1,0 +1,148 @@
+// 自用签到工具 —— 共享视觉底座
+//
+// 硬规则：这个文件里不允许出现任何写死的颜色值。所有颜色都从 MoviePilot 运行时
+// 注入的 Vuetify 主题变量读取，浅色 / 深色 / 紫色主题切换时插件自动跟随。
+//   rgb(var(--v-theme-surface))                          面板
+//   rgb(var(--v-theme-background))                       凹槽
+//   rgb(var(--v-theme-on-surface))                        正文
+//   rgb(var(--v-theme-primary))                           强调色（已签到）
+//   rgb(var(--v-theme-success) / warning / error)          状态
+//   rgba(var(--v-border-color), var(--v-border-opacity))   细分隔线
+// Vuetify 以裸 `r,g,b` 三元组输出这些变量，所以 rgba(var(--x), .12) 可直接取透明度。
+//
+// 选择器全部收敛在 .ck 命名空间下，不会泄漏到宿主应用。
+
+.ck {
+  --ck-ink: rgb(var(--v-theme-on-surface));
+  --ck-ink-70: rgba(var(--v-theme-on-surface), 0.68);
+  --ck-ink-50: rgba(var(--v-theme-on-surface), 0.5);
+  --ck-ink-30: rgba(var(--v-theme-on-surface), 0.3);
+  --ck-ink-14: rgba(var(--v-theme-on-surface), 0.14);
+  --ck-paper: rgb(var(--v-theme-surface));
+  --ck-well: rgb(var(--v-theme-background));
+  --ck-faint: rgba(var(--v-theme-on-surface), 0.04);
+  --ck-line: rgba(var(--v-border-color), var(--v-border-opacity));
+  --ck-line-strong: rgba(var(--v-theme-on-surface), 0.18);
+  --ck-accent: rgb(var(--v-theme-primary));
+  --ck-accent-soft: rgba(var(--v-theme-primary), 0.1);
+  --ck-accent-line: rgba(var(--v-theme-primary), 0.42);
+  --ck-ok: rgb(var(--v-theme-success));
+  --ck-warn: rgb(var(--v-theme-warning));
+  --ck-warn-soft: rgba(var(--v-theme-warning), 0.12);
+  --ck-warn-line: rgba(var(--v-theme-warning), 0.4);
+  --ck-bad: rgb(var(--v-theme-error));
+  --ck-bad-soft: rgba(var(--v-theme-error), 0.1);
+  --ck-bad-line: rgba(var(--v-theme-error), 0.4);
+  --ck-radius: 10px;
+  --ck-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Noto Sans Mono CJK SC', monospace;
+
+  color: var(--ck-ink);
+  background: var(--ck-paper);
+  min-height: 100%;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
+}
+
+// ── 排版 ────────────────────────────────────────────────────────────
+// 数据全部走等宽，正文走系统 CJK 无衬线。台账的性格由等宽那一层承担。
+.ck-mono {
+  font-family: var(--ck-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.ck-eyebrow {
+  font-family: var(--ck-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ck-ink-50);
+}
+
+.ck-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.ck-hint {
+  font-size: 12px;
+  color: var(--ck-ink-50);
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+
+.ck-muted {
+  color: var(--ck-ink-50);
+}
+
+// ── 分区：横线为主的台账结构 ────────────────────────────────────────
+.ck-sheet {
+  border-top: 1px solid var(--ck-line);
+  padding: 16px 18px 18px;
+}
+
+.ck-sheet:first-of-type {
+  border-top: 0;
+}
+
+.ck-sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+// ── 状态标签 ────────────────────────────────────────────────────────
+.ck-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--ck-line-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--ck-ink-70);
+}
+
+.ck-chip--on {
+  color: var(--ck-accent);
+  border-color: var(--ck-accent-line);
+  background: var(--ck-accent-soft);
+}
+
+.ck-chip--warn {
+  color: var(--ck-warn);
+  border-color: var(--ck-warn-line);
+  background: var(--ck-warn-soft);
+}
+
+.ck-chip--bad {
+  color: var(--ck-bad);
+  border-color: var(--ck-bad-line);
+  background: var(--ck-bad-soft);
+}
+
+// ── 空态：邀请去做下一步，不是一句「暂无数据」────────────────────
+.ck-empty {
+  border: 1px dashed var(--ck-line-strong);
+  border-radius: var(--ck-radius);
+  padding: 22px 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ck-ink-50);
+}
+
+// Vuetify 自己的控件（v-btn / v-switch / v-text-field）不在这里改写：
+// vite.config.js 的 vuetify-filter 会删掉任何含 `.v-` 的规则，宿主的按钮和
+// 输入框样式就是「跟随 MoviePilot 主题」的应有结果。

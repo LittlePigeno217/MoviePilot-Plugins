@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { p as propsFactory, i as includes, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, I as findChildrenWithProvide, J as IconValue, K as useTheme, L as useIcon, M as flattenFragments, N as useResizeObserver, O as hasEvent, Q as IN_BROWSER, R as useLocale, T as EventProp, U as filterInputAttrs, V as matchesSelector, W as pick, X as makeDisplayProps, Y as useDisplay, Z as useGoTo, _ as focusableChildren, $ as consoleError, a0 as defineComponent$1, a1 as deprecate, a2 as getPropertyFromItem, a3 as focusChild, a4 as CircularBuffer, a5 as defer, a6 as templateRef, a7 as isClickInsideElement, a8 as getNextElement, a9 as debounce, aa as camelizeProps, ab as ensureValidVNode, ac as checkPrintable, ad as noop, ae as pickWithRest, af as provideLocale, ag as useDate, ah as keys, ai as getEventCoordinates, aj as HSVtoRGB, ak as RGBtoHSV, al as HSVtoHSL, am as HSLtoHSV, an as HSVtoHex, ao as HexToHSV, ap as has, aq as getDecimals, ar as createRange, as as keyValues, at as SUPPORTS_EYE_DROPPER, au as HSVtoCSS, av as RGBtoCSS, aw as getContrast, ax as escapeForRegex, ay as isComposingIgnoreKey, az as deepToRaw, aA as getObjectValueByPath, aB as isEmpty, aC as defineFunctionalComponent, aD as breakpoints, aE as createDateRange, aF as daysDiff, aG as humanReadableFileSize, aH as splitKeySequence, aI as splitKeyCombination, aJ as mergeDeep, aK as useLayout, aL as extractNumber, aM as VuetifyLayoutKey, aN as refElement, aO as SUPPORTS_MATCH_MEDIA, aP as renderSlot, aQ as VClassIcon, aR as VComponentIcon, aS as VLigatureIcon, aT as VSvgIcon } from './hotkey-parsing-6cb35ed2.js';
-import Page from './__federation_expose_Page-925183de.js';
-import Config from './__federation_expose_Config-a76a3381.js';
+import { p as propsFactory, i as includes, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, I as findChildrenWithProvide, J as IconValue, K as useTheme$1, L as useIcon, M as flattenFragments, N as useResizeObserver, O as hasEvent, Q as IN_BROWSER, R as useLocale, T as EventProp, U as filterInputAttrs, V as matchesSelector, W as pick, X as makeDisplayProps, Y as useDisplay, Z as useGoTo, _ as focusableChildren, $ as consoleError, a0 as defineComponent, a1 as deprecate, a2 as getPropertyFromItem, a3 as focusChild, a4 as CircularBuffer, a5 as defer, a6 as templateRef, a7 as isClickInsideElement, a8 as getNextElement, a9 as debounce, aa as camelizeProps, ab as ensureValidVNode, ac as checkPrintable, ad as noop, ae as pickWithRest, af as provideLocale, ag as useDate, ah as keys, ai as getEventCoordinates, aj as HSVtoRGB, ak as RGBtoHSV, al as HSVtoHSL, am as HSLtoHSV, an as HSVtoHex, ao as HexToHSV, ap as has, aq as getDecimals, ar as createRange, as as keyValues, at as SUPPORTS_EYE_DROPPER, au as HSVtoCSS, av as RGBtoCSS, aw as getContrast, ax as escapeForRegex, ay as isComposingIgnoreKey, az as deepToRaw, aA as getObjectValueByPath, aB as isEmpty, aC as defineFunctionalComponent, aD as breakpoints, aE as createDateRange, aF as daysDiff, aG as humanReadableFileSize, aH as splitKeySequence, aI as splitKeyCombination, aJ as mergeDeep, aK as useLayout, aL as extractNumber, aM as VuetifyLayoutKey, aN as refElement, aO as SUPPORTS_MATCH_MEDIA, aP as renderSlot, aQ as VClassIcon, aR as VComponentIcon, aS as VLigatureIcon, aT as VSvgIcon } from './hotkey-parsing-6cb35ed2.js';
+import Config from './__federation_expose_Config-6c714ca3.js';
+import Page from './__federation_expose_Page-308ca173.js';
 
 true&&(function polyfill() {
     const relList = document.createElement('link').relList;
@@ -2684,7 +2684,7 @@ const VIcon = genericComponent()({
     const slotIcon = shallowRef$P();
     const {
       themeClasses
-    } = useTheme();
+    } = useTheme$1();
     const {
       iconData
     } = useIcon(() => slotIcon.value || props.icon);
@@ -7069,7 +7069,7 @@ const useNestedGroupActivator = () => {
 
 const {createVNode:_createVNode$1Q,vShow:_vShow$8,createElementVNode:_createElementVNode$1w,withDirectives:_withDirectives$j,normalizeClass:_normalizeClass$1i,normalizeStyle:_normalizeStyle$16} = await importShared('vue');
 const {computed: computed$1B,inject: inject$i,toRef: toRef$P} = await importShared('vue');
-const VListGroupActivator = defineComponent$1({
+const VListGroupActivator = defineComponent({
   name: 'VListGroupActivator',
   setup(_, _ref) {
     let {
@@ -12555,7 +12555,7 @@ const VBadge = genericComponent()({
     } = useTextColor(() => props.textColor);
     const {
       themeClasses
-    } = useTheme();
+    } = useTheme$1();
     const {
       locationStyles
     } = useLocation(props, true, side => {
@@ -12804,7 +12804,7 @@ const VBottomNavigation = genericComponent()({
     } = _ref;
     const {
       themeClasses
-    } = useTheme();
+    } = useTheme$1();
     const {
       borderClasses
     } = useBorder(props);
@@ -14261,7 +14261,7 @@ const Resize = {
 
 const {createElementVNode:_createElementVNode$1c,mergeProps:_mergeProps$Q,createVNode:_createVNode$1q,normalizeStyle:_normalizeStyle$P,normalizeClass:_normalizeClass$Z,withDirectives:_withDirectives$d} = await importShared('vue');
 const {nextTick: nextTick$i,onMounted: onMounted$a,ref: ref$H} = await importShared('vue');
-const VCalendarDaily = defineComponent$1({
+const VCalendarDaily = defineComponent({
   name: 'VCalendarDaily',
   directives: {
     vResize: Resize
@@ -14489,7 +14489,7 @@ function getParsedCategories(categories, categoryText) {
 
 const {createElementVNode:_createElementVNode$1b,mergeProps:_mergeProps$P,normalizeStyle:_normalizeStyle$O,createVNode:_createVNode$1p} = await importShared('vue');
 const {computed: computed$1f} = await importShared('vue');
-const VCalendarCategory = defineComponent$1({
+const VCalendarCategory = defineComponent({
   name: 'VCalendarCategory',
   props: {
     categories: {
@@ -14606,7 +14606,7 @@ const VCalendarCategory = defineComponent$1({
 
 const {createElementVNode:_createElementVNode$1a,mergeProps:_mergeProps$O,createVNode:_createVNode$1o,normalizeClass:_normalizeClass$Y} = await importShared('vue');
 const {computed: computed$1e} = await importShared('vue');
-const VCalendarWeekly = defineComponent$1({
+const VCalendarWeekly = defineComponent({
   name: 'VCalendarWeekly',
   props: {
     minWeeks: {
@@ -14637,7 +14637,7 @@ const VCalendarWeekly = defineComponent$1({
       attrs
     } = _ref;
     const base = useCalendarBase(props);
-    const theme = useTheme();
+    const theme = useTheme$1();
     const parsedMinWeeks = computed$1e(() => {
       return parseInt(String(props.minWeeks));
     });
@@ -16952,7 +16952,7 @@ const makeVColorPickerCanvasProps = propsFactory({
   },
   ...makeComponentProps()
 }, 'VColorPickerCanvas');
-const VColorPickerCanvas = defineComponent$1({
+const VColorPickerCanvas = defineComponent({
   name: 'VColorPickerCanvas',
   props: makeVColorPickerCanvasProps(),
   emits: {
@@ -17336,7 +17336,7 @@ const makeVColorPickerEditProps = propsFactory({
   },
   ...makeComponentProps()
 }, 'VColorPickerEdit');
-const VColorPickerEdit = defineComponent$1({
+const VColorPickerEdit = defineComponent({
   name: 'VColorPickerEdit',
   props: makeVColorPickerEditProps(),
   emits: {
@@ -18188,7 +18188,7 @@ const makeVColorPickerPreviewProps = propsFactory({
   },
   ...makeComponentProps()
 }, 'VColorPickerPreview');
-const VColorPickerPreview = defineComponent$1({
+const VColorPickerPreview = defineComponent({
   name: 'VColorPickerPreview',
   props: makeVColorPickerPreviewProps(),
   emits: {
@@ -18622,7 +18622,7 @@ function parseDefaultColors(colors) {
     return color.base ? [color.base, color.darken4, color.darken3, color.darken2, color.darken1, color.lighten1, color.lighten2, color.lighten3, color.lighten4, color.lighten5] : [color.black, color.white, color.transparent];
   });
 }
-const VColorPickerSwatches = defineComponent$1({
+const VColorPickerSwatches = defineComponent({
   name: 'VColorPickerSwatches',
   props: makeVColorPickerSwatchesProps(),
   emits: {
@@ -18777,7 +18777,7 @@ const makeVColorPickerProps = propsFactory({
   }),
   ...pick(makeVColorPickerPreviewProps(), ['hideEyeDropper', 'eyeDropperIcon'])
 }, 'VColorPicker');
-const VColorPicker = defineComponent$1({
+const VColorPicker = defineComponent({
   name: 'VColorPicker',
   props: makeVColorPickerProps(),
   emits: {
@@ -25949,7 +25949,7 @@ const makeVInfiniteScrollProps = propsFactory({
   ...makeDimensionProps(),
   ...makeTagProps()
 }, 'VInfiniteScroll');
-const VInfiniteScrollIntersect = defineComponent$1({
+const VInfiniteScrollIntersect = defineComponent({
   name: 'VInfiniteScrollIntersect',
   props: {
     side: {
@@ -27037,7 +27037,7 @@ const VNavigationDrawer = genericComponent()({
 });
 
 // Composables
-const VNoSsr = defineComponent$1({
+const VNoSsr = defineComponent({
   name: 'VNoSsr',
   setup(_, _ref) {
     let {
@@ -33008,139 +33008,173 @@ const directives = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty
     Touch
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const dev = '';
+/**
+ * 独立联调用的宿主替身。MoviePilot 真正的宿主会注入自己的 Vuetify 主题，
+ * 这里按 MoviePilot v2 的主题值复刻一份浅色 / 深色，用来验证插件是否真的跟随主题。
+ * 同时提供一个假的 api，让台账页在没有后端的情况下也能渲染出数据。
+ */
+const {createApp,h,ref} = await importShared('vue');
 
-// 独立开发预览入口（仅 vite dev 使用；生产由 MoviePilot 通过 remoteEntry.js 加载 Page/Config）。
-// 提供明/暗主题切换、Page/Config 切换，以及贴合后端真实形状的 mock 数据，便于可视化迭代。
-const {createApp,defineComponent,h,ref} = await importShared('vue');
+const {createVuetify,useTheme} = await importShared('vuetify');
 
-const {createVuetify} = await importShared('vuetify');
+const vuetify = createVuetify({
+  components,
+  directives,
+  theme: {
+    defaultTheme: 'mpLight',
+    themes: {
+      mpLight: {
+        dark: false,
+        colors: {
+          primary: '#8D51F9',
+          background: '#F4F5FA',
+          surface: '#FFFFFF',
+          'on-surface': '#3A3541',
+          'on-primary': '#FFFFFF',
+          success: '#56CA00',
+          error: '#FF4C51',
+          warning: '#FFB400',
+        },
+        variables: { 'border-color': '#3A3541', 'border-opacity': 0.12, 'medium-emphasis-opacity': 0.68 },
+      },
+      mpDark: {
+        dark: true,
+        colors: {
+          primary: '#6E66ED',
+          background: '#0E1116',
+          surface: '#14161F',
+          'on-surface': '#E7E3FC',
+          'on-primary': '#FFFFFF',
+          success: '#56CA00',
+          error: '#FF4C51',
+          warning: '#FFB400',
+        },
+        variables: { 'border-color': '#E7E3FC', 'border-opacity': 0.12, 'medium-emphasis-opacity': 0.68 },
+      },
+    },
+  },
+});
 
-const vuetify = createVuetify({ components, directives, theme: { defaultTheme: 'light' } });
-
-// —— mock 数据（形状对齐后端 _get_status / 历史结构）——
-const pad = (n) => String(n).padStart(2, '0');
-const dayStr = (offset) => {
+// ── 假数据：形状与 __init__.py 的 /status、/config 返回一致 ──────────
+const pad = n => String(n).padStart(2, '0');
+const stamp = (back, hour = 8, minute = 10) => {
   const d = new Date();
-  d.setDate(d.getDate() - offset);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const at = (offset, time = '08:10:12') => `${dayStr(offset)} ${time}`;
-
-function detail(site, site_name, status, message, extra = {}) {
-  return { site, site_name, status, message, account: extra.account || '-', reward_mb: extra.reward_mb || '-', total_traffic: extra.total_traffic || '-', time: extra.time || '-' };
-}
-
-function entry(offset, status, message, details) {
-  const success_count = details.filter((d) => ['签到成功', '今日已签到'].includes(d.status)).length;
-  return { version: 2, time: at(offset), status, message, success_count, failure_count: details.length - success_count, site_count: details.length, details };
-}
-
-const MOCK_HISTORY = [
-  entry(0, '全部成功', '3 个站点全部签到成功', [
-    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.28TB' }),
-    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
-    detail('ypojie', '易破解', '签到成功', '签到成功，连续 30 天', { account: 'pojie***' }),
-  ]),
-  entry(1, '部分成功', '2 成功 / 1 失败', [
-    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.23TB' }),
-    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
-    detail('ypojie', '易破解', '执行失败', '登录超时，请检查账号', { account: 'pojie***' }),
-  ]),
-  entry(2, '全部成功', '3 个站点全部签到成功', [
-    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.18TB' }),
-    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
-    detail('ypojie', '易破解', '签到成功', '签到成功，连续 28 天', { account: 'pojie***' }),
-  ]),
-  entry(3, '全部成功', '3 个站点全部签到成功', [
-    detail('flzt', 'FLZT', '签到成功', '签到成功，获得 50MB', { account: 'movie***@qq.com', reward_mb: '50MB', total_traffic: '1.13TB' }),
-    detail('right_forum', '恩山无线论坛', '今日已签到', '今日已完成签到', { account: 'enshan_lee' }),
-    detail('ypojie', '易破解', '签到成功', '签到成功，连续 27 天', { account: 'pojie***' }),
-  ]),
-  entry(4, '执行失败', '网络异常，全部失败', [
-    detail('flzt', 'FLZT', '执行失败', '连接超时', { account: 'movie***@qq.com' }),
-    detail('right_forum', '恩山无线论坛', '执行失败', 'Cookie 已失效', { account: 'enshan_lee' }),
-    detail('ypojie', '易破解', '执行失败', '连接超时', { account: 'pojie***' }),
-  ]),
-];
-
-const MOCK_STATUS = {
-  enabled: true,
-  notify: true,
-  cron: '10 8 * * *',
-  configured: true,
-  enabled_site_count: 3,
-  configured_site_count: 3,
-  last_status: '全部成功',
-  last_run: at(0),
-  next_run_time: '13小时22分钟后',
-  history_count: MOCK_HISTORY.length,
-  task_status: '等待执行',
-  sites: [
-    { key: 'flzt', name: 'FLZT', mode: '账号密码', enabled: true, configured: true, use_proxy: false, account: 'movie***@qq.com', last_status: '签到成功', last_message: '签到成功，获得 50MB', last_run: at(0) },
-    { key: 'right_forum', name: '恩山无线论坛', mode: 'Cookie', enabled: true, configured: true, use_proxy: false, account: 'enshan_lee', last_status: '今日已签到', last_message: '今日已完成签到', last_run: at(0) },
-    { key: 'ypojie', name: '易破解', mode: '账号密码', enabled: true, configured: true, use_proxy: true, account: 'pojie***', last_status: '签到成功', last_message: '签到成功，连续 30 天', last_run: at(0) },
-  ],
-  history: MOCK_HISTORY,
+  d.setDate(d.getDate() - back);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(hour)}:${pad(minute)}:02`
 };
 
-const MOCK_CONFIG = {
+const FAKE_CONFIG = {
   enabled: true,
   notify: true,
   cron: '10 8 * * *',
   timeout: 10,
   retry_count: 3,
   sites: {
-    flzt: { enabled: true, use_proxy: false, email: 'movie@qq.com', password: 'secret123' },
-    right_forum: { enabled: true, use_proxy: false, cookie: 'saltkey=abc123def; auth=longcookievalue0000' },
-    ypojie: { enabled: false, use_proxy: true, email: '', password: '' },
+    flzt: { enabled: true, use_proxy: false, email: 'me@example.com', password: 'secret' },
+    right_forum: { enabled: true, use_proxy: true, cookie: 'auth=abcdefghijklmnop; saltkey=qrstuvwx' },
+    ypojie: { enabled: true, use_proxy: false, email: '', password: '' },
   },
 };
 
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
-const mockApi = {
+const FAKE_HISTORY = [
+  { version: 2, time: stamp(0), status: '部分成功', message: '2 个站点成功，1 个失败', success_count: 2, failure_count: 1, site_count: 3, details: [
+    { site: 'flzt', site_name: 'FLZT', status: '签到成功', message: '签到成功，获得 128MB 上传量', account: 'me@example.com', reward_mb: '128', total_traffic: '32.5GB', time: stamp(0) },
+    { site: 'right_forum', site_name: '恩山无线论坛', status: '今日已签到', message: '今日已签到，明天再来', account: 'Cookie', reward_mb: '-', total_traffic: '-', time: stamp(0) },
+    { site: 'ypojie', site_name: '易破解', status: '执行失败', message: '账号或密码未填写', account: '-', reward_mb: '-', total_traffic: '-', time: stamp(0) },
+  ] },
+  { version: 2, time: stamp(1), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [
+    { site: 'flzt', site_name: 'FLZT', status: '签到成功', message: '签到成功，获得 96MB 上传量', account: 'me@example.com', reward_mb: '96', total_traffic: '32.4GB', time: stamp(1) },
+  ] },
+  { version: 2, time: stamp(2), status: '执行失败', message: '网络连接超时', success_count: 0, failure_count: 3, site_count: 3, details: [] },
+  { version: 2, time: stamp(3), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [] },
+  { version: 2, time: stamp(4), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [] },
+  { version: 2, time: stamp(6), status: '部分成功', message: '2 个站点成功，1 个失败', success_count: 2, failure_count: 1, site_count: 3, details: [] },
+  { version: 2, time: stamp(7), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [] },
+];
+
+const FAKE_STATUS = {
+  enabled: true,
+  notify: true,
+  cron: '10 8 * * *',
+  configured: true,
+  enabled_site_count: 3,
+  configured_site_count: 2,
+  last_status: '部分成功',
+  last_run: stamp(0),
+  last_result: FAKE_HISTORY[0],
+  next_run_time: stamp(-1),
+  task_status: '已注册',
+  history: FAKE_HISTORY,
+  history_count: FAKE_HISTORY.length,
+  sites: [
+    { key: 'flzt', name: 'FLZT', mode: '账号密码', enabled: true, use_proxy: false, configured: true, account: 'me@example.com', last_status: '签到成功', last_message: '签到成功，获得 128MB 上传量', last_run: stamp(0) },
+    { key: 'right_forum', name: '恩山无线论坛', mode: 'Cookie', enabled: true, use_proxy: true, configured: true, account: 'Cookie', last_status: '今日已签到', last_message: '今日已签到，明天再来', last_run: stamp(0) },
+    { key: 'ypojie', name: '易破解', mode: '账号密码', enabled: true, use_proxy: false, configured: false, account: '', last_status: '执行失败', last_message: '账号或密码未填写', last_run: stamp(0) },
+  ],
+};
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+const fakeApi = {
   async get(path) {
-    await delay(280);
-    if (path.endsWith('/status')) return { data: MOCK_STATUS };
-    if (path.endsWith('/config')) return { data: MOCK_CONFIG };
-    return { data: {} };
+    await wait(220);
+    if (path.endsWith('/config')) return { data: FAKE_CONFIG }
+    if (path.endsWith('/status')) return { data: FAKE_STATUS }
+    if (path.endsWith('/history')) return { data: FAKE_HISTORY }
+    return { data: {} }
   },
   async post(path) {
-    await delay(650);
-    if (path.endsWith('/run')) return { success: true, message: '签到完成：3 个站点全部成功', data: {} };
-    if (path.endsWith('/test-login')) return { success: true, message: '3 个站点登录测试通过', data: {} };
-    if (path.endsWith('/history/clear')) { MOCK_STATUS.history = []; MOCK_STATUS.history_count = 0; return { success: true, message: '历史记录已清空' }; }
-    if (path.endsWith('/config')) return { success: true, message: '配置已保存' };
-    return { success: true, message: 'ok' };
+    await wait(600);
+    if (path.endsWith('/run')) return { success: true, message: '2 个站点成功，1 个失败' }
+    if (path.endsWith('/test-login')) return { success: true, message: '3 个站点可连通' }
+    if (path.endsWith('/history/clear')) return { success: true, message: '历史已清空' }
+    return { success: true, message: '' }
   },
 };
 
-// —— 开发外壳：主题 & 视图切换，容器模拟对话框（surface，max-width 80rem）——
-const DevShell = defineComponent({
+const Harness = {
   setup() {
+    const theme = useTheme();
     const view = ref('page');
-    const dark = ref(false);
     const saving = ref(false);
     const lastSavedAt = ref(0);
-    const onSave = async () => { saving.value = true; await mockApi.post('/config'); saving.value = false; lastSavedAt.value = Date.now(); };
-    return () =>
-      h('div', { class: `dev-root ${dark.value ? 'v-theme--dark' : 'v-theme--light'}` }, [
-        h('div', { class: 'dev-bar' }, [
-          h('span', { class: 'dev-brand' }, '朱砂签到 · 预览'),
-          h('div', { class: 'dev-actions' }, [
-            h('button', { class: 'dev-toggle', onClick: () => (view.value = view.value === 'page' ? 'config' : 'page') }, view.value === 'page' ? '→ 配置页' : '→ 数据页'),
-            h('button', { class: 'dev-toggle', onClick: () => (dark.value = !dark.value) }, dark.value ? '☾ 暗' : '☀ 明'),
-          ]),
-        ]),
-        h('div', { class: 'dev-stage' }, [
-          h('div', { class: 'dev-dialog' }, [
-            view.value === 'page'
-              ? h(Page, { api: mockApi, show_switch: true, onSwitch: () => (view.value = 'config'), onClose: () => {} })
-              : h(Config, { api: mockApi, initialConfig: MOCK_CONFIG, saving: saving.value, lastSavedAt: lastSavedAt.value, onSave, onSwitch: () => (view.value = 'page'), onClose: () => {} }),
-          ]),
-        ]),
-      ]);
-  },
-});
 
-createApp(DevShell).use(vuetify).mount('#app');
+    const toggleTheme = () => {
+      const next = theme.global.name.value === 'mpLight' ? 'mpDark' : 'mpLight';
+      if (typeof theme.change === 'function') theme.change(next);
+      else theme.global.name.value = next;
+    };
+    const toggleView = () => {
+      view.value = view.value === 'config' ? 'page' : 'config';
+    };
+    const onSave = async () => {
+      saving.value = true;
+      await wait(700);
+      saving.value = false;
+      lastSavedAt.value = Date.now();
+    };
+
+    return () =>
+      h('div', { style: 'min-height:100vh;background:rgb(var(--v-theme-background));padding:24px' }, [
+        h('div', { style: 'display:flex;gap:8px;margin-bottom:16px' }, [
+          h(VBtn, { size: 'small', onClick: toggleTheme }, () => `主题：${theme.global.name.value}`),
+          h(VBtn, { size: 'small', onClick: toggleView }, () => `视图：${view.value}`),
+        ]),
+        h(VCard, { style: 'max-width:58rem;margin:auto;overflow:hidden' }, () => [
+          view.value === 'config'
+            ? h(Config, {
+                key: 'config',
+                api: fakeApi,
+                initialConfig: FAKE_CONFIG,
+                saving: saving.value,
+                lastSavedAt: lastSavedAt.value,
+                onSave,
+                onSwitch: toggleView,
+              })
+            : h(Page, { key: 'page', api: fakeApi, onSwitch: toggleView }),
+        ]),
+      ])
+  },
+};
+
+createApp(Harness).use(vuetify).mount('#app');
