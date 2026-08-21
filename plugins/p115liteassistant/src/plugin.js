@@ -25,11 +25,17 @@ export function clone(value) {
   return JSON.parse(JSON.stringify(value || {}))
 }
 
+export function newId() {
+  return globalThis.crypto?.randomUUID?.() || `m${Date.now()}${Math.random().toString(16).slice(2, 8)}`
+}
+
 export function normalizeConfig(value = {}) {
   const config = { ...clone(DEFAULT_CONFIG), ...clone(value) }
-  config.strm_mappings = Array.isArray(config.strm_mappings) ? config.strm_mappings : []
+  config.strm_mappings = Array.isArray(config.strm_mappings)
+    ? config.strm_mappings.map(mapping => ({ id: newId(), ...mapping }))
+    : []
   config.upload_mappings = Array.isArray(config.upload_mappings)
-    ? config.upload_mappings.map(mapping => ({ strm_target: '', ...mapping }))
+    ? config.upload_mappings.map(mapping => ({ id: newId(), strm_target: '', ...mapping }))
     : []
   return config
 }
@@ -42,15 +48,46 @@ function unwrap(response) {
 }
 
 export async function pluginGet(api, path, params) {
+  if (!api?.get) throw new Error('MoviePilot 接口不可用，请重新打开插件')
   const response = unwrap(await api.get(`plugin/${PLUGIN_ID}${path}`, { params }))
   return Object.prototype.hasOwnProperty.call(response, 'data') ? response.data : response
 }
 
 export async function pluginPost(api, path, payload = {}) {
+  if (!api?.post) throw new Error('MoviePilot 接口不可用，请重新打开插件')
   const response = unwrap(await api.post(`plugin/${PLUGIN_ID}${path}`, payload))
   return {
     success: response.success !== false,
     message: response.message || '',
     data: Object.prototype.hasOwnProperty.call(response, 'data') ? response.data : response,
+  }
+}
+
+/**
+ * MoviePilot 通过 provide('moviepilot:toast') 把宿主的消息条交给远程组件，
+ * 这样插件不会再挂载自己的一套通知容器。宿主缺席时（独立联调）退回本地条。
+ */
+export function useHostNotice(injected, local) {
+  const speak = (text, kind = 'info') => {
+    const message = String(text || '').trim()
+    if (!message) return
+    const host = injected?.value ?? injected
+    const method = host?.[kind] || host?.info
+    if (typeof method === 'function') {
+      method.call(host, message)
+      return
+    }
+    if (typeof host === 'function') {
+      host(message, kind)
+      return
+    }
+    local(message, kind)
+  }
+  return {
+    info: text => speak(text, 'info'),
+    success: text => speak(text, 'success'),
+    error: text => speak(text, 'error'),
+    warning: text => speak(text, 'warning'),
+    say: speak,
   }
 }

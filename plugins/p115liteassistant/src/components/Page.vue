@@ -1,219 +1,416 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { pluginGet, pluginPost } from '../plugin.js'
+import { computed, inject, onMounted, reactive, ref } from 'vue'
+import AppBar from './ui/AppBar.vue'
+import { pluginGet, pluginPost, useHostNotice } from '../plugin.js'
+import '../styles/kit.scss'
 
-const props = defineProps({ api: { type: [Object, Function], default: null }, show_switch: { type: Boolean, default: false } })
+const props = defineProps({
+  api: { type: [Object, Function], default: null },
+  show_switch: { type: Boolean, default: false },
+})
 const emit = defineEmits(['switch', 'close', 'action'])
-const status = ref({ running: [], recent_uploads: [] })
-const loading = ref(false)
-const message = ref('')
-const messageColor = ref('info')
-const recentUploads = computed(() => status.value.recent_uploads || [])
-const runLabel = computed(() => status.value.running?.length ? status.value.running.join(' / ') : 'IDLE')
-const cloudTaskRunning = computed(() => status.value.running?.some(kind => ['strm', 'upload'].includes(kind)))
 
-function tell(text, color = 'info') { message.value = text; messageColor.value = color }
+const status = ref({ running: [], recent_uploads: [], history: [] })
+const busy = ref(false)
+const local = reactive({ text: '', kind: 'info' })
+const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
+  local.text = text
+  local.kind = kind
+})
+
+const uploads = computed(() => status.value.recent_uploads || [])
+const history = computed(() => status.value.history || [])
+const running = computed(() => status.value.running || [])
+const workingNow = computed(() => running.value.some(kind => kind === 'strm' || kind === 'upload'))
+
+const kindNames = { strm: '生成 STRM', upload: '上传', checkin: '签到' }
+
+// 服务条：每一项都是“现在能不能干活”的答案，不是装饰性的计数
+const services = computed(() => [
+  {
+    key: 'auth',
+    label: '115 授权',
+    value: status.value.authenticated ? '已连接' : '未登录',
+    ok: Boolean(status.value.authenticated),
+    hint: status.value.authenticated ? '' : '去设置里扫码登录',
+  },
+  {
+    key: 'strm',
+    label: 'STRM 通道',
+    value: `${status.value.strm_mappings || 0} 条`,
+    ok: Boolean(status.value.strm_mappings),
+    hint: status.value.strm_mappings ? '' : '还没有配置通道',
+  },
+  {
+    key: 'upload',
+    label: '上传通道',
+    value: `${status.value.upload_mappings || 0} 条`,
+    ok: Boolean(status.value.upload_mappings),
+    hint: status.value.upload_mappings ? '' : '还没有配置通道',
+  },
+  {
+    key: 'life',
+    label: '生活事件',
+    value: status.value.life_monitor_running ? '监听中' : status.value.life_monitor_enabled ? '等待启动' : '未启用',
+    ok: Boolean(status.value.life_monitor_running),
+    hint: '',
+  },
+])
+
+const actions = [
+  { key: 'strm', label: '生成 STRM', icon: 'mdi-file-link-outline', path: '/strm/sync', payload: {} },
+  { key: 'full', label: '全量上传', icon: 'mdi-tray-arrow-up', path: '/upload', payload: { incremental: false } },
+  { key: 'inc', label: '增量上传', icon: 'mdi-tray-plus-outline', path: '/upload', payload: { incremental: true } },
+  { key: 'checkin', label: '立即签到', icon: 'mdi-calendar-check-outline', path: '/checkin', payload: {} },
+]
 
 async function refresh() {
   if (!props.api) return
-  loading.value = true
-  try { status.value = await pluginGet(props.api, '/status') } catch (error) { tell(error?.message || '状态获取失败', 'error') } finally { loading.value = false }
+  busy.value = true
+  try {
+    status.value = await pluginGet(props.api, '/status')
+  } catch (error) {
+    notice.error(error?.message || '状态获取失败')
+  } finally {
+    busy.value = false
+  }
 }
 
-async function run(path, payload = {}) {
+async function run(action) {
   try {
-    const result = await pluginPost(props.api, path, payload)
-    tell(result.message || '任务已开始', result.success ? 'success' : 'error')
+    const result = await pluginPost(props.api, action.path, action.payload)
+    if (result.success) notice.success(result.message || `${action.label}已开始`)
+    else notice.error(result.message || `${action.label}未能开始`)
     await refresh()
     emit('action')
-  } catch (error) { tell(error?.message || '执行失败', 'error') }
+  } catch (error) {
+    notice.error(error?.message || `${action.label}失败`)
+  }
+}
+
+function seconds(ms) {
+  const value = Number(ms)
+  if (!Number.isFinite(value) || value <= 0) return ''
+  return value < 1000 ? `${value}ms` : `${(value / 1000).toFixed(1)}s`
+}
+
+// 每种任务只汇报它自己有意义的那几个数，避免整排 0
+function tally(entry) {
+  const pick = keys => keys.filter(([, key]) => Number(entry[key]) > 0).map(([label, key]) => `${label} ${entry[key]}`)
+  if (entry.kind === 'strm') {
+    const parts = pick([['新增', 'added'], ['更新', 'updated'], ['清理', 'removed'], ['附加', 'sidecars'], ['跳过', 'skipped'], ['冲突', 'conflicts'], ['失败', 'errors']])
+    return parts.length ? parts : ['没有变化']
+  }
+  if (entry.kind === 'upload') {
+    const parts = pick([['上传', 'uploaded'], ['秒传', 'instant'], ['STRM', 'strm_generated'], ['跳过', 'skipped'], ['删除', 'deleted'], ['延后', 'deferred'], ['失败', 'errors']])
+    return parts.length ? parts : ['没有变化']
+  }
+  if (entry.kind === 'checkin') {
+    const parts = []
+    if (entry.already) parts.push('今天已签过')
+    if (Number(entry.continuous_day) > 0) parts.push(`连续 ${entry.continuous_day} 天`)
+    if (Number(entry.points_num) > 0) parts.push(`+${entry.points_num} 积分`)
+    return parts.length ? parts : [entry.message || '已签到']
+  }
+  return [entry.message || '已完成']
 }
 
 onMounted(refresh)
 </script>
 
 <template>
-  <div class="station-page">
-    <header class="page-head">
-      <div class="page-title"><span>115 DRIVE / TASK CONTROL</span><h2>运行台</h2></div>
-      <div class="route-line" aria-label="运行链路"><b :class="{ online: status.authenticated }">115</b><i /><b :class="{ online: status.enabled }">302</b><i /><b :class="{ online: status.strm_mappings }">STRM</b></div>
-      <div class="page-tools">
-        <v-tooltip text="刷新状态" location="bottom"><template #activator="{ props: tipProps }"><v-btn v-bind="tipProps" icon="mdi-refresh" variant="text" size="small" :loading="loading" @click="refresh" /></template></v-tooltip>
-        <v-tooltip v-if="show_switch" text="配置" location="bottom"><template #activator="{ props: tipProps }"><v-btn v-bind="tipProps" icon="mdi-tune-variant" variant="text" size="small" @click="emit('switch')" /></template></v-tooltip>
-        <v-tooltip text="关闭" location="bottom"><template #activator="{ props: tipProps }"><v-btn v-bind="tipProps" icon="mdi-close" variant="text" size="small" @click="emit('close')" /></template></v-tooltip>
+  <div class="p115 run">
+    <AppBar
+      view="运行台"
+      :online="Boolean(status.authenticated)"
+      :show-switch="show_switch"
+      :busy="busy"
+      show-refresh
+      @refresh="refresh"
+      @switch="emit('switch')"
+      @close="emit('close')"
+    />
+
+    <button v-if="local.text" type="button" class="run__local" :class="`run__local--${local.kind}`" @click="local.text = ''">
+      {{ local.text }}
+      <span class="run__local-dismiss">知道了</span>
+    </button>
+
+    <div class="run__body">
+      <div class="run__strip">
+        <div v-for="item in services" :key="item.key" class="svc" :class="{ 'svc--ok': item.ok }">
+          <span class="svc__label p115-endpoint-tag">{{ item.label }}</span>
+          <span class="svc__value">{{ item.value }}</span>
+          <span v-if="item.hint" class="svc__hint">{{ item.hint }}</span>
+        </div>
       </div>
-    </header>
 
-    <v-alert v-if="message" :type="messageColor" density="compact" variant="tonal" class="page-alert">{{ message }}</v-alert>
-
-    <section class="state-ruler" aria-label="当前状态">
-      <div><span>授权</span><strong :class="status.authenticated ? 'ok' : ''">{{ status.authenticated ? '已连接' : '未登录' }}</strong></div>
-      <div><span>STRM 映射</span><strong>{{ status.strm_mappings || 0 }}</strong></div>
-      <div><span>上传映射</span><strong>{{ status.upload_mappings || 0 }}</strong></div>
-      <div><span>生活事件</span><strong :class="status.life_monitor_running ? 'ok' : ''">{{ status.life_monitor_running ? '监控中' : (status.life_monitor_enabled ? '等待启动' : '未启用') }}</strong></div>
-      <div><span>执行队列</span><strong class="mono" :class="{ running: status.running?.length }">{{ runLabel }}</strong></div>
-    </section>
-
-    <section class="command-deck" aria-label="执行任务">
-      <button class="command command--strm" :disabled="cloudTaskRunning" @click="run('/strm/sync')"><v-icon icon="mdi-file-link-outline" size="23" /><span><b>生成 STRM</b><small>目录同步</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
-      <button class="command" :disabled="cloudTaskRunning" @click="run('/upload', { incremental: false })"><v-icon icon="mdi-upload-outline" size="23" /><span><b>全量上传</b><small>重新扫描</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
-      <button class="command" :disabled="cloudTaskRunning" @click="run('/upload', { incremental: true })"><v-icon icon="mdi-upload-network-outline" size="23" /><span><b>增量上传</b><small>仅变更项</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
-      <button class="command command--checkin" :disabled="cloudTaskRunning" @click="run('/checkin')"><v-icon icon="mdi-calendar-check-outline" size="23" /><span><b>立即签到</b><small>115 积分</small></span><v-icon icon="mdi-arrow-up-right" size="17" /></button>
-    </section>
-
-    <section class="ledger">
-      <div class="ledger-head"><div><span>RECENT MEDIA</span><h3>最近上传的媒体</h3></div><span>{{ recentUploads.length }} 部</span></div>
-      <div v-if="recentUploads.length" class="media-grid">
-        <article v-for="item in recentUploads" :key="`${item.path}-${item.uploaded_at}`" class="media-card">
-          <v-icon class="media-icon" icon="mdi-movie-open-outline" size="26" />
-          <div class="media-info">
-            <strong :title="item.name">{{ item.name }}</strong>
-            <span :title="item.target">{{ item.target }}</span>
-            <time>{{ item.uploaded_at }}</time>
+      <div class="p115-panel">
+        <div class="p115-panel__head">
+          <div>
+            <h3 class="p115-section-title">手动跑一次</h3>
+            <p class="p115-hint">
+              {{ workingNow ? `正在跑：${running.map(kind => kindNames[kind] || kind).join('、')}` : '当前空闲，按需触发。' }}
+            </p>
           </div>
-          <span class="media-method">{{ item.method === 'instant' ? '秒传' : '上传' }}</span>
-        </article>
+        </div>
+        <div class="p115-panel__body">
+          <div class="run__acts">
+            <v-btn
+              v-for="action in actions"
+              :key="action.key"
+              class="run__act"
+              variant="outlined"
+              size="small"
+              :prepend-icon="action.icon"
+              :disabled="workingNow"
+              @click="run(action)"
+            >
+              {{ action.label }}
+            </v-btn>
+          </div>
+        </div>
       </div>
-      <div v-else class="ledger-empty">暂无上传媒体</div>
-    </section>
+
+      <div class="p115-panel">
+        <div class="p115-panel__head">
+          <div>
+            <h3 class="p115-section-title">最近上传</h3>
+            <p class="p115-hint">最新 {{ uploads.length }} 部，标了「秒传」的没有实际耗流量。</p>
+          </div>
+        </div>
+        <div class="p115-panel__body">
+          <ul v-if="uploads.length" class="haul">
+            <li v-for="item in uploads" :key="`${item.path}-${item.uploaded_at}`" class="haul__row">
+              <span class="haul__name" :title="item.name">{{ item.name }}</span>
+              <span class="haul__dest p115-mono" :title="item.target">{{ item.target }}</span>
+              <span class="haul__meta">
+                <span class="p115-mono">{{ item.uploaded_at }}</span>
+                <span class="haul__way" :class="{ 'haul__way--instant': item.method === 'instant' }">
+                  {{ item.method === 'instant' ? '秒传' : '上传' }}
+                </span>
+              </span>
+            </li>
+          </ul>
+          <p v-else class="p115-empty">还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。</p>
+        </div>
+      </div>
+
+      <div class="p115-panel">
+        <div class="p115-panel__head">
+          <div>
+            <h3 class="p115-section-title">执行记录</h3>
+            <p class="p115-hint">保留最近 50 次，最新的在最上面。</p>
+          </div>
+        </div>
+        <div class="p115-panel__body">
+          <ul v-if="history.length" class="log">
+            <li v-for="(entry, index) in history" :key="`${entry.kind}-${entry.time}-${index}`" class="log__row">
+              <span class="log__kind">{{ kindNames[entry.kind] || entry.kind }}</span>
+              <span class="log__when p115-mono">{{ entry.time || '' }}</span>
+              <span class="log__tally">
+                <span v-for="text in tally(entry)" :key="text" class="log__chip">{{ text }}</span>
+              </span>
+              <span v-if="seconds(entry.duration_ms)" class="log__cost p115-mono">{{ seconds(entry.duration_ms) }}</span>
+            </li>
+          </ul>
+          <p v-else class="p115-empty">还没有执行记录。跑一次任务后这里会记下每次的结果。</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped lang="scss">
-.station-page { --ink: #16211d; --muted: #64716a; --line: #c7d0ca; --soft-line: #dbe2de; --paper: #eef2f0; --green: #14946f; --cyan: #0d7483; --orange: #c9691a; color: var(--ink); background: var(--paper); border: 1px solid var(--line); font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 1160px; padding: 25px 30px 30px; }
-:global(.v-theme--dark) .station-page { --ink: #e7eee9; --muted: #9eaaa3; --line: #3c4a43; --soft-line: #2c3832; --paper: #18211d; --green: #54c79c; --cyan: #4dc5d5; --orange: #f0a95b; }
-.page-head { display: grid; grid-template-columns: minmax(150px, 1fr) auto auto; align-items: center; gap: 24px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }.page-title > span, .ledger-head span { display: block; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 700; letter-spacing: .08em; }.page-title h2 { margin: 4px 0 0; font-size: 20px; font-weight: 760; }.route-line { display: flex; align-items: center; }.route-line b { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }.route-line b.online { color: var(--cyan); }.route-line b.online::before { content: "● "; color: var(--green); font-size: 8px; }.route-line i { width: 28px; height: 1px; margin: 0 7px; background: var(--line); }.page-tools { display: flex; gap: 4px; }.page-tools :deep(.v-btn) { color: var(--muted); }.page-alert { margin-top: 16px; }
-.state-ruler { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 23px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }.state-ruler div { display: flex; flex-direction: column; gap: 6px; min-height: 80px; padding: 16px 18px; border-right: 1px solid var(--line); }.state-ruler div:first-child { padding-left: 0; }.state-ruler div:last-child { border-right: 0; }.state-ruler span { color: var(--muted); font-size: 11px; font-weight: 650; }.state-ruler strong { font-size: 17px; font-weight: 760; overflow-wrap: anywhere; }.state-ruler strong.ok { color: var(--green); }.mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px !important; }.running { color: var(--orange); }
-.command-deck { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }.command { display: grid; grid-template-columns: 28px minmax(0, 1fr) 18px; align-items: center; gap: 11px; min-height: 94px; padding: 15px; color: var(--ink); background: transparent; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: pointer; text-align: left; transition: background .16s ease, color .16s ease; }.command:hover:not(:disabled) { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 8%, transparent); }.command:disabled { color: var(--muted); cursor: not-allowed; }.command > span { display: grid; gap: 3px; min-width: 0; }.command b { font-size: 13px; }.command small { color: var(--muted); font-size: 11px; }.command--strm:hover:not(:disabled) { color: var(--green); background: color-mix(in srgb, var(--green) 9%, transparent); }.command--checkin:hover:not(:disabled) { color: var(--orange); background: color-mix(in srgb, var(--orange) 10%, transparent); }.command:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
-.ledger { margin-top: 30px; }.ledger-head { display: flex; justify-content: space-between; align-items: end; padding-bottom: 13px; border-bottom: 1px solid var(--line); }.ledger-head h3 { margin: 4px 0 0; font-size: 16px; }.ledger-head > span { color: var(--cyan); }.ledger-row { display: grid; grid-template-columns: 180px 110px minmax(0, 1fr); gap: 14px; align-items: center; min-height: 48px; border-bottom: 1px solid var(--soft-line); font-size: 12px; }.ledger-label { min-height: 33px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 700; letter-spacing: .04em; }.kind { display: inline-flex; align-items: center; gap: 7px; color: var(--cyan); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }.kind i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }.result { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }.ledger-empty { padding: 36px 0; color: var(--muted); font-size: 13px; text-align: center; }
-@media (max-width: 840px) { .station-page { padding: 22px 20px; }.page-head { grid-template-columns: 1fr auto; }.route-line { grid-column: 1 / -1; grid-row: 2; }.state-ruler { grid-template-columns: repeat(2, minmax(0, 1fr)); }.state-ruler div { padding: 14px; }.state-ruler div:first-child { padding-left: 14px; }.state-ruler div:nth-child(2) { border-right: 0; }.state-ruler div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }.command-deck { grid-template-columns: repeat(2, minmax(0, 1fr)); }.ledger-row { grid-template-columns: 130px 90px minmax(0, 1fr); } }
-@media (max-width: 560px) { .station-page { border-left: 0; border-right: 0; padding: 20px 16px; }.route-line i { width: 14px; margin: 0 4px; }.command-deck { grid-template-columns: 1fr; }.ledger-row { grid-template-columns: 1fr auto; gap: 5px 12px; padding: 10px 0; }.ledger-row time { grid-column: 1; }.ledger-row .kind { grid-column: 2; grid-row: 1; }.result { grid-column: 1 / -1; white-space: normal; }.ledger-label { display: none; } }
-@media (prefers-reduced-motion: reduce) { .station-page * { transition: none !important; } }
-</style>
+.run {
+  display: flex;
+  flex-direction: column;
+}
 
-<style scoped lang="scss">
-.station-page {
-  --ink: #172a34;
-  --muted: #667b87;
-  --line: #d5e1e7;
-  --soft-line: #e8eff3;
-  --paper: #eef4f7;
-  --paper-strong: #ffffff;
-  --header: #17333b;
-  --green: #168c79;
-  --cyan: #147fb8;
-  --orange: #d88822;
+.run__local {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   width: 100%;
-  max-width: none;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 0 34px 32px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper-strong);
-  box-shadow: 0 14px 32px rgb(27 53 65 / 10%);
-  font-family: "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
-}
-
-:global(.v-theme--dark) .station-page {
-  --ink: #e8f1f2;
-  --muted: #a9b9bd;
-  --line: #3a4b50;
-  --soft-line: #2a383c;
-  --paper: #172126;
-  --paper-strong: #202d31;
-  --header: #102b31;
-  --green: #53c9ad;
-  --cyan: #50bde8;
-  --orange: #f0af5a;
-  box-shadow: none;
-}
-
-.page-head {
-  position: relative;
-  grid-template-columns: minmax(210px, 1fr) auto auto;
-  gap: 30px;
-  min-height: 96px;
-  margin: 0 -34px;
-  padding: 16px 34px;
-  color: #f5fbfc;
-  background: var(--header);
+  margin: 0;
+  padding: 8px 16px;
   border: 0;
+  border-bottom: 1px solid var(--p115-hairline);
+  background: var(--p115-faint);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
 }
-.page-head::after { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: var(--cyan); content: ""; }
-.page-title > span,
-.ledger-head span { color: #a9c5ce; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 700; letter-spacing: .1em; }
-.page-title h2 { margin-top: 3px; color: #fff; font-size: 23px; font-weight: 760; }
-.route-line b { color: #a9c5ce; font-size: 11px; }
-.route-line b.online { color: #fff; }
-.route-line b.online::before { color: #60d2bb; }
-.route-line i { width: 24px; margin: 0 8px; background: rgb(217 238 241 / 28%); }
-.page-tools :deep(.v-btn) { color: #d8e8eb; }
-.page-tools :deep(.v-btn:hover) { color: #fff; background: rgb(255 255 255 / 12%); }
-.page-alert { margin-top: 18px; border-left: 3px solid var(--cyan); border-radius: 4px; }
 
-.state-ruler { gap: 10px; margin: 26px 0; border: 0; }
-.state-ruler div { min-height: 86px; padding: 16px; background: color-mix(in srgb, var(--paper) 65%, var(--paper-strong)); border: 1px solid var(--line); border-radius: 6px; }
-.state-ruler div:first-child { padding-left: 16px; }
-.state-ruler div:last-child { border-right: 1px solid var(--line); }
-.state-ruler span { color: var(--muted); font-size: 11px; font-weight: 700; }
-.state-ruler strong { font-size: 19px; font-weight: 760; }
-.state-ruler strong.ok { color: var(--green); }
-.mono { font-size: 12px !important; }
-.running { color: var(--orange); }
+.run__local-dismiss {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--p115-muted);
+}
 
-.command-deck { gap: 10px; border: 0; }
-.command { min-height: 118px; padding: 18px 15px; color: var(--ink); background: var(--paper-strong); border: 1px solid var(--line); border-radius: 6px; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
-.command:hover:not(:disabled) { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 6%, var(--paper-strong)); border-color: var(--cyan); transform: translateY(-2px); }
-.command--strm:hover:not(:disabled) { color: var(--green); background: color-mix(in srgb, var(--green) 7%, var(--paper-strong)); border-color: var(--green); }
-.command--checkin:hover:not(:disabled) { color: var(--orange); background: color-mix(in srgb, var(--orange) 8%, var(--paper-strong)); border-color: var(--orange); }
-.command:disabled { color: var(--muted); background: var(--paper); }
-.command b { font-size: 13px; font-weight: 750; }
-.command small { color: var(--muted); }
-.command:focus-visible { outline-color: var(--cyan); }
+.run__local--error {
+  color: rgb(var(--v-theme-error));
+}
 
-.ledger { margin-top: 34px; }
-.ledger-head { padding-bottom: 15px; border-bottom-color: var(--line); }
-.ledger-head h3 { margin-top: 5px; font-size: 18px; }
-.ledger-head > span { color: var(--cyan); }
-.ledger-row { min-height: 52px; grid-template-columns: 190px 120px minmax(0, 1fr); padding: 0 12px; border-bottom-color: var(--soft-line); }
-.ledger-row:not(.ledger-label):hover { background: color-mix(in srgb, var(--cyan) 5%, transparent); }
-.ledger-label { min-height: 35px; padding: 0 12px; color: var(--muted); background: var(--paper); border-radius: 5px; }
-.kind { color: var(--cyan); }
-.kind i { background: var(--green); }
-.result { color: var(--muted); }
-.ledger-empty { padding: 44px 0; color: var(--muted); background: color-mix(in srgb, var(--paper) 58%, var(--paper-strong)); border: 1px dashed var(--line); border-radius: 6px; }
-.media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }.media-card { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 11px; min-height: 104px; padding: 15px; background: var(--paper-strong); border: 1px solid var(--line); border-radius: 6px; }.media-icon { color: var(--cyan); }.media-info { display: grid; min-width: 0; gap: 5px; }.media-info strong, .media-info span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.media-info strong { font-size: 13px; }.media-info span, .media-info time { color: var(--muted); font-size: 11px; }.media-method { padding: 3px 6px; color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); border-radius: 4px; font-size: 10px; font-weight: 700; }
+.run__local--success {
+  color: rgb(var(--v-theme-success));
+}
 
-@media (max-width: 900px) {
-  .station-page { border-radius: 0; }
-  .page-head { grid-template-columns: minmax(0, 1fr) auto; }
-  .route-line { grid-column: 1 / -1; grid-row: 2; }
-  .state-ruler { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .state-ruler div { border-right: 1px solid var(--line); }
-  .state-ruler div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-  .command-deck { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.run__body {
+  padding: 16px;
+}
+
+.run__strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 14px;
+}
+
+.svc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--p115-hairline);
+  border-radius: var(--p115-radius);
+  background: var(--p115-well);
+}
+
+.svc--ok {
+  border-color: var(--p115-accent);
+  background: var(--p115-accent-soft);
+}
+
+.svc__value {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.svc--ok .svc__value {
+  color: var(--p115-accent);
+}
+
+.svc__hint {
+  font-size: 11px;
+  color: var(--p115-muted);
+}
+
+.run__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.haul,
+.log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.haul__row,
+.log__row {
+  display: grid;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--p115-hairline);
+}
+
+.haul__row:first-child,
+.log__row:first-child {
+  border-top: 0;
+}
+
+.haul__row {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+}
+
+.haul__name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.haul__dest {
+  color: var(--p115-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.haul__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--p115-muted);
+  white-space: nowrap;
+}
+
+.haul__way {
+  padding: 1px 6px;
+  border: 1px solid var(--p115-hairline);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.haul__way--instant {
+  border-color: var(--p115-accent);
+  color: var(--p115-accent);
+}
+.log__row {
+  grid-template-columns: 5.5rem 10rem minmax(0, 1fr) auto;
+}
+
+.log__kind {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--p115-accent);
+}
+
+.log__when,
+.log__cost {
+  color: var(--p115-muted);
+  white-space: nowrap;
+}
+
+.log__tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.log__chip {
+  padding: 1px 7px;
+  border: 1px solid var(--p115-hairline);
+  border-radius: 999px;
+  background: var(--p115-faint);
+  white-space: nowrap;
 }
 
 @media (max-width: 620px) {
-  .station-page { padding: 0 16px 24px; border-right: 0; border-left: 0; }
-  .page-head { min-height: 116px; margin: 0 -16px; padding: 15px 16px 14px; }
-  .route-line i { width: 12px; margin: 0 5px; }
-  .state-ruler { gap: 8px; margin: 20px 0; }
-  .state-ruler div { min-height: 78px; padding: 13px; }
-  .command-deck { grid-template-columns: 1fr; }
-  .command { min-height: 84px; }
-  .media-grid { grid-template-columns: 1fr; }
-  .ledger { margin-top: 26px; }
-  .ledger-row { grid-template-columns: 1fr auto; padding: 10px 4px; }
-  .ledger-label { display: none; }
-  .ledger-row .kind { grid-column: 2; grid-row: 1; }
-  .result { grid-column: 1 / -1; white-space: normal; }
+  .haul__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .log__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .log__tally {
+    grid-column: 1 / -1;
+  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .station-page * { transition: none !important; }
-}
+
+
 </style>

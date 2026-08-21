@@ -167,3 +167,8 @@ cython_debug/
 # Vue 联邦插件本地编译
 node_modules/
 *.zip
+
+# 本地开发工具产物
+.agents/
+.claude/
+skills-lock.json

@@ -1,6 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { p as propsFactory, i as includes, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, I as findChildrenWithProvide, J as IconValue, K as useTheme, L as useIcon, M as flattenFragments, N as useResizeObserver, O as hasEvent, Q as IN_BROWSER, R as useLocale, T as EventProp, U as filterInputAttrs, V as matchesSelector, W as pick, X as makeDisplayProps, Y as useDisplay, Z as useGoTo, _ as focusableChildren, $ as consoleError, a0 as defineComponent, a1 as deprecate, a2 as getPropertyFromItem, a3 as focusChild, a4 as CircularBuffer, a5 as defer, a6 as templateRef, a7 as isClickInsideElement, a8 as getNextElement, a9 as debounce, aa as camelizeProps, ab as ensureValidVNode, ac as checkPrintable, ad as noop, ae as pickWithRest, af as provideLocale, ag as useDate, ah as keys, ai as getEventCoordinates, aj as HSVtoRGB, ak as RGBtoHSV, al as HSVtoHSL, am as HSLtoHSV, an as HSVtoHex, ao as HexToHSV, ap as has, aq as getDecimals, ar as createRange, as as keyValues, at as SUPPORTS_EYE_DROPPER, au as HSVtoCSS, av as RGBtoCSS, aw as getContrast, ax as escapeForRegex, ay as isComposingIgnoreKey, az as deepToRaw, aA as getObjectValueByPath, aB as isEmpty, aC as defineFunctionalComponent, aD as breakpoints, aE as createDateRange, aF as daysDiff, aG as humanReadableFileSize, aH as splitKeySequence, aI as splitKeyCombination, aJ as mergeDeep, aK as useLayout, aL as extractNumber, aM as VuetifyLayoutKey, aN as refElement, aO as SUPPORTS_MATCH_MEDIA, aP as renderSlot, aQ as VClassIcon, aR as VComponentIcon, aS as VLigatureIcon, aT as VSvgIcon } from './hotkey-parsing-99b8cf0a.js';
-import Config from './__federation_expose_Config-41da8d17.js';
+import { p as propsFactory, i as includes, I as IS_WEBKIT, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, J as findChildrenWithProvide, K as IconValue, L as useTheme$1, M as useIcon, N as flattenFragments, O as useResizeObserver, Q as hasEvent, R as IN_BROWSER, T as useLocale, U as EventProp, V as filterInputAttrs, W as matchesSelector, X as pick, Y as makeDisplayProps, Z as useDisplay, _ as useGoTo, $ as focusableChildren, a0 as consoleError, a1 as defineComponent, a2 as deprecate, a3 as getPropertyFromItem, a4 as focusChild, a5 as CircularBuffer, a6 as defer, a7 as templateRef, a8 as isClickInsideElement, a9 as getNextElement, aa as debounce, ab as camelizeProps, ac as ensureValidVNode, ad as checkPrintable, ae as noop, af as pickWithRest, ag as provideLocale, ah as useDate, ai as keys, aj as getEventCoordinates, ak as HSVtoRGB, al as RGBtoHSV, am as HSVtoHSL, an as HSLtoHSV, ao as HSVtoHex, ap as HexToHSV, aq as has, ar as getDecimals, as as createRange, at as keyValues, au as SUPPORTS_EYE_DROPPER, av as HSVtoCSS, aw as RGBtoCSS, ax as getContrast, ay as escapeForRegex, az as isComposingIgnoreKey, aA as deepToRaw, aB as getObjectValueByPath, aC as isEmpty, aD as defineFunctionalComponent, aE as breakpoints, aF as createDateRange, aG as daysDiff, aH as humanReadableFileSize, aI as splitKeySequence, aJ as splitKeyCombination, aK as mergeDeep, aL as useLayout, aM as extractNumber, aN as VuetifyLayoutKey, aO as refElement, aP as SUPPORTS_MATCH_MEDIA, aQ as renderSlot, aR as VClassIcon, aS as VComponentIcon, aT as VLigatureIcon, aU as VSvgIcon } from './hotkey-parsing-6834fe51.js';
+import Config from './__federation_expose_Config-68ae36e2.js';
+import Page from './__federation_expose_Page-46ad0aad.js';
 
 true&&(function polyfill() {
     const relList = document.createElement('link').relList;
@@ -178,12 +179,11 @@ function getElementBox(el) {
         height: document.documentElement.clientHeight
       });
     } else {
-      const pageScale = document.body.currentCSSZoom ?? 1;
       return new Box({
-        x: visualViewport.scale > 1 ? 0 : visualViewport.offsetLeft,
-        y: visualViewport.scale > 1 ? 0 : visualViewport.offsetTop,
-        width: visualViewport.width * visualViewport.scale / pageScale,
-        height: visualViewport.height * visualViewport.scale / pageScale
+        x: visualViewport.scale > 1 || IS_WEBKIT ? 0 : visualViewport.offsetLeft,
+        y: visualViewport.scale > 1 || IS_WEBKIT ? 0 : visualViewport.offsetTop,
+        width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight
       });
     }
   } else {
@@ -299,7 +299,7 @@ function unbindProps(el, props) {
   });
 }
 
-const {camelize,capitalize: capitalize$3,h: h$5} = await importShared('vue');
+const {camelize,capitalize: capitalize$3,h: h$6} = await importShared('vue');
 function createSimpleFunctional(klass) {
   let tag = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'div';
   let name = arguments.length > 2 ? arguments[2] : undefined;
@@ -317,7 +317,7 @@ function createSimpleFunctional(klass) {
         slots
       } = _ref;
       return () => {
-        return h$5(props.tag, {
+        return h$6(props.tag, {
           class: [klass, props.class],
           style: props.style
         }, slots.default?.());
@@ -612,7 +612,7 @@ const VToolbarTitle = genericComponent()({
 });
 
 // Utilities
-const {h: h$4,Transition: Transition$5,TransitionGroup: TransitionGroup$1} = await importShared('vue');
+const {h: h$5,Transition: Transition$5,TransitionGroup: TransitionGroup$1} = await importShared('vue');
 const makeTransitionProps$1 = propsFactory({
   disabled: Boolean,
   group: Boolean,
@@ -683,7 +683,7 @@ function createCssTransition(name, origin, mode) {
       };
       return () => {
         const tag = props.group ? TransitionGroup$1 : Transition$5;
-        return h$4(tag, {
+        return h$5(tag, {
           name: props.disabled ? '' : name,
           css: !props.disabled,
           ...(props.group ? undefined : {
@@ -717,7 +717,7 @@ function createJavascriptTransition(name, functions) {
       } = _ref2;
       const tag = props.group ? TransitionGroup$1 : Transition$5;
       return () => {
-        return h$4(tag, {
+        return h$5(tag, {
           name: props.disabled ? '' : name,
           css: !props.disabled,
           // mode: props.mode, // TODO: vuejs/vue-next#3104
@@ -1226,7 +1226,7 @@ function useRounded(props) {
 }
 
 // Utilities
-const {h: h$3,mergeProps: mergeProps$d,Transition: Transition$3,TransitionGroup} = await importShared('vue');
+const {h: h$4,mergeProps: mergeProps$d,Transition: Transition$3,TransitionGroup} = await importShared('vue');
 const makeTransitionProps = propsFactory({
   transition: {
     type: null,
@@ -1261,7 +1261,7 @@ const MaybeTransition = (props, _ref) => {
       name: disabled || !transition ? '' : transition
     }, rest);
   }
-  return h$3(component, transitionProps, slots);
+  return h$4(component, transitionProps, slots);
 };
 
 // Utilities
@@ -1316,7 +1316,7 @@ const Intersect = {
 };
 
 const {normalizeClass:_normalizeClass$1z,createElementVNode:_createElementVNode$1M,createVNode:_createVNode$2b,Fragment:_Fragment$L,mergeProps:_mergeProps$1g,withDirectives:_withDirectives$m} = await importShared('vue');
-const {computed: computed$1Z,nextTick: nextTick$w,onBeforeMount: onBeforeMount$4,onBeforeUnmount: onBeforeUnmount$a,ref: ref$11,shallowRef: shallowRef$U,toRef: toRef$1e,vShow,watch: watch$Q,withDirectives: withDirectives$2} = await importShared('vue');
+const {computed: computed$1Z,nextTick: nextTick$w,onBeforeMount: onBeforeMount$4,onBeforeUnmount: onBeforeUnmount$a,ref: ref$12,shallowRef: shallowRef$U,toRef: toRef$1e,vShow,watch: watch$Q,withDirectives: withDirectives$2} = await importShared('vue');
 // not intended for public use, this is passed in by vuetify-loader
 const makeVImgProps = propsFactory({
   absolute: Boolean,
@@ -1380,7 +1380,7 @@ const VImg = genericComponent()({
     } = useRounded(props);
     const vm = getCurrentInstance('VImg');
     const currentSrc = shallowRef$U(''); // Set from srcset
-    const image = ref$11();
+    const image = ref$12();
     const state = shallowRef$U(props.eager ? 'loading' : 'idle');
     const naturalWidth = shallowRef$U();
     const naturalHeight = shallowRef$U();
@@ -1883,7 +1883,7 @@ const VToolbar = genericComponent()({
 });
 
 // Utilities
-const {computed: computed$1V,onBeforeUnmount: onBeforeUnmount$9,onMounted: onMounted$h,ref: ref$10,shallowRef: shallowRef$S,watch: watch$P} = await importShared('vue');
+const {computed: computed$1V,onBeforeUnmount: onBeforeUnmount$9,onMounted: onMounted$h,ref: ref$11,shallowRef: shallowRef$S,watch: watch$P} = await importShared('vue');
 // Composables
 const makeScrollProps = propsFactory({
   scrollTarget: {
@@ -1902,7 +1902,7 @@ function useScroll(props) {
   } = args;
   let previousScroll = 0;
   let previousScrollHeight = 0;
-  const target = ref$10(null);
+  const target = ref$11(null);
   const currentScroll = shallowRef$S(0);
   const savedScroll = shallowRef$S(0);
   const currentThreshold = shallowRef$S(0);
@@ -2080,7 +2080,7 @@ function useSsrBoot() {
 }
 
 const {mergeProps:_mergeProps$1f,createVNode:_createVNode$29} = await importShared('vue');
-const {computed: computed$1U,ref: ref$$,shallowRef: shallowRef$Q,toRef: toRef$1b,watchEffect: watchEffect$k} = await importShared('vue');
+const {computed: computed$1U,ref: ref$10,shallowRef: shallowRef$Q,toRef: toRef$1b,watchEffect: watchEffect$k} = await importShared('vue');
 const makeVAppBarProps = propsFactory({
   scrollBehavior: String,
   modelValue: {
@@ -2110,7 +2110,7 @@ const VAppBar = genericComponent()({
     let {
       slots
     } = _ref;
-    const vToolbarRef = ref$$();
+    const vToolbarRef = ref$10();
     const isActive = useProxiedModel(props, 'modelValue');
     const scrollBehavior = computed$1U(() => {
       const behavior = new Set(props.scrollBehavior?.split(' ') ?? []);
@@ -2254,6 +2254,36 @@ function useDensity(props) {
   };
 }
 
+// Utilities
+const predefinedSizes = ['x-small', 'small', 'default', 'large', 'x-large'];
+// Composables
+const makeSizeProps = propsFactory({
+  size: {
+    type: [String, Number],
+    default: 'default'
+  }
+}, 'size');
+function useSize(props) {
+  let name = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : getCurrentInstanceName();
+  return destructComputed(() => {
+    const size = props.size;
+    let sizeClasses;
+    let sizeStyles;
+    if (includes(predefinedSizes, size)) {
+      sizeClasses = `${name}--size-${size}`;
+    } else if (size) {
+      sizeStyles = {
+        width: convertToUnit(size),
+        height: convertToUnit(size)
+      };
+    }
+    return {
+      sizeClasses,
+      sizeStyles
+    };
+  });
+}
+
 const {Fragment:_Fragment$K,normalizeClass:_normalizeClass$1x,createElementVNode:_createElementVNode$1K} = await importShared('vue');
 const {toRef: toRef$19,toValue: toValue$a} = await importShared('vue');
 const allowedVariants$3 = ['elevated', 'flat', 'tonal', 'outlined', 'text', 'plain'];
@@ -2315,6 +2345,9 @@ const makeVBtnGroupProps = propsFactory({
   ...makeDensityProps(),
   ...makeElevationProps(),
   ...makeRoundedProps(),
+  ...makeSizeProps({
+    size: undefined
+  }),
   ...makeTagProps(),
   ...makeThemeProps(),
   ...makeVariantProps()
@@ -2343,18 +2376,20 @@ const VBtnGroup = genericComponent()({
     } = useRounded(props);
     provideDefaults({
       VBtn: {
-        height: toRef$18(() => props.direction === 'horizontal' ? 'auto' : null),
+        height: toRef$18(() => props.direction === 'horizontal' && props.size == null ? 'auto' : null),
         baseColor: toRef$18(() => props.baseColor),
         color: toRef$18(() => props.color),
         density: toRef$18(() => props.density),
         flat: true,
+        size: toRef$18(() => props.size),
         variant: toRef$18(() => props.variant)
       }
     });
     useRender(() => {
       return _createVNode$28(props.tag, {
         "class": _normalizeClass$1w(['v-btn-group', `v-btn-group--${props.direction}`, {
-          'v-btn-group--divided': props.divided
+          'v-btn-group--divided': props.divided,
+          'v-btn-group--has-size': props.size != null
         }, themeClasses.value, borderClasses.value, densityClasses.value, elevationClasses.value, roundedClasses.value, props.class]),
         "style": _normalizeStyle$1j(props.style)
       }, slots);
@@ -2641,36 +2676,6 @@ const VBtnToggle = genericComponent()({
 
 const VIcon$1 = '';
 
-// Utilities
-const predefinedSizes = ['x-small', 'small', 'default', 'large', 'x-large'];
-// Composables
-const makeSizeProps = propsFactory({
-  size: {
-    type: [String, Number],
-    default: 'default'
-  }
-}, 'size');
-function useSize(props) {
-  let name = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : getCurrentInstanceName();
-  return destructComputed(() => {
-    const size = props.size;
-    let sizeClasses;
-    let sizeStyles;
-    if (includes(predefinedSizes, size)) {
-      sizeClasses = `${name}--size-${size}`;
-    } else if (size) {
-      sizeStyles = {
-        width: convertToUnit(size),
-        height: convertToUnit(size)
-      };
-    }
-    return {
-      sizeClasses,
-      sizeStyles
-    };
-  });
-}
-
 const {normalizeClass:_normalizeClass$1v,normalizeStyle:_normalizeStyle$1i,createVNode:_createVNode$26} = await importShared('vue');
 const {shallowRef: shallowRef$P,Text} = await importShared('vue');
 const makeVIconProps = propsFactory({
@@ -2698,7 +2703,7 @@ const VIcon = genericComponent()({
     const slotIcon = shallowRef$P();
     const {
       themeClasses
-    } = useTheme();
+    } = useTheme$1();
     const {
       iconData
     } = useIcon(() => slotIcon.value || props.icon);
@@ -2745,9 +2750,9 @@ const VIcon = genericComponent()({
 const VProgressCircular$1 = '';
 
 // Utilities
-const {onScopeDispose: onScopeDispose$e,ref: ref$_,shallowRef: shallowRef$O,watch: watch$N} = await importShared('vue');
+const {onScopeDispose: onScopeDispose$e,ref: ref$$,shallowRef: shallowRef$O,watch: watch$N} = await importShared('vue');
 function useIntersectionObserver(callback, options) {
-  const intersectionRef = ref$_();
+  const intersectionRef = ref$$();
   const isIntersecting = shallowRef$O(false);
   if (SUPPORTS_INTERSECTION) {
     const observer = new IntersectionObserver(entries => {
@@ -2803,7 +2808,7 @@ function useReveal(props) {
 }
 
 const {normalizeClass:_normalizeClass$1u,normalizeStyle:_normalizeStyle$1h,createElementVNode:_createElementVNode$1J,createVNode:_createVNode$25} = await importShared('vue');
-const {computed: computed$1S,ref: ref$Z,toRef: toRef$15,watchEffect: watchEffect$j} = await importShared('vue');
+const {computed: computed$1S,ref: ref$_,toRef: toRef$15,watchEffect: watchEffect$j} = await importShared('vue');
 const makeVProgressCircularProps = propsFactory({
   bgColor: String,
   color: String,
@@ -2838,7 +2843,7 @@ const VProgressCircular = genericComponent()({
     } = _ref;
     const MAGIC_RADIUS_CONSTANT = 20;
     const CIRCUMFERENCE = 2 * Math.PI * MAGIC_RADIUS_CONSTANT;
-    const root = ref$Z();
+    const root = ref$_();
     const {
       themeClasses
     } = provideTheme(props);
@@ -3004,7 +3009,7 @@ function useChunks(props, containerWidth) {
 }
 
 const {normalizeClass:_normalizeClass$1t,createElementVNode:_createElementVNode$1I,normalizeStyle:_normalizeStyle$1g,createVNode:_createVNode$24} = await importShared('vue');
-const {computed: computed$1Q,ref: ref$Y,shallowRef: shallowRef$M,Transition: Transition$2,watchEffect: watchEffect$i} = await importShared('vue');
+const {computed: computed$1Q,ref: ref$Z,shallowRef: shallowRef$M,Transition: Transition$2,watchEffect: watchEffect$i} = await importShared('vue');
 const makeVProgressLinearProps = propsFactory({
   absolute: Boolean,
   active: {
@@ -3058,7 +3063,7 @@ const VProgressLinear = genericComponent()({
     let {
       slots
     } = _ref;
-    const root = ref$Y();
+    const root = ref$Z();
     const progress = useProxiedModel(props, 'modelValue');
     const {
       isRtl,
@@ -4360,7 +4365,7 @@ const VSelectionControlGroup = genericComponent()({
 });
 
 const {mergeProps:_mergeProps$19,createElementVNode:_createElementVNode$1C,Fragment:_Fragment$J,createVNode:_createVNode$1Z,normalizeClass:_normalizeClass$1n,withDirectives:_withDirectives$l,normalizeStyle:_normalizeStyle$1b} = await importShared('vue');
-const {computed: computed$1M,inject: inject$n,nextTick: nextTick$t,ref: ref$X,shallowRef: shallowRef$L,toRef: toRef$Z,useId: useId$f} = await importShared('vue');
+const {computed: computed$1M,inject: inject$n,nextTick: nextTick$t,ref: ref$Y,shallowRef: shallowRef$L,toRef: toRef$Z,useId: useId$f} = await importShared('vue');
 const makeVSelectionControlProps = propsFactory({
   label: String,
   baseColor: String,
@@ -4454,7 +4459,7 @@ const VSelectionControl = genericComponent()({
     const uid = useId$f();
     const isFocused = shallowRef$L(false);
     const isFocusVisible = shallowRef$L(false);
-    const input = ref$X();
+    const input = ref$Y();
     const id = toRef$Z(() => props.id || `input-${uid}`);
     const isInteractive = toRef$Z(() => !props.disabled && !props.readonly);
     group?.onForceUpdate(() => {
@@ -4738,7 +4743,7 @@ function useFocus(props) {
   };
 }
 
-const {computed: computed$1K,inject: inject$m,markRaw,provide: provide$f,ref: ref$W,shallowRef: shallowRef$K,toRef: toRef$W,watch: watch$L} = await importShared('vue');
+const {computed: computed$1K,inject: inject$m,markRaw,provide: provide$f,ref: ref$X,shallowRef: shallowRef$K,toRef: toRef$W,watch: watch$L} = await importShared('vue');
 const FormKey = Symbol.for('vuetify:form');
 const makeFormProps = propsFactory({
   disabled: Boolean,
@@ -4758,8 +4763,8 @@ function createForm(props) {
   const isDisabled = toRef$W(() => props.disabled);
   const isReadonly = toRef$W(() => props.readonly);
   const isValidating = shallowRef$K(false);
-  const items = ref$W([]);
-  const errors = ref$W([]);
+  const items = ref$X([]);
+  const errors = ref$X([]);
   async function validate() {
     const results = [];
     let valid = true;
@@ -4883,7 +4888,7 @@ function useRules(fn) {
   return rules?.resolve(fn) ?? toRef$V(fn);
 }
 
-const {computed: computed$1I,nextTick: nextTick$s,onBeforeMount: onBeforeMount$3,onBeforeUnmount: onBeforeUnmount$7,onMounted: onMounted$d,ref: ref$V,shallowRef: shallowRef$J,unref: unref$1,useId: useId$e,watch: watch$K} = await importShared('vue');
+const {computed: computed$1I,nextTick: nextTick$s,onBeforeMount: onBeforeMount$3,onBeforeUnmount: onBeforeUnmount$7,onMounted: onMounted$d,ref: ref$W,shallowRef: shallowRef$J,unref: unref$1,useId: useId$e,watch: watch$K} = await importShared('vue');
 const makeValidationProps = propsFactory({
   disabled: {
     type: Boolean,
@@ -4920,7 +4925,7 @@ function useValidation(props) {
   const validationModel = computed$1I(() => props.validationValue === undefined ? model.value : props.validationValue);
   const form = useForm(props);
   const rules = useRules(() => props.rules);
-  const internalErrorMessages = ref$V([]);
+  const internalErrorMessages = ref$W([]);
   const isPristine = shallowRef$J(true);
   const isDirty = computed$1I(() => !!(wrapInArray(model.value === '' ? null : model.value).length || wrapInArray(validationModel.value === '' ? null : validationModel.value).length));
   const errorMessages = computed$1I(() => {
@@ -5307,7 +5312,7 @@ function forwardRefs(target) {
 }
 
 const {mergeProps:_mergeProps$16,createVNode:_createVNode$1U} = await importShared('vue');
-const {ref: ref$U,useId: useId$c} = await importShared('vue');
+const {ref: ref$V,useId: useId$c} = await importShared('vue');
 const makeVCheckboxProps = propsFactory({
   ...omit(makeVInputProps(), ['direction']),
   ...omit(makeVCheckboxBtnProps(), ['inline'])
@@ -5331,7 +5336,7 @@ const VCheckbox = genericComponent()({
       focus,
       blur
     } = useFocus(props);
-    const inputRef = ref$U();
+    const inputRef = ref$V();
     const uid = useId$c();
     useRender(() => {
       const [rootAttrs, controlAttrs] = filterInputAttrs(attrs);
@@ -6721,29 +6726,29 @@ const branchSelectStrategy = mandatory => {
   return strategy;
 };
 
-const {computed: computed$1C,inject: inject$j,nextTick: nextTick$r,onBeforeMount: onBeforeMount$2,onBeforeUnmount: onBeforeUnmount$6,provide: provide$d,ref: ref$T,shallowRef: shallowRef$G,toRaw: toRaw$5,toRef: toRef$Q,toValue: toValue$8,watch: watch$H} = await importShared('vue');
+const {computed: computed$1C,inject: inject$j,nextTick: nextTick$r,onBeforeMount: onBeforeMount$2,onBeforeUnmount: onBeforeUnmount$6,provide: provide$d,ref: ref$U,shallowRef: shallowRef$G,toRaw: toRaw$5,toRef: toRef$Q,toValue: toValue$8,watch: watch$H} = await importShared('vue');
 const VNestedSymbol = Symbol.for('vuetify:nested');
 const emptyNested = {
   id: shallowRef$G(),
   root: {
-    itemsRegistration: ref$T('render'),
+    itemsRegistration: ref$U('render'),
     register: () => null,
     unregister: () => null,
     updateDisabled: () => null,
-    children: ref$T(new Map()),
-    parents: ref$T(new Map()),
-    disabled: ref$T(new Set()),
+    children: ref$U(new Map()),
+    parents: ref$U(new Map()),
+    disabled: ref$U(new Set()),
     open: () => null,
     openOnSelect: () => null,
     activate: () => null,
     select: () => null,
-    activatable: ref$T(false),
-    scrollToActive: ref$T(false),
-    selectable: ref$T(false),
-    opened: ref$T(new Set()),
-    activated: ref$T(new Set()),
-    selected: ref$T(new Map()),
-    selectedValues: ref$T([]),
+    activatable: ref$U(false),
+    scrollToActive: ref$U(false),
+    selectable: ref$U(false),
+    opened: ref$U(new Set()),
+    activated: ref$U(new Set()),
+    selected: ref$U(new Map()),
+    selectedValues: ref$U([]),
     getPath: () => []
   }
 };
@@ -7230,7 +7235,7 @@ const VListItemSubtitle = genericComponent()({
 const VListItemTitle = createSimpleFunctional('v-list-item-title');
 
 const {Fragment:_Fragment$H,createVNode:_createVNode$1O,createElementVNode:_createElementVNode$1v,mergeProps:_mergeProps$13,withDirectives:_withDirectives$i} = await importShared('vue');
-const {computed: computed$1A,nextTick: nextTick$q,onBeforeMount: onBeforeMount$1,ref: ref$S,toDisplayString: toDisplayString$3,toRef: toRef$O,watch: watch$G} = await importShared('vue');
+const {computed: computed$1A,nextTick: nextTick$q,onBeforeMount: onBeforeMount$1,ref: ref$T,toDisplayString: toDisplayString$3,toRef: toRef$O,watch: watch$G} = await importShared('vue');
 const makeVListItemProps = propsFactory({
   active: {
     type: Boolean,
@@ -7299,7 +7304,7 @@ const VListItem = genericComponent()({
       emit
     } = _ref;
     const link = useLink(props, attrs);
-    const rootEl = ref$S();
+    const rootEl = ref$T();
     const id = computed$1A(() => props.value === undefined ? link.href.value : props.value);
     const {
       activate,
@@ -7836,7 +7841,7 @@ function useItems(props) {
 }
 
 const {createVNode:_createVNode$1L,normalizeClass:_normalizeClass$1f,normalizeStyle:_normalizeStyle$13} = await importShared('vue');
-const {computed: computed$1y,ref: ref$R,shallowRef: shallowRef$E,toRef: toRef$N,useId: useId$a,watch: watch$F} = await importShared('vue');
+const {computed: computed$1y,ref: ref$S,shallowRef: shallowRef$E,toRef: toRef$N,useId: useId$a,watch: watch$F} = await importShared('vue');
 const itemTypes = new Set(['item', 'divider', 'subheader']);
 function transformItem$2(props, item) {
   const title = isPrimitive(item) ? item : getPropertyFromItem(item, props.itemTitle);
@@ -8012,7 +8017,7 @@ const VList = genericComponent()({
       }
     });
     const isFocused = shallowRef$E(false);
-    const contentRef = ref$R();
+    const contentRef = ref$S();
     function onFocusin(e) {
       isFocused.value = true;
     }
@@ -8251,7 +8256,7 @@ function anchorToPoint(anchor, box) {
   }, box);
 }
 
-const {computed: computed$1x,nextTick: nextTick$p,onScopeDispose: onScopeDispose$b,ref: ref$Q,watch: watch$E} = await importShared('vue');
+const {computed: computed$1x,nextTick: nextTick$p,onScopeDispose: onScopeDispose$b,ref: ref$R,watch: watch$E} = await importShared('vue');
 const locationStrategies = {
   static: staticLocationStrategy,
   // specific viewport position, usually centered
@@ -8279,8 +8284,8 @@ const makeLocationStrategyProps = propsFactory({
   }
 }, 'VOverlay-location-strategies');
 function useLocationStrategies(props, data) {
-  const contentStyles = ref$Q({});
-  const updateLocation = ref$Q();
+  const contentStyles = ref$R({});
+  const updateLocation = ref$R();
   if (IN_BROWSER) {
     useToggleScope(() => !!(data.isActive.value && props.locationStrategy), reset => {
       watch$E(() => props.locationStrategy, reset);
@@ -8875,7 +8880,7 @@ function useDelay(props, cb) {
   };
 }
 
-const {computed: computed$1w,effectScope: effectScope$1,inject: inject$h,mergeProps: mergeProps$b,nextTick: nextTick$o,onScopeDispose: onScopeDispose$9,ref: ref$P,watch: watch$D,watchEffect: watchEffect$f} = await importShared('vue');
+const {computed: computed$1w,effectScope: effectScope$1,inject: inject$h,mergeProps: mergeProps$b,nextTick: nextTick$o,onScopeDispose: onScopeDispose$9,ref: ref$Q,watch: watch$D,watchEffect: watchEffect$f} = await importShared('vue');
 const makeActivatorProps = propsFactory({
   target: [String, Object],
   activator: [String, Object],
@@ -8902,7 +8907,7 @@ function useActivator(props, _ref) {
     contentEl
   } = _ref;
   const vm = getCurrentInstance('useActivator');
-  const activatorEl = ref$P();
+  const activatorEl = ref$Q();
   let isHovered = false;
   let isFocused = false;
   let firstEnter = true;
@@ -8919,7 +8924,7 @@ function useActivator(props, _ref) {
       isActive.value = value;
     }
   });
-  const cursorTarget = ref$P();
+  const cursorTarget = ref$Q();
   const availableEvents = {
     onClick: e => {
       e.stopPropagation();
@@ -9499,7 +9504,7 @@ const ClickOutside = {
 };
 
 const {mergeProps:_mergeProps$11,createElementVNode:_createElementVNode$1t,createVNode:_createVNode$1I,Fragment:_Fragment$G,vShow:_vShow$7,withDirectives:_withDirectives$h} = await importShared('vue');
-const {computed: computed$1u,mergeProps: mergeProps$a,onBeforeUnmount: onBeforeUnmount$5,ref: ref$O,Teleport,Transition: Transition$1,watch: watch$A} = await importShared('vue');
+const {computed: computed$1u,mergeProps: mergeProps$a,onBeforeUnmount: onBeforeUnmount$5,ref: ref$P,Teleport,Transition: Transition$1,watch: watch$A} = await importShared('vue');
 function Scrim(props) {
   const {
     modelValue,
@@ -9573,9 +9578,9 @@ const VOverlay = genericComponent()({
       emit
     } = _ref;
     const vm = getCurrentInstance('VOverlay');
-    const root = ref$O();
-    const scrimEl = ref$O();
-    const contentEl = ref$O();
+    const root = ref$P();
+    const scrimEl = ref$P();
+    const contentEl = ref$P();
     const model = useProxiedModel(props, 'modelValue');
     const isActive = computed$1u({
       get: () => model.value,
@@ -9707,7 +9712,7 @@ const VOverlay = genericComponent()({
         return undefined;
       });
     });
-    const top = ref$O();
+    const top = ref$P();
     watch$A(() => isActive.value && (props.absolute || props.contained) && teleportTarget.value == null, val => {
       if (val) {
         const scrollParent = getScrollParent(root.value);
@@ -9800,7 +9805,7 @@ const VOverlay = genericComponent()({
 });
 
 const {createVNode:_createVNode$1H,mergeProps:_mergeProps$10} = await importShared('vue');
-const {computed: computed$1t,inject: inject$f,mergeProps: mergeProps$9,onBeforeUnmount: onBeforeUnmount$4,onDeactivated,provide: provide$b,ref: ref$N,shallowRef: shallowRef$A,toRef: toRef$J,useId: useId$9,watch: watch$z} = await importShared('vue');
+const {computed: computed$1t,inject: inject$f,mergeProps: mergeProps$9,onBeforeUnmount: onBeforeUnmount$4,onDeactivated,provide: provide$b,ref: ref$O,shallowRef: shallowRef$A,toRef: toRef$J,useId: useId$9,watch: watch$z} = await importShared('vue');
 const makeVMenuProps = propsFactory({
   // TODO
   // disableKeys: Boolean,
@@ -9839,7 +9844,7 @@ const VMenu = genericComponent()({
     } = useRtl();
     const uid = useId$9();
     const id = toRef$J(() => props.id || `v-menu-${uid}`);
-    const overlay = ref$N();
+    const overlay = ref$O();
     const parent = inject$f(VMenuSymbol, null);
     const openChildren = shallowRef$A(new Set());
     provide$b(VMenuSymbol, {
@@ -10084,7 +10089,7 @@ const VFieldLabel = genericComponent()({
 });
 
 const {createElementVNode:_createElementVNode$1r,createVNode:_createVNode$1D,mergeProps:_mergeProps$$,vShow:_vShow$5,withDirectives:_withDirectives$f,Fragment:_Fragment$F,normalizeClass:_normalizeClass$19,normalizeStyle:_normalizeStyle$Z} = await importShared('vue');
-const {computed: computed$1s,ref: ref$M,toRef: toRef$H,useId: useId$8,watch: watch$y} = await importShared('vue');
+const {computed: computed$1s,ref: ref$N,toRef: toRef$H,useId: useId$8,watch: watch$y} = await importShared('vue');
 const allowedVariants$1 = ['underlined', 'outlined', 'filled', 'solo', 'solo-inverted', 'solo-filled', 'plain'];
 const makeVFieldProps = propsFactory({
   appendInnerIcon: IconValue,
@@ -10175,9 +10180,9 @@ const VField = genericComponent()({
     const uid = useId$8();
     const id = computed$1s(() => props.id || `input-${uid}`);
     const messagesId = toRef$H(() => !props.details ? undefined : `${id.value}-messages`);
-    const labelRef = ref$M();
-    const floatingLabelRef = ref$M();
-    const controlRef = ref$M();
+    const labelRef = ref$N();
+    const floatingLabelRef = ref$N();
+    const controlRef = ref$N();
     const isPlainOrUnderlined = computed$1s(() => ['plain', 'underlined'].includes(props.variant));
     const color = computed$1s(() => {
       return props.error || props.disabled ? undefined : isActive.value && isFocused.value ? props.color : props.baseColor;
@@ -10441,7 +10446,7 @@ function useAutofocus(props) {
 }
 
 const {mergeProps:_mergeProps$_,createElementVNode:_createElementVNode$1q,Fragment:_Fragment$E,normalizeClass:_normalizeClass$18,createVNode:_createVNode$1C} = await importShared('vue');
-const {cloneVNode,computed: computed$1r,nextTick: nextTick$n,ref: ref$L,withDirectives} = await importShared('vue');
+const {cloneVNode,computed: computed$1r,nextTick: nextTick$n,ref: ref$M,withDirectives} = await importShared('vue');
 const activeTypes = ['color', 'file', 'time', 'date', 'datetime-local', 'week', 'month'];
 const makeVTextFieldProps = propsFactory({
   autofocus: Boolean,
@@ -10502,9 +10507,9 @@ const VTextField = genericComponent()({
       return props.counter;
     });
     const isPlainOrUnderlined = computed$1r(() => ['plain', 'underlined'].includes(props.variant));
-    const vInputRef = ref$L();
-    const vFieldRef = ref$L();
-    const inputRef = ref$L();
+    const vInputRef = ref$M();
+    const vFieldRef = ref$M();
+    const inputRef = ref$M();
     const autocomplete = useAutocomplete(props);
     const isActive = computed$1r(() => activeTypes.includes(props.type) || props.persistentPlaceholder || isFocused.value || props.active);
     function onFocus() {
@@ -10558,7 +10563,7 @@ const VTextField = genericComponent()({
     }
     useRender(() => {
       const hasCounter = !!(slots.counter || props.counter !== false && props.counter != null);
-      const hasDetails = !!(hasCounter || slots.details);
+      const hasDetails = props.hideDetails !== true && !!(slots.details || hasCounter && (props.persistentCounter || props.hideDetails === false || isFocused.value));
       const [rootAttrs, inputAttrs] = filterInputAttrs(attrs);
       const {
         modelValue: _,
@@ -10703,7 +10708,7 @@ const VVirtualScrollItem = genericComponent()({
   }
 });
 
-const {computed: computed$1q,nextTick: nextTick$m,onScopeDispose: onScopeDispose$6,ref: ref$K,shallowRef: shallowRef$y,watch: watch$w,watchEffect: watchEffect$d} = await importShared('vue');
+const {computed: computed$1q,nextTick: nextTick$m,onScopeDispose: onScopeDispose$6,ref: ref$L,shallowRef: shallowRef$y,watch: watch$w,watchEffect: watchEffect$d} = await importShared('vue');
 const UP = -1;
 const DOWN = 1;
 
@@ -10737,10 +10742,10 @@ function useVirtual(props, items) {
   const paddingBottom = shallowRef$y(0);
 
   /** The scrollable element */
-  const containerRef = ref$K();
+  const containerRef = ref$L();
   /** An element marking the top of the scrollable area,
    * used to add an offset if there's padding or other elements above the virtual list */
-  const markerRef = ref$K();
+  const markerRef = ref$L();
   /** markerRef's offsetTop, lazily evaluated */
   let markerOffset = 0;
   const {
@@ -11414,7 +11419,7 @@ function useMenuActivator(props, isOpen) {
 }
 
 const {Fragment:_Fragment$A,createElementVNode:_createElementVNode$1m,createVNode:_createVNode$1A,mergeProps:_mergeProps$Y,createTextVNode:_createTextVNode$9} = await importShared('vue');
-const {computed: computed$1n,mergeProps: mergeProps$8,nextTick: nextTick$l,ref: ref$J,shallowRef: shallowRef$v,toRef: toRef$D,watch: watch$u} = await importShared('vue');
+const {computed: computed$1n,mergeProps: mergeProps$8,nextTick: nextTick$l,ref: ref$K,shallowRef: shallowRef$v,toRef: toRef$D,watch: watch$u} = await importShared('vue');
 const makeSelectProps = propsFactory({
   chips: Boolean,
   closableChips: Boolean,
@@ -11468,20 +11473,23 @@ const VSelect = genericComponent()({
     'update:focused': focused => true,
     'update:modelValue': value => true,
     'update:menu': ue => true,
-    'update:search': value => true
+    'update:search': value => true,
+    'item:added': item => true,
+    'item:removed': item => true
   },
   setup(props, _ref) {
     let {
+      emit,
       slots
     } = _ref;
     const {
       t
     } = useLocale();
-    const vTextFieldRef = ref$J();
-    const vMenuRef = ref$J();
-    const headerRef = ref$J();
-    const footerRef = ref$J();
-    const vVirtualScrollRef = ref$J();
+    const vTextFieldRef = ref$K();
+    const vMenuRef = ref$K();
+    const headerRef = ref$K();
+    const footerRef = ref$K();
+    const vVirtualScrollRef = ref$K();
     const {
       items,
       transformIn,
@@ -11542,7 +11550,7 @@ const VSelect = genericComponent()({
         }
       };
     });
-    const listRef = ref$J();
+    const listRef = ref$K();
     const listEvents = useScrolling(listRef, vTextFieldRef);
     const repairOrphanedFocus = useFocusRepair(menu, () => vMenuRef.value?.contentEl, () => vTextFieldRef.value?.controlRef);
     const {
@@ -11596,6 +11604,7 @@ const VSelect = genericComponent()({
       }
       if (props.clearable && e.key === 'Backspace') {
         e.preventDefault();
+        for (const item of model.value) emit('item:removed', item);
         model.value = [];
         onClear();
         return;
@@ -11653,7 +11662,7 @@ const VSelect = genericComponent()({
       keyboardLookupIndex = index;
       listRef.value?.focus(index);
       if (!props.multiple) {
-        model.value = [item];
+        select(item, true);
       }
     }
 
@@ -11661,19 +11670,34 @@ const VSelect = genericComponent()({
     function select(item) {
       let set = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
       if (item.props.disabled) return;
+      const comparator = props.valueComparator || deepEqual;
       if (props.multiple) {
-        const index = model.value.findIndex(selection => (props.valueComparator || deepEqual)(selection.value, item.value));
+        const index = model.value.findIndex(selection => comparator(selection.value, item.value));
         const add = set == null ? !~index : set;
         if (~index) {
           const value = add ? [...model.value, item] : [...model.value];
-          value.splice(index, 1);
+          const [removed] = value.splice(index, 1);
+          if (!add) emit('item:removed', removed); // skip if only reordered
           model.value = value;
         } else if (add) {
+          emit('item:added', item);
           model.value = [...model.value, item];
         }
       } else {
         const add = set !== false;
-        model.value = add ? [item] : [];
+        const old = model.value[0];
+        if (add) {
+          if (old && !comparator(old.value, item.value)) {
+            emit('item:removed', old);
+            emit('item:added', item);
+          } else if (!old) {
+            emit('item:added', item);
+          }
+          model.value = [item];
+        } else {
+          if (old) emit('item:removed', old);
+          model.value = [];
+        }
         nextTick$l(() => {
           menu.value = false;
         });
@@ -11738,7 +11762,10 @@ const VSelect = genericComponent()({
       }
     }
     function onModelUpdate(v) {
-      if (v == null) model.value = [];else if (matchesSelector(vTextFieldRef.value, ':autofill') || matchesSelector(vTextFieldRef.value, ':-webkit-autofill')) {
+      if (v == null) {
+        for (const item of model.value) emit('item:removed', item);
+        model.value = [];
+      } else if (matchesSelector(vTextFieldRef.value, ':autofill') || matchesSelector(vTextFieldRef.value, ':-webkit-autofill')) {
         const item = items.value.find(item => item.title === v);
         if (item) {
           select(item);
@@ -12009,7 +12036,7 @@ const VSelect = genericComponent()({
 });
 
 const {Fragment:_Fragment$z,createElementVNode:_createElementVNode$1l,createVNode:_createVNode$1z,mergeProps:_mergeProps$X,createTextVNode:_createTextVNode$8,normalizeClass:_normalizeClass$15,normalizeStyle:_normalizeStyle$X} = await importShared('vue');
-const {computed: computed$1m,mergeProps: mergeProps$7,nextTick: nextTick$k,ref: ref$I,shallowRef: shallowRef$u,toRef: toRef$C,watch: watch$t} = await importShared('vue');
+const {computed: computed$1m,mergeProps: mergeProps$7,nextTick: nextTick$k,ref: ref$J,shallowRef: shallowRef$u,toRef: toRef$C,watch: watch$t} = await importShared('vue');
 const makeVAutocompleteProps = propsFactory({
   autoSelectFirst: {
     type: [Boolean, String]
@@ -12032,21 +12059,24 @@ const VAutocomplete = genericComponent()({
     'update:focused': focused => true,
     'update:search': value => true,
     'update:modelValue': value => true,
-    'update:menu': value => true
+    'update:menu': value => true,
+    'item:added': item => true,
+    'item:removed': item => true
   },
   setup(props, _ref) {
     let {
+      emit,
       slots
     } = _ref;
     const {
       t
     } = useLocale();
-    const vTextFieldRef = ref$I();
+    const vTextFieldRef = ref$J();
     const isFocused = shallowRef$u(false);
     const isPristine = shallowRef$u(true);
     const listHasFocus = shallowRef$u(false);
-    const vMenuRef = ref$I();
-    const vVirtualScrollRef = ref$I();
+    const vMenuRef = ref$J();
+    const vVirtualScrollRef = ref$J();
     const selectionIndex = shallowRef$u(-1);
     const _searchLock = shallowRef$u(null);
     const {
@@ -12104,9 +12134,9 @@ const VAutocomplete = genericComponent()({
       ariaExpanded,
       ariaControls
     } = useMenuActivator(props, menu);
-    const listRef = ref$I();
-    const headerRef = ref$I();
-    const footerRef = ref$I();
+    const listRef = ref$J();
+    const headerRef = ref$J();
+    const footerRef = ref$J();
     const listEvents = useScrolling(listRef, vTextFieldRef);
     const repairOrphanedFocus = useFocusRepair(menu, () => vMenuRef.value?.contentEl, () => vTextFieldRef.value?.controlRef);
     const {
@@ -12250,7 +12280,10 @@ const VAutocomplete = genericComponent()({
       }
     }
     function onUpdateModelValue(v) {
-      if (v == null || v === '' && !props.multiple && !hasSelectionSlot.value) model.value = [];
+      if (v == null || v === '' && !props.multiple && !hasSelectionSlot.value) {
+        for (const item of model.value) emit('item:removed', item);
+        model.value = [];
+      }
     }
     function onBlur(e) {
       const menuContent = vMenuRef.value?.contentEl;
@@ -12264,14 +12297,17 @@ const VAutocomplete = genericComponent()({
     function select(item) {
       let set = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
       if (!item || item.props.disabled) return;
+      const comparator = props.valueComparator || deepEqual;
       if (props.multiple) {
-        const index = model.value.findIndex(selection => (props.valueComparator || deepEqual)(selection.value, item.value));
+        const index = model.value.findIndex(selection => comparator(selection.value, item.value));
         const add = set == null ? !~index : set;
         if (~index) {
           const value = add ? [...model.value, item] : [...model.value];
-          value.splice(index, 1);
+          const [removed] = value.splice(index, 1);
+          if (!add) emit('item:removed', removed); // skip if only reordered
           model.value = value;
         } else if (add) {
+          emit('item:added', item);
           model.value = [...model.value, item];
         }
         if (props.clearOnSelect) {
@@ -12279,7 +12315,19 @@ const VAutocomplete = genericComponent()({
         }
       } else {
         const add = set !== false;
-        model.value = add ? [item] : [];
+        const old = model.value[0];
+        if (add) {
+          if (old && !comparator(old.value, item.value)) {
+            emit('item:removed', old);
+            emit('item:added', item);
+          } else if (!old) {
+            emit('item:added', item);
+          }
+          model.value = [item];
+        } else {
+          if (old) emit('item:removed', old);
+          model.value = [];
+        }
         _searchLock.value = isPristine.value ? '' : search.value ?? '';
         search.value = add && !hasSelectionSlot.value ? item.title : '';
 
@@ -12298,7 +12346,10 @@ const VAutocomplete = genericComponent()({
         isPristine.value = true;
         nextTick$k(() => isSelecting.value = false);
       } else {
-        if (!props.multiple && search.value == null) model.value = [];
+        if (!props.multiple && search.value == null) {
+          for (const item of model.value) emit('item:removed', item);
+          model.value = [];
+        }
         menu.value = false;
         if (!isPristine.value && search.value) {
           _searchLock.value = search.value;
@@ -12623,7 +12674,7 @@ const VBadge = genericComponent()({
     } = useTextColor(() => props.textColor);
     const {
       themeClasses
-    } = useTheme();
+    } = useTheme$1();
     const {
       locationStyles
     } = useLocation(props, true, side => {
@@ -12872,7 +12923,7 @@ const VBottomNavigation = genericComponent()({
     } = _ref;
     const {
       themeClasses
-    } = useTheme();
+    } = useTheme$1();
     const {
       borderClasses
     } = useBorder(props);
@@ -12942,7 +12993,7 @@ const VBottomSheet$1 = '';
 const VDialog$1 = '';
 
 const {createVNode:_createVNode$1v,mergeProps:_mergeProps$V} = await importShared('vue');
-const {mergeProps: mergeProps$6,nextTick: nextTick$j,ref: ref$H,watch: watch$s} = await importShared('vue');
+const {mergeProps: mergeProps$6,nextTick: nextTick$j,ref: ref$I,watch: watch$s} = await importShared('vue');
 const makeVDialogProps = propsFactory({
   fullscreen: Boolean,
   scrollable: Boolean,
@@ -12974,7 +13025,7 @@ const VDialog = genericComponent()({
     const {
       scopeId
     } = useScopeId();
-    const overlay = ref$H();
+    const overlay = ref$I();
     function onAfterEnter() {
       emit('afterEnter');
       if ((props.scrim || props.retainFocus) && overlay.value?.contentEl && !overlay.value.contentEl.contains(document.activeElement)) {
@@ -14333,7 +14384,7 @@ const Resize = {
 };
 
 const {createElementVNode:_createElementVNode$1c,mergeProps:_mergeProps$Q,createVNode:_createVNode$1q,normalizeStyle:_normalizeStyle$P,normalizeClass:_normalizeClass$Z,withDirectives:_withDirectives$d} = await importShared('vue');
-const {nextTick: nextTick$i,onMounted: onMounted$a,ref: ref$G} = await importShared('vue');
+const {nextTick: nextTick$i,onMounted: onMounted$a,ref: ref$H} = await importShared('vue');
 const VCalendarDaily = defineComponent({
   name: 'VCalendarDaily',
   directives: {
@@ -14358,8 +14409,8 @@ const VCalendarDaily = defineComponent({
       slots,
       attrs
     } = _ref;
-    const scrollPush = ref$G(0);
-    const pane = ref$G();
+    const scrollPush = ref$H(0);
+    const pane = ref$H();
     const base = useCalendarWithIntervals(props);
     function init() {
       nextTick$i(onResize);
@@ -14710,7 +14761,7 @@ const VCalendarWeekly = defineComponent({
       attrs
     } = _ref;
     const base = useCalendarBase(props);
-    const theme = useTheme();
+    const theme = useTheme$1();
     const parsedMinWeeks = computed$1e(() => {
       return parseInt(String(props.minWeeks));
     });
@@ -15235,7 +15286,7 @@ function isEventOverlapping(event, startIdentifier, endIdentifier) {
 }
 
 const {createElementVNode:_createElementVNode$19,createTextVNode:_createTextVNode$7,mergeProps:_mergeProps$N,withDirectives:_withDirectives$c} = await importShared('vue');
-const {computed: computed$1d,ref: ref$F} = await importShared('vue');
+const {computed: computed$1d,ref: ref$G} = await importShared('vue');
 // Constants
 const WIDTH_FULL = 100;
 const WIDTH_START = 95;
@@ -15337,7 +15388,7 @@ function useCalendarWithEvents(props, slots, attrs) {
   function eventColorFunction(e) {
     return typeof props.eventColor === 'function' ? props.eventColor(e) : e.color || props.eventColor;
   }
-  const eventsRef = ref$F([]);
+  const eventsRef = ref$G([]);
   function updateEventVisibility() {
     if (noEvents.value || !props.eventMore) {
       return;
@@ -15696,7 +15747,7 @@ function useCalendarWithEvents(props, slots, attrs) {
 }
 
 const {mergeProps:_mergeProps$M,createVNode:_createVNode$1n,withDirectives:_withDirectives$b} = await importShared('vue');
-const {computed: computed$1c,onMounted: onMounted$9,onUpdated,ref: ref$E,watch: watch$q} = await importShared('vue');
+const {computed: computed$1c,onMounted: onMounted$9,onUpdated,ref: ref$F,watch: watch$q} = await importShared('vue');
 // Types
 const VCalendar = genericComponent()({
   name: 'VCalendar',
@@ -15740,10 +15791,10 @@ const VCalendar = genericComponent()({
       attrs,
       emit
     } = _ref;
-    const root = ref$E();
+    const root = ref$F();
     const base = useCalendarWithEvents(props, slots, attrs);
-    const lastStart = ref$E(null);
-    const lastEnd = ref$E(null);
+    const lastStart = ref$F(null);
+    const lastEnd = ref$F(null);
     const parsedCategoryDays = computed$1c(() => {
       return parseInt(String(props.categoryDays)) || 1;
     });
@@ -16459,10 +16510,17 @@ function unmounted$2(el, binding) {
   const uid = binding.instance?.$.uid;
   if (!target?._touchHandlers || uid === undefined) return;
   const handlers = target._touchHandlers[uid];
+
+  // guard against double teardown: e.g. router & suspence racing
+  if (!handlers) return;
   keys(handlers).forEach(eventName => {
     target.removeEventListener(eventName, handlers[eventName]);
   });
   delete target._touchHandlers[uid];
+  if (!keys(target._touchHandlers).length) {
+    // only relevant if we keep `parent: boolean`
+    delete target._touchHandlers;
+  }
 }
 const Touch = {
   mounted: mounted$2,
@@ -16470,7 +16528,7 @@ const Touch = {
 };
 
 const {createVNode:_createVNode$1h,createElementVNode:_createElementVNode$16,normalizeClass:_normalizeClass$T,normalizeStyle:_normalizeStyle$J,withDirectives:_withDirectives$9} = await importShared('vue');
-const {computed: computed$1b,nextTick: nextTick$h,provide: provide$a,ref: ref$D,shallowRef: shallowRef$r,toRef: toRef$y,watch: watch$o} = await importShared('vue');
+const {computed: computed$1b,nextTick: nextTick$h,provide: provide$a,ref: ref$E,shallowRef: shallowRef$r,toRef: toRef$y,watch: watch$o} = await importShared('vue');
 const VWindowSymbol = Symbol.for('vuetify:v-window');
 const VWindowGroupSymbol = Symbol.for('vuetify:v-window-group');
 const makeVWindowProps = propsFactory({
@@ -16537,7 +16595,7 @@ const VWindow = genericComponent()({
       t
     } = useLocale();
     const group = useGroup(props, VWindowGroupSymbol);
-    const rootRef = ref$D();
+    const rootRef = ref$E();
     const isRtlReverse = computed$1b(() => isRtl.value ? !props.reverse : props.reverse);
     const isReversed = shallowRef$r(false);
     const transition = computed$1b(() => {
@@ -16550,7 +16608,7 @@ const VWindow = genericComponent()({
       return `v-window-${axis}${direction}-transition`;
     });
     const transitionCount = shallowRef$r(0);
-    const transitionHeight = ref$D(undefined);
+    const transitionHeight = ref$E(undefined);
     const activeIndex = computed$1b(() => {
       return group.items.value.findIndex(item => group.selected.value.includes(item.id));
     });
@@ -16718,7 +16776,7 @@ const VWindow = genericComponent()({
 });
 
 const {Fragment:_Fragment$w,mergeProps:_mergeProps$K,createVNode:_createVNode$1g,createElementVNode:_createElementVNode$15} = await importShared('vue');
-const {nextTick: nextTick$g,onMounted: onMounted$8,ref: ref$C,watch: watch$n} = await importShared('vue');
+const {nextTick: nextTick$g,onMounted: onMounted$8,ref: ref$D,watch: watch$n} = await importShared('vue');
 const makeVCarouselProps = propsFactory({
   color: String,
   cycle: Boolean,
@@ -16759,7 +16817,7 @@ const VCarousel = genericComponent()({
     const {
       t
     } = useLocale();
-    const windowRef = ref$C();
+    const windowRef = ref$D();
     let slideTimeout = -1;
     watch$n(model, restartTimeout);
     watch$n(() => props.interval, restartTimeout);
@@ -17001,7 +17059,7 @@ const VColorPicker$1 = '';
 const VColorPickerCanvas$1 = '';
 
 const {createElementVNode:_createElementVNode$13,normalizeClass:_normalizeClass$R,normalizeStyle:_normalizeStyle$H} = await importShared('vue');
-const {computed: computed$19,onMounted: onMounted$7,ref: ref$B,shallowRef: shallowRef$p,toRef: toRef$x,watch: watch$m} = await importShared('vue');
+const {computed: computed$19,onMounted: onMounted$7,ref: ref$C,shallowRef: shallowRef$p,toRef: toRef$x,watch: watch$m} = await importShared('vue');
 const makeVColorPickerCanvasProps = propsFactory({
   color: {
     type: Object
@@ -17034,10 +17092,10 @@ const VColorPickerCanvas = defineComponent({
       emit
     } = _ref;
     const isInteracting = shallowRef$p(false);
-    const canvasRef = ref$B();
+    const canvasRef = ref$C();
     const canvasWidth = shallowRef$p(parseFloat(props.width));
     const canvasHeight = shallowRef$p(parseFloat(props.height));
-    const _dotPosition = ref$B({
+    const _dotPosition = ref$C({
       x: 0,
       y: 0
     });
@@ -17476,7 +17534,7 @@ const VSlider$1 = '';
 
 const VSliderThumb$1 = '';
 
-const {computed: computed$17,nextTick: nextTick$e,onScopeDispose: onScopeDispose$4,provide: provide$9,ref: ref$A,shallowRef: shallowRef$o,toRef: toRef$w} = await importShared('vue');
+const {computed: computed$17,nextTick: nextTick$e,onScopeDispose: onScopeDispose$4,provide: provide$9,ref: ref$B,shallowRef: shallowRef$o,toRef: toRef$w} = await importShared('vue');
 const VSliderSymbol = Symbol.for('vuetify:v-slider');
 function getOffset(e, el, direction) {
   const vertical = direction === 'vertical';
@@ -17611,8 +17669,8 @@ const useSlider = _ref => {
   const trackFillColor = computed$17(() => props.error || form.isDisabled.value ? undefined : props.trackFillColor ?? props.color);
   const mousePressed = shallowRef$o(false);
   const startOffset = shallowRef$o(0);
-  const trackContainerRef = ref$A();
-  const activeThumbRef = ref$A();
+  const trackContainerRef = ref$B();
+  const activeThumbRef = ref$B();
   function parseMouseMove(e) {
     const el = trackContainerRef.value?.$el;
     if (!el) return;
@@ -18090,7 +18148,7 @@ const VSliderTrack = genericComponent()({
 });
 
 const {Fragment:_Fragment$v,createVNode:_createVNode$1b,createElementVNode:_createElementVNode$$,mergeProps:_mergeProps$I} = await importShared('vue');
-const {computed: computed$14,ref: ref$z} = await importShared('vue');
+const {computed: computed$14,ref: ref$A} = await importShared('vue');
 const makeVSliderProps = propsFactory({
   ...makeFocusProps(),
   ...makeSliderProps(),
@@ -18116,8 +18174,8 @@ const VSlider = genericComponent()({
       emit,
       attrs
     } = _ref;
-    const thumbContainerRef = ref$z();
-    const inputRef = ref$z();
+    const thumbContainerRef = ref$A();
+    const inputRef = ref$A();
     const {
       rtlClasses
     } = useRtl();
@@ -18809,7 +18867,7 @@ const VPicker = genericComponent()({
 });
 
 const {Fragment:_Fragment$u,createVNode:_createVNode$17,createElementVNode:_createElementVNode$X,mergeProps:_mergeProps$G} = await importShared('vue');
-const {computed: computed$13,onBeforeMount,ref: ref$y,watch: watch$k} = await importShared('vue');
+const {computed: computed$13,onBeforeMount,ref: ref$z,watch: watch$k} = await importShared('vue');
 const makeVColorPickerProps = propsFactory({
   canvasHeight: {
     type: [String, Number],
@@ -18860,7 +18918,7 @@ const VColorPicker = defineComponent({
       slots
     } = _ref;
     const mode = useProxiedModel(props, 'mode');
-    const hue = ref$y(null);
+    const hue = ref$z(null);
     const model = useProxiedModel(props, 'modelValue', undefined, v => {
       if (v == null || v === '') return null;
       let c;
@@ -18971,7 +19029,7 @@ const VColorPicker = defineComponent({
 const VCombobox$1 = '';
 
 const {Fragment:_Fragment$t,createElementVNode:_createElementVNode$W,createVNode:_createVNode$16,mergeProps:_mergeProps$F,createTextVNode:_createTextVNode$6,normalizeClass:_normalizeClass$K,normalizeStyle:_normalizeStyle$A} = await importShared('vue');
-const {computed: computed$12,mergeProps: mergeProps$5,nextTick: nextTick$d,ref: ref$x,shallowRef: shallowRef$m,toRef: toRef$t,watch: watch$j} = await importShared('vue');
+const {computed: computed$12,mergeProps: mergeProps$5,nextTick: nextTick$d,ref: ref$y,shallowRef: shallowRef$m,toRef: toRef$t,watch: watch$j} = await importShared('vue');
 const makeVComboboxProps = propsFactory({
   alwaysFilter: Boolean,
   autoSelectFirst: {
@@ -19001,7 +19059,10 @@ const VCombobox = genericComponent()({
     'update:focused': focused => true,
     'update:modelValue': value => true,
     'update:search': value => true,
-    'update:menu': value => true
+    'update:menu': value => true,
+    'item:added': item => true,
+    'item:removed': item => true,
+    'item:created': item => true
   },
   setup(props, _ref) {
     let {
@@ -19011,12 +19072,12 @@ const VCombobox = genericComponent()({
     const {
       t
     } = useLocale();
-    const vTextFieldRef = ref$x();
+    const vTextFieldRef = ref$y();
     const isFocused = shallowRef$m(false);
     const isPristine = shallowRef$m(true);
     const listHasFocus = shallowRef$m(false);
-    const vMenuRef = ref$x();
-    const vVirtualScrollRef = ref$x();
+    const vMenuRef = ref$y();
+    const vVirtualScrollRef = ref$y();
     const selectionIndex = shallowRef$m(-1);
     let cleared = false;
     const {
@@ -19048,6 +19109,9 @@ const VCombobox = genericComponent()({
       set: async val => {
         _search.value = val ?? '';
         if (val === null || val === '' && !props.multiple && !hasSelectionSlot.value) {
+          for (const item of model.value) {
+            emit('item:removed', item);
+          }
           model.value = [];
         } else if (!props.multiple && !hasSelectionSlot.value) {
           model.value = [transformItem$3(props, val)];
@@ -19113,9 +19177,9 @@ const VCombobox = genericComponent()({
       const selectFirst = props.autoSelectFirst === true || props.autoSelectFirst === 'exact' && search.value === firstSelectableItem.value?.title;
       return selectFirst && displayItems.value.length > 0 && !isPristine.value && !listHasFocus.value;
     });
-    const listRef = ref$x();
-    const headerRef = ref$x();
-    const footerRef = ref$x();
+    const listRef = ref$y();
+    const headerRef = ref$y();
+    const footerRef = ref$y();
     const listEvents = useScrolling(listRef, vTextFieldRef);
     const repairOrphanedFocus = useFocusRepair(menu, () => vMenuRef.value?.contentEl, () => vTextFieldRef.value?.controlRef);
     const {
@@ -19249,19 +19313,28 @@ const VCombobox = genericComponent()({
       isPristine.value = true;
       _searchLock.value = null;
     }
+    function isExistingItem(item) {
+      const comparator = props.valueComparator || deepEqual;
+      return items.value.some(i => comparator(i.value, item.value));
+    }
+
     /** @param set - null means toggle */
     function select(item) {
       let set = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
       let keepMenu = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
       if (!item || item.props.disabled) return;
+      const comparator = props.valueComparator || deepEqual;
       if (props.multiple) {
-        const index = model.value.findIndex(selection => (props.valueComparator || deepEqual)(selection.value, item.value));
+        const index = model.value.findIndex(selection => comparator(selection.value, item.value));
         const add = set == null ? !~index : set;
         if (~index) {
           const value = add ? [...model.value, item] : [...model.value];
-          value.splice(index, 1);
+          const [removed] = value.splice(index, 1);
+          if (!add) emit('item:removed', removed); // skip if only reordered
           model.value = value;
         } else if (add) {
+          emit('item:added', item);
+          if (!isExistingItem(item)) emit('item:created', item);
           model.value = [...model.value, item];
         }
         if (props.clearOnSelect) {
@@ -19269,7 +19342,21 @@ const VCombobox = genericComponent()({
         }
       } else {
         const add = set !== false;
-        model.value = add ? [item] : [];
+        const old = model.value[0];
+        if (add) {
+          if (old && !comparator(old.value, item.value)) {
+            emit('item:removed', old);
+            emit('item:added', item);
+            if (!isExistingItem(item)) emit('item:created', item);
+          } else if (!old) {
+            emit('item:added', item);
+            if (!isExistingItem(item)) emit('item:created', item);
+          }
+          model.value = [item];
+        } else {
+          if (old) emit('item:removed', old);
+          model.value = [];
+        }
         if ((!isPristine.value || props.alwaysFilter) && _search.value) {
           _searchLock.value = _search.value;
         }
@@ -19595,7 +19682,7 @@ const VCombobox = genericComponent()({
 });
 
 const {Fragment:_Fragment$s,mergeProps:_mergeProps$E,createVNode:_createVNode$15,createElementVNode:_createElementVNode$V} = await importShared('vue');
-const {computed: computed$11,ref: ref$w,watchEffect: watchEffect$b} = await importShared('vue');
+const {computed: computed$11,ref: ref$x,watchEffect: watchEffect$b} = await importShared('vue');
 const makeVConfirmEditProps = propsFactory({
   modelValue: null,
   color: String,
@@ -19627,7 +19714,7 @@ const VConfirmEdit = genericComponent()({
       slots
     } = _ref;
     const model = useProxiedModel(props, 'modelValue');
-    const internalModel = ref$w();
+    const internalModel = ref$x();
     watchEffect$b(() => {
       internalModel.value = structuredClone(deepToRaw(model.value));
     });
@@ -19743,7 +19830,7 @@ function useExpanded() {
   return data;
 }
 
-const {computed: computed$10,inject: inject$a,provide: provide$7,ref: ref$v,toValue: toValue$3} = await importShared('vue');
+const {computed: computed$10,inject: inject$a,provide: provide$7,ref: ref$w,toValue: toValue$3} = await importShared('vue');
 const makeDataTableGroupProps = propsFactory({
   groupBy: {
     type: Array,
@@ -19763,7 +19850,7 @@ function provideGroupBy(options) {
     groupBy,
     sortBy
   } = options;
-  const opened = ref$v(new Set());
+  const opened = ref$w(new Set());
   const sortByWithGroups = computed$10(() => {
     return groupBy.value.map(val => ({
       ...val,
@@ -20709,13 +20796,13 @@ const VDataTableFooter$1 = '';
 const VPagination$1 = '';
 
 // Utilities
-const {onBeforeUpdate,ref: ref$u} = await importShared('vue');
+const {onBeforeUpdate,ref: ref$v} = await importShared('vue');
 
 
 // Types
 
 function useRefs() {
-  const refs = ref$u([]);
+  const refs = ref$v([]);
   onBeforeUpdate(() => refs.value = []);
   function updateRef(e, i) {
     refs.value[i] = e;
@@ -21233,7 +21320,7 @@ const VDataTableColumn = defineFunctionalComponent({
 });
 
 // Utilities
-const {capitalize: capitalize$2,inject: inject$6,provide: provide$3,ref: ref$t,watchEffect: watchEffect$9} = await importShared('vue');
+const {capitalize: capitalize$2,inject: inject$6,provide: provide$3,ref: ref$u,watchEffect: watchEffect$9} = await importShared('vue');
 const makeDataTableHeaderProps = propsFactory({
   headers: Array
 }, 'DataTable-header');
@@ -21472,11 +21559,11 @@ function convertToInternalHeaders(items) {
   return internalHeaders;
 }
 function createHeaders(props, options) {
-  const headers = ref$t([]);
-  const columns = ref$t([]);
-  const sortFunctions = ref$t({});
-  const sortRawFunctions = ref$t({});
-  const filterFunctions = ref$t({});
+  const headers = ref$u([]);
+  const columns = ref$u([]);
+  const sortFunctions = ref$u({});
+  const sortRawFunctions = ref$u({});
+  const filterFunctions = ref$u({});
   watchEffect$9(() => {
     const _headers = props.headers || Object.keys(props.items[0] ?? {}).map(key => ({
       key,
@@ -21563,6 +21650,10 @@ const makeVDataTableHeadersProps = propsFactory({
   },
   headerProps: {
     type: Object
+  },
+  selectAllLabel: {
+    type: String,
+    default: '$vuetify.dataTable.ariaLabel.selectAll'
   },
   /** @deprecated */
   sticky: Boolean,
@@ -21655,11 +21746,15 @@ const VDataTableHeaders = genericComponent()({
       const noPadding = column.key === 'data-table-select' || column.key === 'data-table-expand';
       const isEmpty = column.key === 'data-table-group' && column.width === 0 && !column.title;
       const headerProps = mergeProps$4(props.headerProps ?? {}, column.headerProps ?? {});
+      const isSortable = column.sortable && !props.disableSort;
+      const sortItem = isSortable ? sortBy.value.find(item => item.key === column.key) : undefined;
+      const ariaSort = sortItem?.order === 'asc' ? 'ascending' : sortItem?.order === 'desc' ? 'descending' : undefined;
       return _createVNode$10(VDataTableColumn, _mergeProps$B({
         "tag": "th",
+        "aria-sort": ariaSort,
         "align": column.align,
         "class": [{
-          'v-data-table__th--sortable': column.sortable && !props.disableSort,
+          'v-data-table__th--sortable': isSortable,
           'v-data-table__th--sorted': isSorted(column),
           'v-data-table__th--fixed': column.fixed
         }, ...headerCellClasses.value],
@@ -21677,9 +21772,9 @@ const VDataTableHeaders = genericComponent()({
         "firstFixedEnd": column.firstFixedEnd,
         "noPadding": noPadding,
         "empty": isEmpty,
-        "tabindex": column.sortable ? 0 : undefined,
-        "onClick": column.sortable ? event => toggleSort(column, event) : undefined,
-        "onKeydown": column.sortable ? event => handleEnterKeyPress(event, column) : undefined
+        "tabindex": isSortable ? 0 : undefined,
+        "onClick": isSortable ? event => toggleSort(column, event) : undefined,
+        "onKeydown": isSortable ? event => handleEnterKeyPress(event, column) : undefined
       }, headerProps), {
         default: () => {
           const columnSlotName = `header.${column.key}`;
@@ -21697,6 +21792,7 @@ const VDataTableHeaders = genericComponent()({
           if (isEmpty) return '';
           if (column.key === 'data-table-select') {
             return slots['header.data-table-select']?.(columnSlotProps) ?? (showSelectAll.value && _createVNode$10(VCheckboxBtn, {
+              "aria-label": t(props.selectAllLabel),
               "color": props.color,
               "density": props.density,
               "modelValue": allSelected.value,
@@ -21749,14 +21845,8 @@ const VDataTableHeaders = genericComponent()({
           }));
         }
       });
-      return _createVNode$10(VDataTableColumn, _mergeProps$B({
-        "tag": "th",
-        "class": [...headerCellClasses.value],
-        "colspan": headers.value.length + 1
-      }, props.headerProps), {
-        default: () => [_createElementVNode$R("div", {
-          "class": "v-data-table-header__content"
-        }, [_createVNode$10(VSelect, {
+      function renderSortSelect() {
+        return _createVNode$10(VSelect, {
           "modelValue": sortingChips.value,
           "onUpdate:modelValue": $event => sortingChips.value = $event,
           "chips": true,
@@ -21771,13 +21861,6 @@ const VDataTableHeaders = genericComponent()({
           "returnObject": true,
           "onClick:clear": () => sortBy.value = []
         }, {
-          append: showSelectColumn ? () => _createVNode$10(VCheckboxBtn, {
-            "color": props.color,
-            "density": "compact",
-            "modelValue": allSelected.value,
-            "indeterminate": someSelected.value && !allSelected.value,
-            "onUpdate:modelValue": () => selectAll(!allSelected.value)
-          }, null) : undefined,
           chip: _ref6 => {
             let {
               item
@@ -21796,11 +21879,37 @@ const VDataTableHeaders = genericComponent()({
               }, null)]
             });
           }
-        })])]
+        });
+      }
+      function renderSelectAll() {
+        return _createVNode$10(VCheckboxBtn, {
+          "aria-label": t(props.selectAllLabel),
+          "class": "v-data-table-header__select-all",
+          "color": props.color,
+          "density": "compact",
+          "modelValue": allSelected.value,
+          "indeterminate": someSelected.value && !allSelected.value,
+          "onUpdate:modelValue": () => selectAll(!allSelected.value)
+        }, null);
+      }
+      return _createVNode$10(VDataTableColumn, _mergeProps$B({
+        "tag": "th",
+        "class": [...headerCellClasses.value],
+        "colspan": headers.value.length + 1
+      }, props.headerProps), {
+        default: () => [_createElementVNode$R("div", {
+          "class": "v-data-table-header__content"
+        }, [slots['mobile.header']?.(slotProps.value) ?? _createElementVNode$R(_Fragment$r, null, [sortableColumns.value.length > 0 && renderSortSelect(), showSelectColumn && renderSelectAll()])])]
       });
     };
+    const showMobileHeader = computed$U(() => {
+      if (slots['mobile.header']) return true;
+      const hasSortableColumns = columns.value.some(column => column?.sortable && !props.disableSort);
+      const hasSelectionControl = columns.value.some(column => column.key === 'data-table-select');
+      return hasSortableColumns || hasSelectionControl;
+    });
     useRender(() => {
-      return mobile.value ? _createElementVNode$R("tr", null, [_createVNode$10(VDataTableMobileHeaderCell, null, null)]) : _createElementVNode$R(_Fragment$r, null, [slots.headers ? slots.headers(slotProps.value) : headers.value.map((row, y) => _createElementVNode$R("tr", null, [row.map((column, x) => _createVNode$10(VDataTableHeaderCell, {
+      return mobile.value ? _createElementVNode$R(_Fragment$r, null, [showMobileHeader.value && _createElementVNode$R("tr", null, [_createVNode$10(VDataTableMobileHeaderCell, null, null)])]) : _createElementVNode$R(_Fragment$r, null, [slots.headers ? slots.headers(slotProps.value) : headers.value.map((row, y) => _createElementVNode$R("tr", null, [row.map((column, x) => _createVNode$10(VDataTableHeaderCell, {
         "column": column,
         "x": x,
         "y": y
@@ -21836,6 +21945,10 @@ const makeVDataTableGroupHeaderRowProps = propsFactory({
     type: IconValue,
     default: '$tableGroupExpand'
   },
+  selectGroupLabel: {
+    type: String,
+    default: '$vuetify.dataTable.ariaLabel.selectGroup'
+  },
   ...makeDensityProps()
 }, 'VDataTableGroupHeaderRow');
 const VDataTableGroupHeaderRow = genericComponent()({
@@ -21845,6 +21958,9 @@ const VDataTableGroupHeaderRow = genericComponent()({
     let {
       slots
     } = _ref;
+    const {
+      t
+    } = useLocale();
     const {
       isGroupOpen,
       toggleGroup,
@@ -21905,6 +22021,7 @@ const VDataTableGroupHeaderRow = genericComponent()({
           "noPadding": true
         }, {
           default: () => [_createVNode$$(VCheckboxBtn, {
+            "aria-label": t(props.selectGroupLabel),
             "density": props.density,
             "disabled": selectableRows.length === 0,
             "modelValue": modelValue,
@@ -21933,6 +22050,10 @@ const makeVDataTableRowProps = propsFactory({
     type: IconValue,
     default: '$expand'
   },
+  selectRowLabel: {
+    type: String,
+    default: '$vuetify.dataTable.ariaLabel.selectRow'
+  },
   onClick: EventProp(),
   onContextmenu: EventProp(),
   onDblclick: EventProp(),
@@ -21946,6 +22067,9 @@ const VDataTableRow = genericComponent()({
     let {
       slots
     } = _ref;
+    const {
+      t
+    } = useLocale();
     const {
       displayClasses,
       mobile
@@ -22045,6 +22169,7 @@ const VDataTableRow = genericComponent()({
                 onClick: withModifiers(() => toggleSelect(item), ['stop'])
               }
             }) ?? _createVNode$_(VCheckboxBtn, {
+              "aria-label": t(props.selectRowLabel),
               "color": props.color,
               "disabled": !item.selectable,
               "density": props.density,
@@ -23016,7 +23141,7 @@ const VContainer = genericComponent()({
 
 const VGrid = '';
 
-const {capitalize: capitalize$1,computed: computed$O,h: h$2} = await importShared('vue');
+const {capitalize: capitalize$1,computed: computed$O,h: h$3} = await importShared('vue');
 const breakpointProps = (() => {
   return breakpoints.reduce((props, val) => {
     props[val] = {
@@ -23129,14 +23254,14 @@ const VCol = genericComponent()({
       });
       return classList;
     });
-    return () => h$2(props.tag, {
+    return () => h$3(props.tag, {
       class: [classes.value, props.class],
       style: props.style
     }, slots.default?.());
   }
 });
 
-const {capitalize,computed: computed$N,h: h$1} = await importShared('vue');
+const {capitalize,computed: computed$N,h: h$2} = await importShared('vue');
 const ALIGNMENT = ['start', 'end', 'center'];
 const SPACE = ['space-between', 'space-around', 'space-evenly'];
 function makeRowProps(prefix, def) {
@@ -23243,7 +23368,7 @@ const VRow = genericComponent()({
       });
       return classList;
     });
-    return () => h$1(props.tag, {
+    return () => h$2(props.tag, {
       class: ['v-row', classes.value, props.class],
       style: props.style
     }, slots.default?.());
@@ -23733,7 +23858,7 @@ function useCalendarRange(props) {
 }
 
 const {createVNode:_createVNode$R,createElementVNode:_createElementVNode$H,createTextVNode:_createTextVNode$4,normalizeClass:_normalizeClass$A} = await importShared('vue');
-const {computed: computed$K,ref: ref$s,shallowRef: shallowRef$h,toRef: toRef$j,watch: watch$g} = await importShared('vue');
+const {computed: computed$K,ref: ref$t,shallowRef: shallowRef$h,toRef: toRef$j,watch: watch$g} = await importShared('vue');
 const makeVDatePickerMonthProps = propsFactory({
   color: String,
   hideWeekdays: Boolean,
@@ -23771,7 +23896,7 @@ const VDatePickerMonth = genericComponent()({
       emit,
       slots
     } = _ref;
-    const daysRef = ref$s();
+    const daysRef = ref$t();
     const {
       t
     } = useLocale();
@@ -24950,7 +25075,7 @@ const VExpansionPanels = genericComponent()({
 const VFab$1 = '';
 
 const {vShow:_vShow,mergeProps:_mergeProps$s,createVNode:_createVNode$I,withDirectives:_withDirectives$3,createElementVNode:_createElementVNode$z,normalizeClass:_normalizeClass$u,normalizeStyle:_normalizeStyle$o} = await importShared('vue');
-const {computed: computed$E,ref: ref$r,shallowRef: shallowRef$e,toRef: toRef$e,watchEffect: watchEffect$6} = await importShared('vue');
+const {computed: computed$E,ref: ref$s,shallowRef: shallowRef$e,toRef: toRef$e,watchEffect: watchEffect$6} = await importShared('vue');
 const makeVFabProps = propsFactory({
   app: Boolean,
   appear: Boolean,
@@ -24982,7 +25107,7 @@ const VFab = genericComponent()({
     } = _ref;
     const model = useProxiedModel(props, 'modelValue');
     const height = shallowRef$e(56);
-    const layoutItemStyles = ref$r();
+    const layoutItemStyles = ref$s();
     const {
       resizeRef
     } = useResizeObserver(entries => {
@@ -25012,7 +25137,7 @@ const VFab = genericComponent()({
         layoutItemStyles.value = layout.layoutItemStyles.value;
       });
     });
-    const vFabRef = ref$r();
+    const vFabRef = ref$s();
     useRender(() => {
       const btnProps = VBtn.filterProps(props);
       return _createElementVNode$z("div", {
@@ -25138,7 +25263,7 @@ function createFilter(v) {
 }
 
 const {Fragment:_Fragment$j,mergeProps:_mergeProps$r,createElementVNode:_createElementVNode$y,createVNode:_createVNode$H,normalizeClass:_normalizeClass$t} = await importShared('vue');
-const {computed: computed$C,nextTick: nextTick$a,ref: ref$q,shallowRef: shallowRef$d,toRef: toRef$d,watch: watch$e} = await importShared('vue');
+const {computed: computed$C,nextTick: nextTick$a,ref: ref$r,shallowRef: shallowRef$d,toRef: toRef$d,watch: watch$e} = await importShared('vue');
 const makeVFileInputProps = propsFactory({
   chips: Boolean,
   counter: Boolean,
@@ -25227,9 +25352,9 @@ const VFileInput = genericComponent()({
       const fileCount = model.value?.length ?? 0;
       if (props.showSize) return t(props.counterSizeString, fileCount, totalBytesReadable.value);else return t(props.counterString, fileCount);
     });
-    const vInputRef = ref$q();
-    const vFieldRef = ref$q();
-    const inputRef = ref$q();
+    const vInputRef = ref$r();
+    const vFieldRef = ref$r();
+    const inputRef = ref$r();
     const isActive = toRef$d(() => isFocused.value || props.active);
     const isPlainOrUnderlined = computed$C(() => ['plain', 'underlined'].includes(props.variant));
     const isDragging = shallowRef$d(false);
@@ -25321,7 +25446,7 @@ const VFileInput = genericComponent()({
     });
     useRender(() => {
       const hasCounter = !!(slots.counter || props.counter);
-      const hasDetails = !!(hasCounter || slots.details);
+      const hasDetails = props.hideDetails !== true && !!(slots.details || hasCounter && (props.hideDetails === false || model.value?.length));
       const [rootAttrs, inputAttrs] = filterInputAttrs(attrs);
       const {
         modelValue: _,
@@ -25431,7 +25556,7 @@ const VFileInput = genericComponent()({
 const VFooter$1 = '';
 
 const {normalizeClass:_normalizeClass$s,normalizeStyle:_normalizeStyle$n,createVNode:_createVNode$G} = await importShared('vue');
-const {computed: computed$B,ref: ref$p,shallowRef: shallowRef$c,toRef: toRef$c,watchEffect: watchEffect$5} = await importShared('vue');
+const {computed: computed$B,ref: ref$q,shallowRef: shallowRef$c,toRef: toRef$c,watchEffect: watchEffect$5} = await importShared('vue');
 const makeVFooterProps = propsFactory({
   app: Boolean,
   color: String,
@@ -25456,7 +25581,7 @@ const VFooter = genericComponent()({
     let {
       slots
     } = _ref;
-    const layoutItemStyles = ref$p();
+    const layoutItemStyles = ref$q();
     const {
       themeClasses
     } = provideTheme(props);
@@ -25507,7 +25632,7 @@ const VFooter = genericComponent()({
 });
 
 const {normalizeClass:_normalizeClass$r,normalizeStyle:_normalizeStyle$m,createElementVNode:_createElementVNode$x} = await importShared('vue');
-const {ref: ref$o} = await importShared('vue');
+const {ref: ref$p} = await importShared('vue');
 const makeVFormProps = propsFactory({
   ...makeComponentProps(),
   ...makeFormProps()
@@ -25525,7 +25650,7 @@ const VForm = genericComponent()({
       emit
     } = _ref;
     const form = createForm(props);
-    const formRef = ref$o();
+    const formRef = ref$p();
     function onReset(e) {
       e.preventDefault();
       form.reset();
@@ -25999,7 +26124,7 @@ const VHover = genericComponent()({
 const VInfiniteScroll$1 = '';
 
 const {createTextVNode:_createTextVNode$2,createElementVNode:_createElementVNode$v,createVNode:_createVNode$D,normalizeClass:_normalizeClass$o,normalizeStyle:_normalizeStyle$j} = await importShared('vue');
-const {computed: computed$z,nextTick: nextTick$9,onMounted: onMounted$6,ref: ref$n,shallowRef: shallowRef$b,watch: watch$d} = await importShared('vue');
+const {computed: computed$z,nextTick: nextTick$9,onMounted: onMounted$6,ref: ref$o,shallowRef: shallowRef$b,watch: watch$d} = await importShared('vue');
 const makeVInfiniteScrollProps = propsFactory({
   color: String,
   direction: {
@@ -26073,7 +26198,7 @@ const VInfiniteScroll = genericComponent()({
       slots,
       emit
     } = _ref2;
-    const rootEl = ref$n();
+    const rootEl = ref$o();
     const startStatus = shallowRef$b('ok');
     const endStatus = shallowRef$b('ok');
     const margin = computed$z(() => convertToUnit(props.margin));
@@ -26863,7 +26988,7 @@ function oops() {
 }
 
 const {Fragment:_Fragment$h,createVNode:_createVNode$z,createElementVNode:_createElementVNode$q,mergeProps:_mergeProps$q} = await importShared('vue');
-const {computed: computed$v,nextTick: nextTick$8,readonly,ref: ref$m,shallowRef: shallowRef$8,toRef: toRef$a,Transition,watch: watch$b} = await importShared('vue');
+const {computed: computed$v,nextTick: nextTick$8,readonly,ref: ref$n,shallowRef: shallowRef$8,toRef: toRef$a,Transition,watch: watch$b} = await importShared('vue');
 const locations = ['start', 'end', 'left', 'right', 'top', 'bottom'];
 const makeVNavigationDrawerProps = propsFactory({
   color: String,
@@ -26961,7 +27086,7 @@ const VNavigationDrawer = genericComponent()({
     const {
       scopeId
     } = useScopeId();
-    const rootEl = ref$m();
+    const rootEl = ref$n();
     const isHovering = shallowRef$8(false);
     const {
       runOpenDelay,
@@ -27168,7 +27293,7 @@ function useHold(_ref) {
 }
 
 const {createVNode:_createVNode$y,createElementVNode:_createElementVNode$p,Fragment:_Fragment$g,mergeProps:_mergeProps$p} = await importShared('vue');
-const {computed: computed$u,nextTick: nextTick$7,onMounted: onMounted$3,ref: ref$l,shallowRef: shallowRef$7,toRef: toRef$9,watch: watch$a} = await importShared('vue');
+const {computed: computed$u,nextTick: nextTick$7,onMounted: onMounted$3,ref: ref$m,shallowRef: shallowRef$7,toRef: toRef$9,watch: watch$a} = await importShared('vue');
 const makeVNumberInputProps = propsFactory({
   controlVariant: {
     type: String,
@@ -27219,7 +27344,7 @@ const VNumberInput = genericComponent()({
     let {
       slots
     } = _ref;
-    const vTextFieldRef = ref$l();
+    const vTextFieldRef = ref$m();
     const {
       holdStart,
       holdStop
@@ -27585,7 +27710,7 @@ const VNumberInput = genericComponent()({
 const VOtpInput$1 = '';
 
 const {Fragment:_Fragment$f,createElementVNode:_createElementVNode$o,normalizeClass:_normalizeClass$h,createVNode:_createVNode$x,mergeProps:_mergeProps$o,normalizeStyle:_normalizeStyle$c} = await importShared('vue');
-const {computed: computed$t,effectScope,nextTick: nextTick$6,ref: ref$k,toRef: toRef$8,watch: watch$9,watchEffect: watchEffect$3} = await importShared('vue');
+const {computed: computed$t,effectScope,nextTick: nextTick$6,ref: ref$l,toRef: toRef$8,watch: watch$9,watchEffect: watchEffect$3} = await importShared('vue');
 // Types
 const makeVOtpInputProps = propsFactory({
   autofocus: Boolean,
@@ -27647,9 +27772,9 @@ const VOtpInput = genericComponent()({
     } = useLocale();
     const length = computed$t(() => Number(props.length));
     const fields = computed$t(() => Array(length.value).fill(0));
-    const focusIndex = ref$k(-1);
-    const contentRef = ref$k();
-    const inputRef = ref$k([]);
+    const focusIndex = ref$l(-1);
+    const contentRef = ref$l();
+    const inputRef = ref$l([]);
     const current = computed$t(() => inputRef.value[focusIndex.value]);
     let _isComposing = false;
     useToggleScope(() => props.autofocus, () => {
@@ -27846,7 +27971,7 @@ const VOtpInput = genericComponent()({
 const VParallax$1 = '';
 
 const {normalizeClass:_normalizeClass$g,normalizeStyle:_normalizeStyle$b,createVNode:_createVNode$w} = await importShared('vue');
-const {computed: computed$s,onBeforeUnmount: onBeforeUnmount$1,ref: ref$j,watch: watch$8,watchEffect: watchEffect$2} = await importShared('vue');
+const {computed: computed$s,onBeforeUnmount: onBeforeUnmount$1,ref: ref$k,watch: watch$8,watchEffect: watchEffect$2} = await importShared('vue');
 function floor(val) {
   return Math.floor(Math.abs(val)) * Math.sign(val);
 }
@@ -27875,7 +28000,7 @@ const VParallax = genericComponent()({
     const {
       height: displayHeight
     } = useDisplay();
-    const root = ref$j();
+    const root = ref$k();
     watchEffect$2(() => {
       intersectionRef.value = resizeRef.value = root.value?.$el;
     });
@@ -27960,7 +28085,7 @@ const VRadio = genericComponent()({
 const VRadioGroup$1 = '';
 
 const {Fragment:_Fragment$e,createVNode:_createVNode$u,mergeProps:_mergeProps$m,createElementVNode:_createElementVNode$n} = await importShared('vue');
-const {computed: computed$r,ref: ref$i,useId: useId$5} = await importShared('vue');
+const {computed: computed$r,ref: ref$j,useId: useId$5} = await importShared('vue');
 const makeVRadioGroupProps = propsFactory({
   height: {
     type: [Number, String],
@@ -27996,7 +28121,7 @@ const VRadioGroup = genericComponent()({
     const uid = useId$5();
     const id = computed$r(() => props.id || `radio-group-${uid}`);
     const model = useProxiedModel(props, 'modelValue');
-    const inputRef = ref$i();
+    const inputRef = ref$j();
     useRender(() => {
       const [rootAttrs, controlAttrs] = filterInputAttrs(attrs);
       const inputProps = VInput.filterProps(props);
@@ -28051,7 +28176,7 @@ const VRadioGroup = genericComponent()({
 });
 
 const {Fragment:_Fragment$d,createVNode:_createVNode$t,createElementVNode:_createElementVNode$m,mergeProps:_mergeProps$l} = await importShared('vue');
-const {computed: computed$q,ref: ref$h} = await importShared('vue');
+const {computed: computed$q,ref: ref$i} = await importShared('vue');
 const makeVRangeSliderProps = propsFactory({
   ...makeFocusProps(),
   ...makeVInputProps(),
@@ -28078,9 +28203,9 @@ const VRangeSlider = genericComponent()({
       emit,
       attrs
     } = _ref;
-    const startThumbRef = ref$h();
-    const stopThumbRef = ref$h();
-    const inputRef = ref$h();
+    const startThumbRef = ref$i();
+    const stopThumbRef = ref$i();
+    const inputRef = ref$i();
     const {
       rtlClasses
     } = useRtl();
@@ -28282,7 +28407,7 @@ const VRangeSlider = genericComponent()({
 const VRating$1 = '';
 
 const {Fragment:_Fragment$c,createElementVNode:_createElementVNode$l,mergeProps:_mergeProps$k,createVNode:_createVNode$s,normalizeClass:_normalizeClass$f,createTextVNode:_createTextVNode$1,normalizeStyle:_normalizeStyle$a} = await importShared('vue');
-const {computed: computed$p,nextTick: nextTick$5,ref: ref$g,shallowRef: shallowRef$6,useId: useId$4} = await importShared('vue');
+const {computed: computed$p,nextTick: nextTick$5,ref: ref$h,shallowRef: shallowRef$6,useId: useId$4} = await importShared('vue');
 const makeVRatingProps = propsFactory({
   name: String,
   itemAriaLabel: {
@@ -28341,7 +28466,7 @@ const VRating = genericComponent()({
     const {
       themeClasses
     } = provideTheme(props);
-    const root = ref$g();
+    const root = ref$h();
     const rating = useProxiedModel(props, 'modelValue');
     const normalizedValue = computed$p(() => clamp(parseFloat(rating.value), 0, Number(props.length)));
     const range = computed$p(() => createRange(Number(props.length), 1));
@@ -28517,6 +28642,7 @@ const rootTypes = {
   card: 'image, heading',
   'card-avatar': 'image, list-item-avatar',
   chip: 'chip',
+  'chip-group': 'chip@8',
   'date-picker': 'list-item, heading, divider, date-picker-options, date-picker-days, actions',
   'date-picker-options': 'text, avatar@2',
   'date-picker-days': 'avatar@28',
@@ -28534,11 +28660,12 @@ const rootTypes = {
   sentences: 'text@2',
   subtitle: 'text',
   table: 'table-heading, table-thead, table-tbody, table-tfoot',
-  'table-heading': 'chip, text',
+  'table-heading': 'heading, text',
   'table-thead': 'heading@6',
   'table-tbody': 'table-row-divider@6',
   'table-row-divider': 'table-row, divider',
-  'table-row': 'text@6',
+  'table-row': 'table-cell@6',
+  'table-cell': 'text',
   'table-tfoot': 'text@2, avatar@2',
   text: 'text'
 };
@@ -28548,7 +28675,7 @@ function genBone(type) {
     "class": _normalizeClass$e(['v-skeleton-loader__bone', `v-skeleton-loader__${type}`])
   }, [children]);
 }
-function genBones(bone) {
+function genBones(bone, types) {
   // e.g. 'text@3'
   const [type, length] = bone.split('@');
 
@@ -28556,33 +28683,37 @@ function genBones(bone) {
   // value after @ in the bone string
   return Array.from({
     length
-  }).map(() => genStructure(type));
+  }).map(() => genStructure(type, types));
 }
-function genStructure(type) {
-  let children = [];
-  if (!type) return children;
+function genStructure(type, types) {
+  if (!type) return [];
 
-  // TODO: figure out a better way to type this
-  const bone = rootTypes[type];
+  // Array of values - e.g. 'heading, paragraph, text@2'
+  if (type.includes(',')) return mapBones(type, types);
+  // Array of values - e.g. 'paragraph@4'
+  if (type.includes('@')) return genBones(type, types);
+  // Must stay below the ',' and '@' branches - neither is ever a key
+  if (!(type in types)) {
+    consoleWarn(`Unknown skeleton type "${type}", register it with the types prop`);
+    return [genBone(type)];
+  }
+  const bone = types[type];
+  let children = [];
 
   // End of recursion, do nothing
   /* eslint-disable-next-line no-empty, brace-style */
   if (type === bone) ;
-  // Array of values - e.g. 'heading, paragraph, text@2'
-  else if (type.includes(',')) return mapBones(type);
-  // Array of values - e.g. 'paragraph@4'
-  else if (type.includes('@')) return genBones(type);
   // Array of values - e.g. 'card@2'
-  else if (bone.includes(',')) children = mapBones(bone);
+  else if (bone.includes(',')) children = mapBones(bone, types);
   // Array of values - e.g. 'list-item@2'
-  else if (bone.includes('@')) children = genBones(bone);
+  else if (bone.includes('@')) children = genBones(bone, types);
   // Single value - e.g. 'card-heading'
-  else if (bone) children.push(genStructure(bone));
+  else children.push(genStructure(bone, types));
   return [genBone(type, children)];
 }
-function mapBones(bones) {
+function mapBones(bones, types) {
   // Remove spaces and return array of structures
-  return bones.replace(/\s/g, '').split(',').map(genStructure);
+  return bones.replace(/\s/g, '').split(',').map(bone => genStructure(bone, types));
 }
 const makeVSkeletonLoaderProps = propsFactory({
   boilerplate: Boolean,
@@ -28596,6 +28727,7 @@ const makeVSkeletonLoaderProps = propsFactory({
     type: [String, Array],
     default: 'ossein'
   },
+  types: Object,
   ...makeDimensionProps(),
   ...makeElevationProps(),
   ...makeThemeProps()
@@ -28625,7 +28757,10 @@ const VSkeletonLoader = genericComponent()({
     const {
       t
     } = useLocale();
-    const items = computed$o(() => genStructure(wrapInArray(props.type).join(',')));
+    const items = computed$o(() => genStructure(wrapInArray(props.type).join(','), {
+      ...rootTypes,
+      ...props.types
+    }));
     useRender(() => {
       const isLoading = !slots.default || props.loading;
       const loadingProps = props.boilerplate || !isLoading ? {} : {
@@ -28668,7 +28803,7 @@ const VSlideGroupItem = genericComponent()({
 const VSnackbar$1 = '';
 
 const {createVNode:_createVNode$r,createElementVNode:_createElementVNode$j,mergeProps:_mergeProps$i} = await importShared('vue');
-const {computed: computed$n,inject: inject$3,mergeProps: mergeProps$2,nextTick: nextTick$4,onMounted: onMounted$2,onScopeDispose: onScopeDispose$1,ref: ref$f,shallowRef: shallowRef$5,watch: watch$7,watchEffect: watchEffect$1} = await importShared('vue');
+const {computed: computed$n,inject: inject$3,mergeProps: mergeProps$2,nextTick: nextTick$4,onMounted: onMounted$2,onScopeDispose: onScopeDispose$1,ref: ref$g,shallowRef: shallowRef$5,watch: watch$7,watchEffect: watchEffect$1} = await importShared('vue');
 function useCountdown(milliseconds) {
   const time = shallowRef$5(milliseconds());
   let timer = -1;
@@ -28751,11 +28886,11 @@ const VSnackbar = genericComponent()({
       roundedClasses
     } = useRounded(props);
     const countdown = useCountdown(() => Number(props.timeout));
-    const overlay = ref$f();
-    const timerRef = ref$f();
+    const overlay = ref$g();
+    const timerRef = ref$g();
     const isHovering = shallowRef$5(false);
     const startY = shallowRef$5(0);
-    const mainStyles = ref$f();
+    const mainStyles = ref$g();
     const hasLayout = inject$3(VuetifyLayoutKey, undefined);
     useToggleScope(() => !!hasLayout, () => {
       const layout = useLayout();
@@ -29235,7 +29370,7 @@ function moveTo(to, from, radius) {
 }
 
 // Utilities
-const {computed: computed$k,nextTick: nextTick$2,ref: ref$e,useId: useId$2,watch: watch$5,createElementVNode:_createElementVNode$g} = await importShared('vue');
+const {computed: computed$k,nextTick: nextTick$2,ref: ref$f,useId: useId$2,watch: watch$5,createElementVNode:_createElementVNode$g} = await importShared('vue');
 const makeVTrendlineProps = propsFactory({
   fill: Boolean,
   ...makeLineProps()
@@ -29250,8 +29385,8 @@ const VTrendline = genericComponent()({
     const uid = useId$2();
     const id = computed$k(() => props.id || `trendline-${uid}`);
     const autoDrawDuration = computed$k(() => Number(props.autoDrawDuration) || (props.fill ? 500 : 2000));
-    const lastLength = ref$e(0);
-    const path = ref$e(null);
+    const lastLength = ref$f(0);
+    const path = ref$f(null);
     function genPoints(values, boundary) {
       const {
         minX,
@@ -29432,7 +29567,7 @@ const VSparkline = genericComponent()({
 const VSpeedDial$1 = '';
 
 const {createVNode:_createVNode$o,mergeProps:_mergeProps$f} = await importShared('vue');
-const {computed: computed$i,ref: ref$d} = await importShared('vue');
+const {computed: computed$i,ref: ref$e} = await importShared('vue');
 const makeVSpeedDialProps = propsFactory({
   ...makeComponentProps(),
   ...makeVMenuProps({
@@ -29455,7 +29590,7 @@ const VSpeedDial = genericComponent()({
       slots
     } = _ref;
     const model = useProxiedModel(props, 'modelValue');
-    const menuRef = ref$d();
+    const menuRef = ref$e();
     const location = computed$i(() => {
       const [y, x = 'center'] = props.location?.split(' ') ?? [];
       return `${y} ${x}`;
@@ -29936,7 +30071,7 @@ const VStepper = genericComponent()({
 const VSwitch$1 = '';
 
 const {createElementVNode:_createElementVNode$c,normalizeClass:_normalizeClass$c,normalizeStyle:_normalizeStyle$9,Fragment:_Fragment$7,createVNode:_createVNode$i,mergeProps:_mergeProps$b} = await importShared('vue');
-const {ref: ref$c,toRef: toRef$7,useId: useId$1} = await importShared('vue');
+const {ref: ref$d,toRef: toRef$7,useId: useId$1} = await importShared('vue');
 const makeVSwitchProps = propsFactory({
   indeterminate: Boolean,
   inset: Boolean,
@@ -29972,8 +30107,8 @@ const VSwitch = genericComponent()({
       focus,
       blur
     } = useFocus(props);
-    const control = ref$c();
-    const inputRef = ref$c();
+    const control = ref$d();
+    const inputRef = ref$d();
     const isForcedColorsModeActive = SUPPORTS_MATCH_MEDIA && window.matchMedia('(forced-colors: active)').matches;
     const loaderColor = toRef$7(() => {
       return typeof props.loading === 'string' && props.loading !== '' ? props.loading : props.color;
@@ -30174,7 +30309,7 @@ const VTab$1 = '';
 const VTabsSymbol = Symbol.for('vuetify:v-tabs');
 
 const {Fragment:_Fragment$6,normalizeClass:_normalizeClass$a,normalizeStyle:_normalizeStyle$7,createElementVNode:_createElementVNode$b,mergeProps:_mergeProps$a,createVNode:_createVNode$g} = await importShared('vue');
-const {computed: computed$d,ref: ref$b} = await importShared('vue');
+const {computed: computed$d,ref: ref$c} = await importShared('vue');
 const makeVTabProps = propsFactory({
   fixed: Boolean,
   sliderColor: String,
@@ -30207,8 +30342,8 @@ const VTab = genericComponent()({
       backgroundColorClasses: insetColorClasses,
       backgroundColorStyles: insetColorStyles
     } = useBackgroundColor(() => props.sliderColor);
-    const rootEl = ref$b();
-    const sliderEl = ref$b();
+    const rootEl = ref$c();
+    const sliderEl = ref$c();
     const isHorizontal = computed$d(() => props.direction === 'horizontal');
     const isSelected = computed$d(() => rootEl.value?.group?.isSelected.value ?? false);
     function fade(nextEl, prevEl) {
@@ -30510,7 +30645,7 @@ const VTabs = genericComponent()({
 const VTextarea$1 = '';
 
 const {Fragment:_Fragment$4,createElementVNode:_createElementVNode$9,mergeProps:_mergeProps$6,withDirectives:_withDirectives,vModelText:_vModelText,normalizeClass:_normalizeClass$9,createVNode:_createVNode$c} = await importShared('vue');
-const {computed: computed$a,nextTick: nextTick$1,onBeforeUnmount,onMounted: onMounted$1,ref: ref$a,shallowRef: shallowRef$2,watch: watch$4,watchEffect} = await importShared('vue');
+const {computed: computed$a,nextTick: nextTick$1,onBeforeUnmount,onMounted: onMounted$1,ref: ref$b,shallowRef: shallowRef$2,watch: watch$4,watchEffect} = await importShared('vue');
 const makeVTextareaProps = propsFactory({
   autoGrow: Boolean,
   autofocus: Boolean,
@@ -30577,11 +30712,11 @@ const VTextarea = genericComponent()({
       if (!props.counter || typeof props.counter !== 'number' && typeof props.counter !== 'string') return undefined;
       return props.counter;
     });
-    const vInputRef = ref$a();
-    const vFieldRef = ref$a();
+    const vInputRef = ref$b();
+    const vFieldRef = ref$b();
     const controlHeight = shallowRef$2('');
-    const textareaRef = ref$a();
-    const scrollbarWidth = ref$a(0);
+    const textareaRef = ref$b();
+    const scrollbarWidth = ref$b(0);
     const {
       platform
     } = useDisplay();
@@ -30632,8 +30767,8 @@ const VTextarea = genericComponent()({
         if (end != null) el.selectionEnd = end - offset;
       });
     }
-    const sizerRef = ref$a();
-    const rows = ref$a(Number(props.rows));
+    const sizerRef = ref$b();
+    const rows = ref$b(Number(props.rows));
     const isPlainOrUnderlined = computed$a(() => ['plain', 'underlined'].includes(props.variant));
     watchEffect(() => {
       if (!props.autoGrow) rows.value = Number(props.rows);
@@ -30689,7 +30824,7 @@ const VTextarea = genericComponent()({
     });
     useRender(() => {
       const hasCounter = !!(slots.counter || props.counter || props.counterValue);
-      const hasDetails = !!(hasCounter || slots.details);
+      const hasDetails = props.hideDetails !== true && !!(slots.details || hasCounter && (props.persistentCounter || props.hideDetails === false || isFocused.value));
       const [rootAttrs, inputAttrs] = filterInputAttrs(attrs);
       const {
         modelValue: _,
@@ -30915,7 +31050,7 @@ const VTimelineDivider = genericComponent()({
 });
 
 const {normalizeStyle:_normalizeStyle$4,createElementVNode:_createElementVNode$7,createVNode:_createVNode$9,normalizeClass:_normalizeClass$6} = await importShared('vue');
-const {ref: ref$9,shallowRef: shallowRef$1,watch: watch$3} = await importShared('vue');
+const {ref: ref$a,shallowRef: shallowRef$1,watch: watch$3} = await importShared('vue');
 // Types
 const makeVTimelineItemProps = propsFactory({
   density: String,
@@ -30951,7 +31086,7 @@ const VTimelineItem = genericComponent()({
       dimensionStyles
     } = useDimension(props);
     const dotSize = shallowRef$1(0);
-    const dotRef = ref$9();
+    const dotRef = ref$a();
     watch$3(dotRef, newValue => {
       if (!newValue) return;
       dotSize.value = newValue.$el.querySelector('.v-timeline-divider__dot')?.getBoundingClientRect().width ?? 0;
@@ -31094,7 +31229,7 @@ const VTimePicker$1 = '';
 const VTimePickerClock$1 = '';
 
 const {normalizeClass:_normalizeClass$4,normalizeStyle:_normalizeStyle$2,createElementVNode:_createElementVNode$6} = await importShared('vue');
-const {computed: computed$8,onScopeDispose,ref: ref$8,watch: watch$2} = await importShared('vue');
+const {computed: computed$8,onScopeDispose,ref: ref$9,watch: watch$2} = await importShared('vue');
 const makeVTimePickerClockProps = propsFactory({
   allowedValues: Function,
   ampm: Boolean,
@@ -31139,12 +31274,12 @@ const VTimePickerClock = genericComponent()({
     let {
       emit
     } = _ref;
-    const clockRef = ref$8(null);
-    const innerClockRef = ref$8(null);
-    const inputValue = ref$8(undefined);
-    const isDragging = ref$8(false);
-    const valueOnMouseDown = ref$8(null);
-    const valueOnMouseUp = ref$8(null);
+    const clockRef = ref$9(null);
+    const innerClockRef = ref$9(null);
+    const inputValue = ref$9(undefined);
+    const isDragging = ref$9(false);
+    const valueOnMouseDown = ref$9(null);
+    const valueOnMouseUp = ref$9(null);
     const emitChangeDebounced = debounce(value => emit('change', value), 750);
     const {
       textColorClasses,
@@ -31342,7 +31477,7 @@ const VTimePickerClock = genericComponent()({
 const VTimePickerControls$1 = '';
 
 const {normalizeClass:_normalizeClass$3,normalizeStyle:_normalizeStyle$1,createVNode:_createVNode$7} = await importShared('vue');
-const {ref: ref$7,shallowRef} = await importShared('vue');
+const {ref: ref$8,shallowRef} = await importShared('vue');
 const makeVTimePickerFieldProps = propsFactory({
   active: Boolean,
   color: String,
@@ -31367,7 +31502,7 @@ const VTimePickerField = genericComponent()({
       textColorClasses,
       textColorStyles
     } = useTextColor(() => props.color);
-    const vTextInputRef = ref$7();
+    const vTextInputRef = ref$8();
     const isFocused = shallowRef(false);
     function onKeydown(e) {
       if (['Backspace', 'Delete'].includes(e.key)) {
@@ -31544,7 +31679,7 @@ function useTimeValidation(props) {
 }
 
 const {createVNode:_createVNode$6,createTextVNode:_createTextVNode,createElementVNode:_createElementVNode$5,Fragment:_Fragment$3,normalizeClass:_normalizeClass$2} = await importShared('vue');
-const {computed: computed$6,nextTick,ref: ref$6,watch: watch$1} = await importShared('vue');
+const {computed: computed$6,nextTick,ref: ref$7,watch: watch$1} = await importShared('vue');
 const makeVTimePickerControlsProps = propsFactory({
   ampm: Boolean,
   color: String,
@@ -31702,9 +31837,9 @@ const VTimePickerControls = genericComponent()({
     function setPeriod(val) {
       emit('update:period', val);
     }
-    const hourInputRef = ref$6();
-    const minuteInputRef = ref$6();
-    const secondInputRef = ref$6();
+    const hourInputRef = ref$7();
+    const minuteInputRef = ref$7();
+    const secondInputRef = ref$7();
     watch$1(() => props.viewMode, (_, old) => {
       switch (old) {
         case 'hour':
@@ -31808,7 +31943,7 @@ const VTimePickerControls = genericComponent()({
 });
 
 const {createElementVNode:_createElementVNode$4,mergeProps:_mergeProps$5,createVNode:_createVNode$5} = await importShared('vue');
-const {computed: computed$5,onMounted,ref: ref$5,toRef: toRef$3,watch} = await importShared('vue');
+const {computed: computed$5,onMounted,ref: ref$6,toRef: toRef$3,watch} = await importShared('vue');
 const makeVTimePickerProps = propsFactory({
   disabled: Boolean,
   format: {
@@ -31860,16 +31995,16 @@ const VTimePicker = genericComponent()({
     const {
       densityClasses
     } = useDensity(props);
-    const inputHour = ref$5(null);
-    const inputMinute = ref$5(null);
-    const inputSecond = ref$5(null);
-    const lazyInputHour = ref$5(null);
-    const lazyInputMinute = ref$5(null);
-    const lazyInputSecond = ref$5(null);
+    const inputHour = ref$6(null);
+    const inputMinute = ref$6(null);
+    const inputSecond = ref$6(null);
+    const lazyInputHour = ref$6(null);
+    const lazyInputMinute = ref$6(null);
+    const lazyInputSecond = ref$6(null);
     const period = useProxiedModel(props, 'period', 'am');
     const viewMode = useProxiedModel(props, 'viewMode', 'hour');
-    const controlsRef = ref$5(null);
-    const clockRef = ref$5(null);
+    const controlsRef = ref$6(null);
+    const clockRef = ref$6(null);
     const isAmPm = computed$5(() => {
       return props.format === 'ampm';
     });
@@ -32052,7 +32187,7 @@ const VToolbarItems = genericComponent()({
 const VTooltip$1 = '';
 
 const {mergeProps:_mergeProps$4,createVNode:_createVNode$4} = await importShared('vue');
-const {computed: computed$4,mergeProps: mergeProps$1,ref: ref$4,toRef: toRef$1,useId} = await importShared('vue');
+const {computed: computed$4,mergeProps: mergeProps$1,ref: ref$5,toRef: toRef$1,useId} = await importShared('vue');
 const makeVTooltipProps = propsFactory({
   id: String,
   interactive: Boolean,
@@ -32088,7 +32223,7 @@ const VTooltip = genericComponent()({
     } = useScopeId();
     const uid = useId();
     const id = toRef$1(() => props.id || `v-tooltip-${uid}`);
-    const overlay = ref$4();
+    const overlay = ref$5();
     const location = computed$4(() => {
       return props.location.split(' ').length > 1 ? props.location : props.location + ' center';
     });
@@ -32136,7 +32271,7 @@ const VTooltip = genericComponent()({
 });
 
 const {Fragment:_Fragment$2,createVNode:_createVNode$3,createElementVNode:_createElementVNode$2,mergeProps:_mergeProps$3} = await importShared('vue');
-const {computed: computed$3,ref: ref$3} = await importShared('vue');
+const {computed: computed$3,ref: ref$4} = await importShared('vue');
 const makeVTreeviewGroupProps = propsFactory({
   ...omit(makeVListGroupProps({
     collapseIcon: '$treeviewCollapse',
@@ -32150,7 +32285,7 @@ const VTreeviewGroup = genericComponent()({
     let {
       slots
     } = _ref;
-    const vListGroupRef = ref$3();
+    const vListGroupRef = ref$4();
     const toggleIcon = computed$3(() => vListGroupRef.value?.isOpen ? props.collapseIcon : props.expandIcon);
     const activatorDefaults = computed$3(() => ({
       VTreeviewItem: {
@@ -32185,7 +32320,7 @@ const VTreeviewItem$1 = '';
 const VTreeviewSymbol = Symbol.for('vuetify:v-treeview');
 
 const {Fragment:_Fragment$1,normalizeClass:_normalizeClass,createElementVNode:_createElementVNode$1,createVNode:_createVNode$2,mergeProps:_mergeProps$2} = await importShared('vue');
-const {computed: computed$2,inject,ref: ref$2,toRaw: toRaw$2} = await importShared('vue');
+const {computed: computed$2,inject,ref: ref$3,toRaw: toRaw$2} = await importShared('vue');
 const makeVTreeviewItemProps = propsFactory({
   loading: Boolean,
   hideActions: Boolean,
@@ -32208,9 +32343,9 @@ const VTreeviewItem = genericComponent()({
       emit
     } = _ref;
     const visibleIds = inject(VTreeviewSymbol, {
-      visibleIds: ref$2()
+      visibleIds: ref$3()
     }).visibleIds;
-    const vListItemRef = ref$2();
+    const vListItemRef = ref$3();
     const isActivatableGroupActivator = computed$2(() => vListItemRef.value?.root.activatable.value && vListItemRef.value?.isGroupActivator);
     const vListItemRefIsClickable = computed$2(() => vListItemRef.value?.link.isClickable.value || props.value != null && !!vListItemRef.value?.list);
     const isClickable = computed$2(() => !props.disabled && props.link !== false && (props.link || vListItemRefIsClickable.value || isActivatableGroupActivator.value));
@@ -32326,7 +32461,7 @@ const VTreeviewItem = genericComponent()({
 });
 
 const {Fragment:_Fragment,createVNode:_createVNode$1,createElementVNode:_createElementVNode,mergeProps:_mergeProps$1} = await importShared('vue');
-const {computed: computed$1,reactive,ref: ref$1,toRaw: toRaw$1} = await importShared('vue');
+const {computed: computed$1,reactive,ref: ref$2,toRaw: toRaw$1} = await importShared('vue');
 const makeVTreeviewChildrenProps = propsFactory({
   fluid: Boolean,
   disabled: Boolean,
@@ -32371,7 +32506,7 @@ const VTreeviewChildren = genericComponent()({
       slots
     } = _ref;
     const isLoading = reactive(new Set());
-    const activatorItems = ref$1([]);
+    const activatorItems = ref$2([]);
     const isClickOnOpen = computed$1(() => !props.disabled && (props.openOnClick != null ? props.openOnClick : props.selectable && !props.activatable));
     async function checkChildren(item) {
       try {
@@ -32548,7 +32683,7 @@ const VTreeviewChildren = genericComponent()({
 });
 
 const {createVNode:_createVNode,mergeProps:_mergeProps} = await importShared('vue');
-const {computed,provide,ref,toRaw,toRef} = await importShared('vue');
+const {computed,provide,ref: ref$1,toRaw,toRef} = await importShared('vue');
 function flatten(items) {
   let flat = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : [];
   for (const item of items) {
@@ -32613,7 +32748,7 @@ const VTreeview = genericComponent()({
         emit('update:modelValue', val);
       }
     });
-    const vListRef = ref();
+    const vListRef = ref$1();
     const opened = computed(() => props.openAll ? openAll(items.value) : props.opened);
     const flatItems = computed(() => flatten(items.value));
     const search = toRef(() => props.search);
@@ -32996,7 +33131,7 @@ const Scroll = {
 };
 
 // Utilities
-const {h,mergeProps,render,resolveComponent} = await importShared('vue');
+const {h: h$1,mergeProps,render,resolveComponent} = await importShared('vue');
 function useDirectiveComponent(component, props) {
   const concreteComponent = typeof component === 'string' ? resolveComponent(component) : component;
   const hook = mountComponent(concreteComponent, props);
@@ -33011,7 +33146,7 @@ function useDirectiveComponent(component, props) {
 function mountComponent(component, props) {
   return function (el, binding, vnode) {
     const _props = typeof props === 'function' ? props(binding) : props;
-    const text = binding.value?.text ?? binding.value ?? _props?.text;
+    const text = isObject(binding.value) ? binding.value.text : typeof binding.value === 'string' ? binding.value : _props?.text;
     const value = isObject(binding.value) ? binding.value : {};
 
     // Get the children from the props or directive value, or the element's children
@@ -33020,7 +33155,7 @@ function mountComponent(component, props) {
     // If vnode.ctx is the same as the instance, then we're bound to a plain element
     // and need to find the nearest parent component instance to inherit provides from
     const provides = (vnode.ctx === binding.instance.$ ? findComponentParent(vnode, binding.instance.$)?.provides : vnode.ctx?.provides) ?? binding.instance.$.provides;
-    const node = h(component, mergeProps(_props, value), children);
+    const node = h$1(component, mergeProps(_props, value), children);
     node.appContext = Object.assign(Object.create(null), binding.instance.$.appContext, {
       provides
     });
@@ -33069,8 +33204,7 @@ function findComponentParent(vnode, root) {
 
 // Components
 const Tooltip = useDirectiveComponent(VTooltip, binding => {
-  const disabled = isObject(binding.value) ? !binding.value.text : ['', false, null].includes(binding.value); // undefined means true
-
+  const disabled = isObject(binding.value) ? !binding.value.text : ['', false, null, undefined].includes(binding.value);
   return {
     activator: disabled ? null : 'parent',
     location: binding.arg?.replace('-', ' '),
@@ -33090,8 +33224,78 @@ const directives = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty
     Touch
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const {createApp} = await importShared('vue');
+/**
+ * 独立联调用的宿主替身。MoviePilot 真正的宿主会注入自己的 Vuetify 主题，
+ * 这里按 MoviePilot v2 的主题值复刻一份浅色 / 深色，用来验证插件是否真的跟随主题。
+ */
+const {createApp,h,ref} = await importShared('vue');
 
-const {createVuetify} = await importShared('vuetify');
+const {createVuetify,useTheme} = await importShared('vuetify');
 
-createApp(Config).use(createVuetify({ components, directives })).mount('#app');
+const vuetify = createVuetify({
+  components,
+  directives,
+  theme: {
+    defaultTheme: 'mpLight',
+    themes: {
+      mpLight: {
+        dark: false,
+        colors: {
+          primary: '#8D51F9',
+          background: '#F4F5FA',
+          surface: '#FFFFFF',
+          'on-surface': '#3A3541',
+          'on-primary': '#FFFFFF',
+          success: '#56CA00',
+          error: '#FF4C51',
+          warning: '#FFB400',
+        },
+        variables: { 'border-color': '#3A3541', 'border-opacity': 0.12, 'medium-emphasis-opacity': 0.68 },
+      },
+      mpDark: {
+        dark: true,
+        colors: {
+          primary: '#6E66ED',
+          background: '#0E1116',
+          surface: '#14161F',
+          'on-surface': '#E7E3FC',
+          'on-primary': '#FFFFFF',
+          success: '#56CA00',
+          error: '#FF4C51',
+          warning: '#FFB400',
+        },
+        variables: { 'border-color': '#E7E3FC', 'border-opacity': 0.12, 'medium-emphasis-opacity': 0.68 },
+      },
+    },
+  },
+});
+
+const Harness = {
+  setup() {
+    const theme = useTheme();
+    const view = ref('config');
+    const toggle = () => {
+      const next = theme.global.name.value === 'mpLight' ? 'mpDark' : 'mpLight';
+      if (typeof theme.change === 'function') theme.change(next);
+      else theme.global.name.value = next;
+    };
+    return () =>
+      h('div', { style: 'min-height:100vh;background:rgb(var(--v-theme-background));padding:24px' }, [
+        h('div', { style: 'display:flex;gap:8px;margin-bottom:16px' }, [
+          h(VBtn, { size: 'small', onClick: toggle }, () => `主题：${theme.global.name.value}`),
+          h(
+            VBtn,
+            { size: 'small', onClick: () => (view.value = view.value === 'config' ? 'page' : 'config') },
+            () => `视图：${view.value}`,
+          ),
+        ]),
+        h(
+          VCard,
+          { style: 'max-width:58rem;margin:auto;overflow:hidden' },
+          () => [h(view.value === 'config' ? Config : Page, { key: view.value })],
+        ),
+      ])
+  },
+};
+
+createApp(Harness).use(vuetify).mount('#app');

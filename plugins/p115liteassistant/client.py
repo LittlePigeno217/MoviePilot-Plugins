@@ -157,19 +157,31 @@ class U115Client:
     def is_authenticated(self) -> bool:
         return bool(self.cookie or self.tokens.get("access_token") or self.tokens.get("refresh_token"))
 
+    qrcode_request_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        ),
+        "Referer": "https://115.com/",
+    }
+
     def generate_qrcode(self, client_type: str = "alipaymini") -> Dict[str, Any]:
         client_type = client_type if client_type in self.qrcode_client_types else "alipaymini"
-        payload = self._request_url(
-            "GET",
-            f"{self.qrcode_base_url}/api/1.0/web/1.0/token/",
-            require_auth=False,
-        )
-        data = payload.get("data") or {}
+        data, fallback_msg = self._fetch_qrcode_token()
         uid = str(data.get("uid") or "")
         timestamp = str(data.get("time") or "")
         sign = str(data.get("sign") or "")
         if not uid or not timestamp or not sign:
-            return {"success": False, "message": "115 返回的二维码参数不完整"}
+            # 旧版接口兜底：部分账号/时段仅旧接口可用
+            legacy, _ = self._fetch_qrcode_token(legacy=True)
+            uid = uid or str(legacy.get("uid") or "")
+            timestamp = timestamp or str(legacy.get("time") or "")
+            sign = sign or str(legacy.get("sign") or "")
+            if uid and timestamp and sign:
+                data = legacy
+        if not uid or not timestamp or not sign:
+            message = fallback_msg or "115 返回的二维码参数不完整"
+            return {"success": False, "message": message}
         self._auth_state = {
             "mode": "qrcode",
             "uid": uid,
@@ -184,6 +196,28 @@ class U115Client:
                 "client_type": client_type,
             },
         }
+
+    def _fetch_qrcode_token(self, legacy: bool = False) -> tuple[Dict[str, Any], str]:
+        url = (
+            f"{self.qrcode_base_url}/get/token"
+            if legacy
+            else f"{self.qrcode_base_url}/api/1.0/web/1.0/token/"
+        )
+        try:
+            payload = self._request_url(
+                "GET",
+                url,
+                require_auth=False,
+                no_error=True,
+                headers=self.qrcode_request_headers,
+            )
+        except (httpx.HTTPError, U115ApiError, ValueError) as err:
+            return {}, str(err)
+        if not isinstance(payload, dict):
+            return {}, "115 二维码接口返回了无效响应"
+        message = self._payload_message(payload)
+        data = payload.get("data")
+        return (dict(data) if isinstance(data, dict) else {}), message
 
     def check_login(self) -> Dict[str, Any]:
         if not self._auth_state:
@@ -1581,7 +1615,7 @@ class U115Client:
                 if not isinstance(payload, dict):
                     raise U115ApiError("115 返回了无效响应")
                 if not self._is_response_success(payload):
-                    message = str(payload.get("message") or payload.get("error") or payload)
+                    message = self._payload_message(payload)
                     if (cookie_request or not no_error) and self._is_access_limit_message(message):
                         limit_error = U115AccessLimitError(
                             f"{message}（并发任务已停止本次任务）"
@@ -1669,6 +1703,11 @@ class U115Client:
         if bearer:
             scoped["Authorization"] = f"Bearer {bearer}"
         return scoped
+
+    @staticmethod
+    def _payload_message(payload: Dict[str, Any]) -> str:
+        message = str(payload.get("message") or payload.get("msg") or payload.get("error") or "")
+        return " ".join(message.split())
 
     @staticmethod
     def _is_cookie_auth_error(payload: Dict[str, Any], message: str) -> bool:

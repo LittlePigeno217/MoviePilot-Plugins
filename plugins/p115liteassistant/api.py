@@ -71,7 +71,7 @@ class Api:
     def get_config(self) -> Dict[str, Any]:
         config = deepcopy(self._store.get_config())
         config.pop("tokens", None)
-        return _ok(config)
+        return config
 
     def save_config(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
         payload = payload or {}
@@ -153,8 +153,9 @@ class Api:
             client = self._client_provider()
             result = client.check_login()
             if not result.get("success"):
-                return _error(result.get("message") or "检查登录状态失败")
-            if (result.get("data") or {}).get("status") == 2:
+                return {"status": -3, "tip": result.get("message") or "检查登录状态失败"}
+            data = result.get("data") or {}
+            if data.get("status") == 2:
                 updates = {
                     "tokens": client.export_tokens(),
                     "login_client_type": client.client_type,
@@ -164,16 +165,17 @@ class Api:
                 self._store.update_config(updates)
                 self._browse_115_cache.clear()
                 self._redirect_cache.clear()
-            return _ok(result.get("data") or {}, result.get("message") or "")
+            return data
         except Exception as err:  # noqa: BLE001
-            return _error(f"检查登录状态失败: {err}")
+            logger.error(f"【登录】检查登录状态失败：{safe_error_text(err)}")
+            return {"status": -3, "tip": "检查登录状态失败"}
 
     def browse_115(self, cid: str = "0") -> Dict[str, Any]:
         try:
             cache_key = str(cid or "0")
             cached = self._browse_115_cache.get(cache_key)
             if cached is not None:
-                return _ok({"cid": cache_key, "items": deepcopy(cached)})
+                return {"cid": cache_key, "items": deepcopy(cached)}
             items = []
             for item in self._client_provider().get_dir_list(cache_key):
                 if not U115Client._is_directory(item):
@@ -190,9 +192,10 @@ class Api:
                 )
             items.sort(key=lambda item: item["name"].lower())
             self._browse_115_cache.set(cache_key, items)
-            return _ok({"cid": cache_key, "items": items})
+            return {"cid": cache_key, "items": items}
         except Exception as err:  # noqa: BLE001
-            return _error(f"浏览 115 目录失败: {err}")
+            logger.error(f"【浏览】浏览 115 目录失败：{safe_error_text(err)}")
+            return {"error": safe_error_text(err)}
 
     @staticmethod
     def _local_roots() -> list[Path]:
@@ -203,38 +206,37 @@ class Api:
         try:
             roots = self._local_roots()
             if not roots:
-                return _error("MoviePilot 根目录不可用")
+                return {"error": "MoviePilot 根目录不可用"}
             requested_root = Path(root).expanduser().resolve() if root else None
             base = next((item for item in roots if item == requested_root), roots[0])
             if requested_root and base != requested_root:
-                return _error("本地目录根路径无效")
+                return {"error": "本地目录根路径无效"}
             target = (base / path).resolve() if path else base
             target.relative_to(base)
             if not target.is_dir():
-                return _error(f"目录不存在: {target}")
-            return _ok(
-                {
-                    "base": str(base),
-                    "roots": [{"name": str(item), "path": str(item)} for item in roots],
-                    "current": "" if target == base else target.relative_to(base).as_posix(),
-                    "items": [
-                        {"name": entry.name, "path": entry.relative_to(base).as_posix()}
-                        for entry in sorted(target.iterdir(), key=lambda item: item.name.lower())
-                        if entry.is_dir() and not entry.name.startswith(".")
-                    ],
-                }
-            )
+                return {"error": f"目录不存在: {target}"}
+            return {
+                "base": str(base),
+                "roots": [{"name": str(item), "path": str(item)} for item in roots],
+                "current": "" if target == base else target.relative_to(base).as_posix(),
+                "items": [
+                    {"name": entry.name, "path": entry.relative_to(base).as_posix()}
+                    for entry in sorted(target.iterdir(), key=lambda item: item.name.lower())
+                    if entry.is_dir() and not entry.name.startswith(".")
+                ],
+            }
         except ValueError:
-            return _error("目录超出 MoviePilot 根目录")
+            return {"error": "目录超出 MoviePilot 根目录"}
         except Exception as err:  # noqa: BLE001
-            return _error(f"浏览本地目录失败: {err}")
+            logger.error(f"【浏览】浏览本地目录失败：{safe_error_text(err)}")
+            return {"error": safe_error_text(err)}
 
     def status(self) -> Dict[str, Any]:
-        config = self._store.get_config()
-        with self._lock:
-            running = sorted(self._running)
-        return _ok(
-            {
+        try:
+            config = self._store.get_config()
+            with self._lock:
+                running = sorted(self._running)
+            return {
                 "enabled": bool(config.get("enabled")),
                 "authenticated": self._client_provider().is_authenticated(),
                 "strm_mappings": len(config.get("strm_mappings") or []),
@@ -252,7 +254,9 @@ class Api:
                     )
                 ),
             }
-        )
+        except Exception as err:  # noqa: BLE001
+            logger.error(f"【状态】获取运行状态失败：{safe_error_text(err)}")
+            return {"error": safe_error_text(err)}
 
     def _strm_moviepilot_url(self) -> str:
         return str(self._store.get_config().get("moviepilot_address") or "").strip().rstrip("/")
@@ -545,7 +549,7 @@ class Api:
         return result
 
     def history(self) -> Dict[str, Any]:
-        return _ok({"items": self._store.get_history()})
+        return {"items": self._store.get_history()}
 
     @staticmethod
     def _download_url_lifetime(url: str) -> float | None:

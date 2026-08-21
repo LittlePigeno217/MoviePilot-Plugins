@@ -4,84 +4,27 @@ import { fileURLToPath } from 'url'
 import archiver from 'archiver'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const assetsDir = path.join(__dirname, 'dist', 'assets')
 
-const legacyAssets = {
-  config: [
-    '__federation_expose_Config-7ce093ba.js',
-    '__federation_expose_Config-97f7421d.js',
-    '__federation_expose_Config-7f5b080b.js',
-    '__federation_expose_Config-43e986fa.js',
-    '__federation_expose_Config-bd0f9778.js',
-    '__federation_expose_Config-469a5646.js',
-    '__federation_expose_Config-fb65a95a.js',
-    '__federation_expose_Config-ebda5443.js',
-  ],
-  page: [
-    '__federation_expose_Page-4e7cd70d.js',
-    '__federation_expose_Page-977537ad.js',
-    '__federation_expose_Page-8cb7e1c8.js',
-    '__federation_expose_Page-e25a15b8.js',
-    '__federation_expose_Page-841bcd09.js',
-    '__federation_expose_Page-e86c3b81.js',
-  ],
-  helper: [
-    '_plugin-vue_export-helper-3767dab0.js',
-    '_plugin-vue_export-helper-12555fbe.js',
-    '_plugin-vue_export-helper-c5cccadb.js',
-    '_plugin-vue_export-helper-acbf976c.js',
-    '_plugin-vue_export-helper-bb1fda24.js',
-  ],
-  index: [
-    'index-e397d051.js',
-    'index-1be59a16.js',
-    'index-95a7d879.js',
-    'index-293984c5.js',
-    'index-c4f2d89c.js',
-    'index-30508e71.js',
-    'index-2bf71762.js',
-    'index-02f8fa5f.js',
-  ],
-  style: [
-    'style-b6c329b1.css',
-    'style-1375dbe0.css',
-    'style-c28fa672.css',
-    'style-faffdeb7.css',
-    'style-63f370f1.css',
-    'style-6b3f9aca.css',
-    'style-8bf1f287.css',
-    'style-5535bc3a.css',
-    'style-b8cdf4de.css',
-  ],
-}
+// 联邦资源放在带版本号的目录里，浏览器不会再复用上一版的 remoteEntry.js，
+// 所以不需要为旧文件名写别名桩文件。换目录名即完成缓存失效。
+const assetsDir = path.join(__dirname, 'dist', 'assets-v120')
 
-function createLegacyAssetAliases() {
+const requiredAssets = [
+  /^remoteEntry\.js$/,
+  /^__federation_expose_Config-[a-f0-9]+\.js$/,
+  /^__federation_expose_Page-[a-f0-9]+\.js$/,
+  /^style-[a-f0-9]+\.css$/,
+]
+
+function assertBuildOutput() {
+  if (!fs.existsSync(assetsDir)) throw new Error(`Missing build output: ${assetsDir}`)
   const files = fs.readdirSync(assetsDir)
-  const legacyNames = new Set(Object.values(legacyAssets).flat())
-  const current = {
-    config: files.find(name => !legacyNames.has(name) && /^__federation_expose_Config-[a-f0-9]+\.js$/.test(name)),
-    page: files.find(name => !legacyNames.has(name) && /^__federation_expose_Page-[a-f0-9]+\.js$/.test(name)),
-    helper: files.find(name => !legacyNames.has(name) && /^_plugin-vue_export-helper-[a-f0-9]+\.js$/.test(name)),
-    index: files.find(name => !legacyNames.has(name) && /^index-[a-f0-9]+\.js$/.test(name)),
-    style: files.find(name => !legacyNames.has(name) && /^style-[a-f0-9]+\.css$/.test(name)),
-  }
-
-  for (const [kind, aliases] of Object.entries(legacyAssets)) {
-    const target = current[kind]
-    if (!target) throw new Error(`Missing current ${kind} asset`)
-    for (const alias of aliases) {
-      if (alias === target) continue
-      const content = kind === 'style'
-        ? `@import url("./${target}");\n`
-        : kind === 'config' || kind === 'page'
-          ? `export { default } from "./${target}";\nexport * from "./${target}";\n`
-          : `export * from "./${target}";\n`
-      fs.writeFileSync(path.join(assetsDir, alias), content)
-    }
+  for (const pattern of requiredAssets) {
+    if (!files.some(name => pattern.test(name))) throw new Error(`Missing build asset matching ${pattern}`)
   }
 }
 
-createLegacyAssetAliases()
+assertBuildOutput()
 
 const output = fs.createWriteStream(path.join(__dirname, 'p115liteassistant.zip'))
 const archive = archiver('zip', { zlib: { level: 9 } })
