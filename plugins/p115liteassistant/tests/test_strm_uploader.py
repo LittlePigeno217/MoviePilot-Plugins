@@ -2229,3 +2229,179 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(result["deleted"], 1)
             self.assertFalse(nested.exists())
             self.assertTrue(source.is_dir())
+
+
+class ReverseDeleteTest(unittest.TestCase):
+    """本地 STRM 被删除时同步删除 115 云端文件、刮削/字幕及空目录。"""
+
+    def _store_with_records(self, directory):
+        store = FakeStore(
+            {
+                "strm_delete_cloud_on_missing": True,
+            }
+        )
+        media_output = Path(directory) / "Film.strm"
+        sidecar_output = Path(directory) / "Film.nfo"
+        store.strm_records = {
+            "movies:Movies/Film.mkv": {
+                "fingerprint": "v3:pick1:10:https://moviepilot.example",
+                "path": str(media_output),
+                "kind": "strm",
+                "file_id": "9001",
+                "parent_id": "8001",
+                "cloud_path": "/Movies/Film.mkv",
+            },
+            "movies:sidecar:Movies/Film.nfo": {
+                "fingerprint": "pick2:4",
+                "path": str(sidecar_output),
+                "kind": "sidecar",
+                "file_id": "9002",
+                "parent_id": "8001",
+                "cloud_path": "/Movies/Film.nfo",
+            },
+        }
+        return store
+
+    def test_missing_strm_deletes_cloud_file_and_sidecar(self):
+        class DeleteClient(FakeStrmClient):
+            def __init__(self):
+                super().__init__()
+                self.deleted = []
+                self.dir_checks = []
+
+            def iter_files(self, cid):
+                # 本地 STRM 被删后，云端对应文件也已被反向删除，枚举为空
+                return iter([])
+
+            def get_dir_list(self, cid):
+                # 文件删除后目录为空
+                self.dir_checks.append(str(cid))
+                return []
+
+            def delete_file(self, file_id, mode=""):
+                self.deleted.append(str(file_id))
+
+        with TemporaryDirectory() as directory:
+            client = DeleteClient()
+            store = self._store_with_records(directory)
+            generator = StrmGenerator(
+                client,
+                store,
+                "https://moviepilot.example",
+                True,
+            )
+            # 本地 STRM 不存在（被删了），云端枚举为空
+            result = generator.run_mapping(
+                {"id": "movies", "source_cid": "115-root", "target_dir": directory}
+            )
+
+            self.assertEqual(result["cloud_deleted"], 2)
+            self.assertEqual(result["cloud_dirs_deleted"], 1)
+            self.assertEqual(sorted(client.deleted), ["8001", "9001", "9002"])
+            self.assertIn("8001", client.dir_checks)
+            self.assertNotIn("movies:Movies/Film.mkv", store.strm_records)
+            self.assertNotIn("movies:sidecar:Movies/Film.nfo", store.strm_records)
+
+    def test_existing_strm_keeps_cloud_file(self):
+        class NoDeleteClient(FakeStrmClient):
+            def delete_file(self, file_id, mode=""):
+                raise AssertionError("不应删除已存在 STRM 的云端文件")
+
+        with TemporaryDirectory() as directory:
+            store = self._store_with_records(directory)
+            Path(directory, "Film.strm").write_text("x", encoding="utf-8")
+            Path(directory, "Film.nfo").write_text("nfo", encoding="utf-8")
+            client = NoDeleteClient()
+            result = StrmGenerator(
+                client,
+                store,
+                "https://moviepilot.example",
+                True,
+            ).run_mapping(
+                {"id": "movies", "source_cid": "115-root", "target_dir": directory}
+            )
+
+            self.assertEqual(result["cloud_deleted"], 0)
+            self.assertEqual(result["cloud_dirs_deleted"], 0)
+            self.assertIn("movies:Movies/Film.mkv", store.strm_records)
+
+    def test_disabled_switch_keeps_cloud_file(self):
+        class NoDeleteClient(FakeStrmClient):
+            def delete_file(self, file_id, mode=""):
+                raise AssertionError("开关关闭时不应删除")
+
+        with TemporaryDirectory() as directory:
+            store = self._store_with_records(directory)
+            store.config["strm_delete_cloud_on_missing"] = False
+            client = NoDeleteClient()
+            result = StrmGenerator(
+                client,
+                store,
+                "https://moviepilot.example",
+                True,
+            ).run_mapping(
+                {"id": "movies", "source_cid": "115-root", "target_dir": directory}
+            )
+
+            self.assertEqual(result["cloud_deleted"], 0)
+            self.assertIn("movies:Movies/Film.mkv", store.strm_records)
+
+    def test_non_empty_directory_is_kept(self):
+        class DirKeepClient(FakeStrmClient):
+            def __init__(self):
+                super().__init__()
+                self.deleted = []
+
+            def iter_files(self, cid):
+                return iter([])
+
+            def get_dir_list(self, cid):
+                # 目录 8001 还有别的文件，删除文件后不能删目录
+                if str(cid) == "8001":
+                    return [{"name": "Poster.jpg", "fc": "1"}]
+                return []
+
+            def delete_file(self, file_id, mode=""):
+                self.deleted.append(str(file_id))
+
+        with TemporaryDirectory() as directory:
+            store = self._store_with_records(directory)
+            client = DirKeepClient()
+            result = StrmGenerator(
+                client,
+                store,
+                "https://moviepilot.example",
+                True,
+            ).run_mapping(
+                {"id": "movies", "source_cid": "115-root", "target_dir": directory}
+            )
+
+            self.assertEqual(result["cloud_deleted"], 2)
+            self.assertEqual(result["cloud_dirs_deleted"], 0)
+            self.assertNotIn("8001", client.deleted)
+
+    def test_delete_failure_keeps_record_for_retry(self):
+        class FailingDeleteClient(FakeStrmClient):
+            def iter_files(self, cid):
+                # 云端文件仍存在（删除失败未生效），但本地 STRM 已缺失，
+                # 反向删除失败应保留记录，正向同步会重建 STRM
+                return iter([])
+
+            def delete_file(self, file_id, mode=""):
+                raise RuntimeError("115 删除接口暂时不可用")
+
+        with TemporaryDirectory() as directory:
+            store = self._store_with_records(directory)
+            result = StrmGenerator(
+                FailingDeleteClient(),
+                store,
+                "https://moviepilot.example",
+                True,
+            ).run_mapping(
+                {"id": "movies", "source_cid": "115-root", "target_dir": directory}
+            )
+
+            self.assertEqual(result["cloud_deleted"], 0)
+            self.assertEqual(result["errors"], 1)
+            self.assertIn("movies:Movies/Film.mkv", store.strm_records)
+            self.assertIn("movies:sidecar:Movies/Film.nfo", store.strm_records)

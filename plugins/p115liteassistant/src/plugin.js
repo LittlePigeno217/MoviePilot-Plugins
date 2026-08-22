@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG = {
   link_redirect_mode: 'cookie',
   strm_incremental: true,
   strm_download_sidecars: false,
+  strm_delete_cloud_on_missing: false,
   strm_notify: false,
   strm_notify_type: 'Organize',
   strm_mappings: [],

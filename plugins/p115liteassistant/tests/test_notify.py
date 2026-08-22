@@ -43,12 +43,13 @@ class NotifierTest(unittest.TestCase):
         self.assertTrue(self.notifier.is_enabled("checkin"))
 
         self.notifier.notify("strm", "完成", ["新增 1"])
+        # None 占位符被跳过，空字符串保持为空白行分隔
         self.notifier.notify("checkin", "签到成功", ["连续 3 天", "", None, "+5 积分"])
 
         self.assertEqual(len(self.poster.calls), 1)
         call = self.poster.calls[0]
         self.assertEqual(call["title"], "115 · 每日签到 签到成功")
-        self.assertEqual(call["text"], "连续 3 天\n+5 积分")
+        self.assertEqual(call["text"], "连续 3 天\n\n+5 积分")
 
     def test_empty_body_becomes_placeholder(self):
         self.config["upload_notify"] = True

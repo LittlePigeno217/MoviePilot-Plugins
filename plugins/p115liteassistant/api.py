@@ -360,6 +360,8 @@ class Api:
             "skipped": 0,
             "conflicts": 0,
             "errors": 0,
+            "cloud_deleted": 0,
+            "cloud_dirs_deleted": 0,
             "duration_ms": 0,
         }
         for mapping in mappings:
@@ -423,6 +425,8 @@ class Api:
                 f"附属文件 {int(entry.get('sidecars') or 0)}，"
                 f"跳过 {int(entry.get('skipped') or 0)}，失败 {int(entry.get('errors') or 0)}，"
                 f"冲突候选 {int(entry.get('conflicts') or 0)}，"
+                f"云端删除 {int(entry.get('cloud_deleted') or 0)}，"
+                f"云端目录删除 {int(entry.get('cloud_dirs_deleted') or 0)}，"
                 f"耗时 {int(entry.get('duration_ms') or 0)}ms"
             )
             log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
@@ -436,6 +440,7 @@ class Api:
             f"新增 {totals['added']}，更新 {totals['updated']}，清理 {totals['removed']}，"
             f"附属文件 {totals['sidecars']}，"
             f"跳过 {totals['skipped']}，冲突候选 {totals['conflicts']}，"
+            f"云端删除 {totals['cloud_deleted']}，云端目录删除 {totals['cloud_dirs_deleted']}，"
             f"失败 {totals['errors']}，耗时 {totals['duration_ms']}ms"
         )
         log_total = logger.warning if totals["errors"] else logger.info
@@ -452,23 +457,48 @@ class Api:
         """STRM 通道执行完成后的通知，逐条映射列出变化。"""
         if not self._notifier.is_enabled("strm"):
             return
-        headline = "有失败" if totals["errors"] else "完成"
+        has_errors = bool(totals["errors"])
+        headline = "❌ 有失败" if has_errors else "✅ 完成"
         lines = [
-            f"模式：{'增量' if incremental else '全量'}",
-            f"映射：{len(entries)} 条",
-            f"新增 {totals['added']}，更新 {totals['updated']}，清理 {totals['removed']}",
-            f"附属 {totals['sidecars']}，跳过 {totals['skipped']}，失败 {totals['errors']}",
-            f"耗时：{self._duration_text(totals['duration_ms'])}",
+            "📋 概况",
+            f"   模式：{'增量' if incremental else '全量'}",
+            f"   映射：{len(entries)} 条",
+            f"   耗时：{self._duration_text(totals['duration_ms'])}",
+            "",
+            "📊 统计",
+            f"   新增 {totals['added']}",
+            f"   更新 {totals['updated']}",
+            f"   清理 {totals['removed']}",
+            f"   附属 {totals['sidecars']}",
+            f"   跳过 {totals['skipped']}",
+            f"   失败 {totals['errors']}",
         ]
+        if totals.get("cloud_deleted") or totals.get("cloud_dirs_deleted"):
+            lines.append(
+                f"   云端删除文件 {totals['cloud_deleted']} · 目录 {totals['cloud_dirs_deleted']}"
+            )
+        has_mapping_detail = False
         for entry in entries:
             mapping = str(entry.get("mapping") or "-")
-            detail = (
-                f"失败 {int(entry.get('errors') or 0)}"
-                if int(entry.get("errors") or 0)
-                else f"新增 {int(entry.get('added') or 0)}，更新 {int(entry.get('updated') or 0)}"
-            )
+            if int(entry.get("errors") or 0):
+                detail = f"❌ 失败 {int(entry.get('errors') or 0)}"
+            else:
+                parts = []
+                if int(entry.get("added") or 0):
+                    parts.append(f"➕ 新增 {int(entry.get('added') or 0)}")
+                if int(entry.get("updated") or 0):
+                    parts.append(f"🔄 更新 {int(entry.get('updated') or 0)}")
+                if int(entry.get("removed") or 0):
+                    parts.append(f"🗑 清理 {int(entry.get('removed') or 0)}")
+                if int(entry.get("cloud_deleted") or 0):
+                    parts.append(f"☁️ 删除 {int(entry.get('cloud_deleted') or 0)}")
+                detail = " · ".join(parts) if parts else "无变化"
             message = str(entry.get("message") or "").strip()
-            lines.append(f"· {mapping}：{detail}" + (f"（{message}）" if message else ""))
+            if not has_mapping_detail:
+                lines.append("")
+                has_mapping_detail = True
+            lines.append(f"📁 {mapping}")
+            lines.append(f"   {detail}" + (f"（{message}）" if message else ""))
         self._notifier.notify("strm", headline, lines)
 
     @staticmethod
@@ -521,16 +551,25 @@ class Api:
         if not self._notifier.is_enabled("upload"):
             return
         errors = int(entry.get("errors") or 0)
+        headline = "❌ 有失败" if errors else "✅ 完成"
         lines = [
-            f"模式：{'增量' if incremental else '全量'}",
-            f"上传 {int(entry.get('uploaded') or 0)}，秒传 {int(entry.get('instant') or 0)}",
-            f"生成 STRM {int(entry.get('strm_generated') or 0)}，跳过 {int(entry.get('skipped') or 0)}",
-            f"删除 {int(entry.get('deleted') or 0)}，延后 {int(entry.get('deferred') or 0)}，失败 {errors}",
-            f"耗时：{self._duration_text(entry.get('duration_ms'))}",
+            "📋 概况",
+            f"   模式：{'增量' if incremental else '全量'}",
+            f"   耗时：{self._duration_text(entry.get('duration_ms'))}",
+            "",
+            "📊 统计",
+            f"   上传 {int(entry.get('uploaded') or 0)}",
+            f"   秒传 {int(entry.get('instant') or 0)}",
+            f"   生成 STRM {int(entry.get('strm_generated') or 0)}",
+            f"   跳过 {int(entry.get('skipped') or 0)}",
+            f"   删除 {int(entry.get('deleted') or 0)}",
+            f"   延后 {int(entry.get('deferred') or 0)}",
+            f"   失败 {errors}",
         ]
         if message := str(entry.get("message") or "").strip():
-            lines.append(f"说明：{message}")
-        self._notifier.notify("upload", "有失败" if errors else "完成", lines)
+            lines.append("")
+            lines.append(f"📝 说明：{message}")
+        self._notifier.notify("upload", headline, lines)
 
     def run_checkin(self) -> Dict[str, Any]:
         if not self._checkin_lock.acquire(blocking=False):
@@ -572,18 +611,29 @@ class Api:
         if not success:
             self._notifier.notify(
                 "checkin",
-                "失败",
-                [f"时间：{entry.get('time') or '-'}", f"原因：{message or '未知错误'}"],
+                "❌ 失败",
+                [
+                    "📋 概况",
+                    f"   时间：{entry.get('time') or '-'}",
+                    "",
+                    f"❌ 原因：{message or '未知错误'}",
+                ],
             )
             return
-        headline = "今日已签到" if entry.get("already") else "签到成功"
-        lines = [f"时间：{entry.get('time') or '-'}"]
+        headline = "✅ 今日已签到" if entry.get("already") else "✅ 签到成功"
+        lines = [
+            "📋 概况",
+            f"   时间：{entry.get('time') or '-'}",
+            "",
+            "📊 统计",
+        ]
         if continuous := int(entry.get("continuous_day") or 0):
-            lines.append(f"连续签到：{continuous} 天")
+            lines.append(f"   连续签到：{continuous} 天")
         if points := int(entry.get("points_num") or 0):
-            lines.append(f"本次积分：+{points}")
+            lines.append(f"   本次积分：+{points}")
         if message:
-            lines.append(f"回执：{message}")
+            lines.append("")
+            lines.append(f"📝 回执：{message}")
         self._notifier.notify("checkin", headline, lines)
 
     @staticmethod

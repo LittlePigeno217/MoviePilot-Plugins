@@ -21,6 +21,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "link_redirect_mode": "cookie",
     "strm_incremental": True,
     "strm_download_sidecars": False,
+    "strm_delete_cloud_on_missing": False,
     "strm_notify": False,
     "strm_notify_type": RESOURCE_NOTIFY_TYPE,
     "strm_mappings": [],

@@ -110,9 +110,17 @@ class Notifier:
     def _compose(lines: Iterable[Any]) -> str:
         kept: List[str] = []
         for line in lines or ():
-            text = str(line or "").strip()
-            if text:
-                kept.append(text)
+            if line is None:
+                continue
+            text = str(line)
+            if not text:
+                if kept and kept[-1]:
+                    kept.append("")
+                continue
+            kept.append(text.rstrip())
+        # 去掉末尾空行
+        while kept and not kept[-1]:
+            kept.pop()
         return "\n".join(kept) or "-"
 
     @staticmethod

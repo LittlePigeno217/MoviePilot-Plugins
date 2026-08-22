@@ -296,6 +296,13 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                   hide-details
                   label="一并下载刮削文件和字幕"
                 />
+                <v-switch
+                  v-model="config.strm_delete_cloud_on_missing"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  label="本地 STRM 被删除时同步删除 115 对应文件"
+                />
               </div>
               <NotifyRow
                 v-model:enabled="config.strm_notify"

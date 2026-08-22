@@ -387,6 +387,166 @@ class StrmGenerator:
             abort_on=(U115AccessLimitError, U115AuthError),
         )
 
+    def _delete_missing_strm_cloud_files(
+        self,
+        mapping: Dict[str, Any],
+        records: Dict[str, Any],
+        counts: Dict[str, int],
+        target_dir: Path,
+    ) -> None:
+        """清理本地 STRM 已删除对应的 115 云端文件（反向同步）。
+
+        用户手动删除（或媒体服务器清理）本地 STRM 后，插件会遍历本映射
+        的历史记录，找出本地文件已不存在的条目，调用 115 删除接口移除云端
+        同名媒体文件，并级联删除同目录同文件名的刮削文件与字幕（sidecar）。
+        默认关闭，由配置 strm_delete_cloud_on_missing 控制；仅处理带
+        file_id 的记录，避免误删没有溯源依据的文件。
+
+        :return: 删除失败需要保留待下次重试的记录 key 集合
+        """
+        config = self._store.get_config()
+        if not config.get("strm_delete_cloud_on_missing"):
+            return set()
+        mapping_id = str(mapping.get("id") or mapping.get("source_cid") or "default")
+        mapping_record_prefix = f"{mapping_id}:"
+        sidecar_record_prefix = f"{mapping_id}:sidecar:"
+        target_dir = target_dir.resolve()
+        deleted: list[str] = []
+        retained: set[str] = set()
+        affected_dirs: set[str] = set()
+        for record_key, record in list(records.items()):
+            if not isinstance(record, dict):
+                continue
+            if not str(record_key).startswith(mapping_record_prefix):
+                continue
+            if str(record_key).startswith(sidecar_record_prefix):
+                continue
+            if record.get("kind") == "sidecar":
+                continue
+            file_id = str(record.get("file_id") or record.get("fileid") or "").strip()
+            record_path = str(record.get("path") or "").strip()
+            if not file_id or not record_path:
+                continue
+            try:
+                resolved = Path(record_path).expanduser().resolve()
+                resolved.relative_to(target_dir)
+            except (OSError, RuntimeError, ValueError):
+                logger.warning(
+                    f"【STRM反向同步】记录路径无效，保留记录：{record_path}"
+                )
+                continue
+            if resolved.exists():
+                continue
+            # 定位同目录同文件名的 sidecar 记录（刮削文件/字幕）
+            rel_text = str(record_key)[len(mapping_record_prefix):]
+            media_rel = PurePosixPath(rel_text)
+            sidecar_keys = [
+                sidecar_key
+                for sidecar_key, sidecar_record in list(records.items())
+                if isinstance(sidecar_record, dict)
+                and str(sidecar_key).startswith(sidecar_record_prefix)
+                and PurePosixPath(str(sidecar_key)[len(sidecar_record_prefix):]).parent
+                == media_rel.parent
+                and PurePosixPath(
+                    str(sidecar_key)[len(sidecar_record_prefix):]
+                ).stem
+                == media_rel.stem
+            ]
+            try:
+                self._client.delete_file(file_id)
+            except Exception as err:  # noqa: BLE001
+                counts["errors"] += 1
+                retained.add(record_key)
+                # 媒体删除失败时，其 sidecar 暂不删除，一并保留待重试
+                retained.update(sidecar_keys)
+                logger.error(
+                    "【STRM反向同步】删除 115 云端文件失败，保留记录待下次重试："
+                    f"{record_path}，文件ID：{file_id}，原因：{safe_error_text(err)}"
+                )
+                continue
+            records.pop(record_key, None)
+            counts["cloud_deleted"] = counts.get("cloud_deleted", 0) + 1
+            deleted.append(record_path)
+            # 收集云端父目录 ID，后续检查是否为空目录
+            parent_id = str(record.get("parent_id") or "").strip()
+            if parent_id:
+                affected_dirs.add(parent_id)
+            logger.info(
+                f"【STRM反向同步】本地 STRM 已删除，移除 115 云端文件：{record_path}"
+            )
+            # 级联删除同目录同文件名的 sidecar（刮削文件/字幕）
+            for sidecar_key in sidecar_keys:
+                sidecar_record = records.get(sidecar_key)
+                if not isinstance(sidecar_record, dict):
+                    continue
+                sidecar_file_id = str(
+                    sidecar_record.get("file_id")
+                    or sidecar_record.get("fileid")
+                    or ""
+                ).strip()
+                sidecar_path = str(sidecar_record.get("path") or "").strip()
+                if not sidecar_file_id:
+                    continue
+                try:
+                    self._client.delete_file(sidecar_file_id)
+                except Exception as err:  # noqa: BLE001
+                    counts["errors"] += 1
+                    retained.add(sidecar_key)
+                    logger.error(
+                        "【STRM反向同步】删除 115 云端刮削/字幕文件失败，"
+                        f"保留记录待下次重试：{sidecar_path or sidecar_key}，"
+                        f"文件ID：{sidecar_file_id}，原因：{safe_error_text(err)}"
+                    )
+                    continue
+                records.pop(sidecar_key, None)
+                counts["cloud_deleted"] = counts.get("cloud_deleted", 0) + 1
+                deleted.append(sidecar_path or sidecar_key)
+                logger.info(
+                    "【STRM反向同步】本地刮削/字幕已删除，移除 115 云端文件："
+                    f"{sidecar_path or sidecar_key}"
+                )
+        if deleted:
+            logger.info(
+                "【STRM反向同步】共删除 115 云端文件 "
+                f"{len(deleted)} 个：{('；'.join(deleted[:5]))}"
+                f"{' 等' if len(deleted) > 5 else ''}"
+            )
+        # 检查受影响目录是否已空，空则删除目录本身
+        dirs_deleted: list[str] = []
+        for parent_id in sorted(affected_dirs):
+            try:
+                children = self._client.get_dir_list(parent_id)
+            except Exception as err:  # noqa: BLE001
+                counts["errors"] += 1
+                logger.error(
+                    "【STRM反向同步】检查 115 目录内容失败，保留目录："
+                    f"目录ID：{parent_id}，原因：{safe_error_text(err)}"
+                )
+                continue
+            if children:
+                continue
+            try:
+                self._client.delete_file(parent_id)
+            except Exception as err:  # noqa: BLE001
+                counts["errors"] += 1
+                logger.error(
+                    "【STRM反向同步】删除 115 空目录失败："
+                    f"目录ID：{parent_id}，原因：{safe_error_text(err)}"
+                )
+                continue
+            counts["cloud_dirs_deleted"] = counts.get("cloud_dirs_deleted", 0) + 1
+            dirs_deleted.append(parent_id)
+            logger.info(
+                f"【STRM反向同步】目录已空，删除 115 云端目录：{parent_id}"
+            )
+        if dirs_deleted:
+            logger.info(
+                "【STRM反向同步】共删除 115 云端空目录 "
+                f"{len(dirs_deleted)} 个：{('；'.join(dirs_deleted[:5]))}"
+                f"{' 等' if len(dirs_deleted) > 5 else ''}"
+            )
+        return retained
+
     def run_mapping(self, mapping: Dict[str, Any]) -> Dict[str, Any]:
         started = monotonic()
         mapping_id = str(mapping.get("id") or mapping.get("source_cid") or "default")
@@ -413,7 +573,15 @@ class StrmGenerator:
             "skipped": 0,
             "conflicts": 0,
             "errors": 0,
+            "cloud_deleted": 0,
+            "cloud_dirs_deleted": 0,
         }
+        retained_keys = self._delete_missing_strm_cloud_files(
+            mapping,
+            records,
+            counts,
+            target_dir,
+        )
         created_directories = {target_dir}
         directory_lock = threading.Lock()
         mapping_record_prefix = f"{mapping_id}:"
@@ -421,6 +589,8 @@ class StrmGenerator:
             key for key in records if str(key).startswith(mapping_record_prefix)
         }
         seen_record_keys: set[str] = set()
+        # 反向删除失败的记录保留到下次重试，同步中不得当失效条目清理
+        seen_record_keys.update(retained_keys)
         claimed_outputs: Dict[Path, str] = {}
         claimed_record_keys: Dict[Path, str] = {}
         claimed_mtimes: Dict[Path, int] = {}
