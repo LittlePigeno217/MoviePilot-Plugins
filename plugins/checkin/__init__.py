@@ -474,7 +474,8 @@ class YpojieSiteAdapter(BaseSiteAdapter):
     site_name = "易破解"
     mode = "账号密码"
     base_url = "https://www.ypojie.com"
-    vip_path = "/vip"
+    # 余额 / 签到入口如今在 /vip 的「充值」标签页下
+    vip_path = "/vip?pd=money"
     login_path = "/wp-login.php"
     ajax_path = "/wp-admin/admin-ajax.php"
 
@@ -563,6 +564,20 @@ class YpojieSiteAdapter(BaseSiteAdapter):
             return ""
         return f"本次签到增加：{self._format_points(diff)}积分"
 
+    @staticmethod
+    def _extract_slider_data(page: str) -> Dict[str, Any]:
+        """从登录页提取滑块验证码参数；取不到时返回 {verified:False}，由调用方决定是否回退。"""
+        token_m = re.search(r'name="slider_token"\s+value="([^"]+)"', page)
+        nonce_m = re.search(r'name="slider_nonce"\s+value="([^"]+)"', page)
+        ver_m = re.search(r'id="slider_verified"\s+name="slider_verified"\s+value="([^"]*)"', page)
+        if not token_m or not nonce_m:
+            return {"verified": False, "slider_token": "", "slider_nonce": ""}
+        return {
+            "verified": ver_m is not None,
+            "slider_token": token_m.group(1),
+            "slider_nonce": nonce_m.group(1),
+        }
+
     def _login(self, site_config: Dict[str, Any]) -> Tuple[requests.Session, str]:
         account = site_config.get("email") or ""
         password = site_config.get("password") or ""
@@ -574,12 +589,34 @@ class YpojieSiteAdapter(BaseSiteAdapter):
         login_url = f"{self.base_url}{self.login_path}"
         vip_url = f"{self.base_url}{self.vip_path}"
         try:
-            session.get(
+            login_page = session.get(
                 login_url,
                 timeout=self.plugin._timeout,
                 proxies=self.plugin._get_proxies(use_proxy),
                 headers=self._login_headers(),
-            ).raise_for_status()
+            )
+            login_page.raise_for_status()
+            login_page.encoding = login_page.apparent_encoding or login_page.encoding or "utf-8"
+            slider = self._extract_slider_data(login_page.text)
+
+            post_data: Dict[str, Any] = {
+                "log": account,
+                "pwd": password,
+                "rememberme": "forever",
+                "wp-submit": "登录",
+                "redirect_to": vip_url,
+                "testcookie": "1",
+            }
+            if slider["verified"]:
+                # 站点 2024 年后加了滑块验证：POST 必须带  verified=1 + 页面上一次性 token/nonce
+                post_data.update(
+                    {
+                        "slider_verified": "1",
+                        "slider_token": slider["slider_token"],
+                        "slider_nonce": slider["slider_nonce"],
+                        "_wp_http_referer": self.login_path,
+                    }
+                )
             response = session.post(
                 login_url,
                 timeout=self.plugin._timeout,
@@ -588,14 +625,7 @@ class YpojieSiteAdapter(BaseSiteAdapter):
                     **self._login_headers(referer=login_url),
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
-                data={
-                    "log": account,
-                    "pwd": password,
-                    "rememberme": "forever",
-                    "wp-submit": "登录",
-                    "redirect_to": vip_url,
-                    "testcookie": "1",
-                },
+                data=post_data,
                 allow_redirects=True,
             )
             response.raise_for_status()
@@ -662,7 +692,7 @@ class Checkin(_PluginBase):
     plugin_name = "自用签到工具"
     plugin_desc = "用于自用站点签到的统一工具，支持自动登录、Cookie 签到、通知与历史记录。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/signin.png"
-    plugin_version = "1.6.0"
+    plugin_version = "1.6.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_config_prefix = "checkin_"
