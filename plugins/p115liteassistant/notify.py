@@ -17,6 +17,11 @@ except Exception:  # noqa: BLE001  # pragma: no cover
 
 DEFAULT_NOTIFY_TYPE = "Plugin"
 
+# 资源入库通知类型（整理入库）。MoviePilot 的「通知模板 → 整理入库」模板
+# 就是资源入库通知样式：STRM 通道 / 上传通道默认走这个模板，让入库类消息
+# 与 MoviePilot 原生资源入库通知保持一致。
+RESOURCE_NOTIFY_TYPE = "Organize"
+
 # 可选的消息类型。MoviePilot 的通知渠道按类型分流，所以每条通道都能挑自己的类型，
 # 比如签到发到「站点」，STRM 发到「插件」。名字对不上时统一退回 Plugin。
 NOTIFY_TYPE_NAMES: tuple[str, ...] = (
