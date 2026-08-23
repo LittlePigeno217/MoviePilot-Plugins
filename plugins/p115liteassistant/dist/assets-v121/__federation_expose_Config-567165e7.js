@@ -680,7 +680,7 @@ return (_ctx, _cache) => {
 };
 const QrLogin = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-fb3a5ece"]]);
 
-const Config_vue_vue_type_style_index_0_scoped_eb02ce9d_lang = '';
+const Config_vue_vue_type_style_index_0_scoped_29467c29_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,withCtx:_withCtx,createBlock:_createBlock,unref:_unref} = await importShared('vue');
 
@@ -1193,7 +1193,7 @@ return (_ctx, _cache) => {
                         type: config.upload_notify_type,
                         "onUpdate:type": _cache[21] || (_cache[21] = $event => ((config.upload_notify_type) = $event)),
                         label: "上传完成后发送通知",
-                        hint: "汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。"
+                        hint: "汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。通知海报自动使用 MoviePilot 内置的 TMDB 配置。"
                       }, null, 8, ["enabled", "type"])
                     ])
                   ]),
@@ -1312,6 +1312,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-eb02ce9d"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-29467c29"]]);
 
 export { Config as default };

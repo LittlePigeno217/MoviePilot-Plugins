@@ -31,11 +31,13 @@ class DirectoryUploader:
         store,
         config: Dict[str, Any],
         moviepilot_url: str = "",
+        poster_search=None,
     ):
         self._client = client
         self._store = store
         self._config = config
         self._moviepilot_url = moviepilot_url.rstrip("/")
+        self._poster_search = poster_search
         self._generate_strm = bool(config.get("upload_generate_strm", False))
         self._redirect_secret = store.get_redirect_secret() if self._generate_strm else ""
         self._media_extensions = parse_extensions(
@@ -571,6 +573,14 @@ class DirectoryUploader:
         self._client.ensure_upload_ready()
         logger.info("【目录上传】115 上传授权校验通过")
         records = self._store.get_upload_records()
+        # 预计算映射标签
+        mapping_labels: dict[Path, str] = {}
+        for mapping in self._config.get("upload_mappings", []):
+            if not mapping.get("enabled", True):
+                continue
+            source = Path(str(mapping.get("source") or "")).expanduser().resolve()
+            label = mapping.get("label") or source.name
+            mapping_labels[source] = label
         delete_source = bool(self._config.get("upload_delete_source", False))
         counts = {
             "uploaded": 0,
@@ -589,6 +599,7 @@ class DirectoryUploader:
         logger.info(f"【目录上传】目录扫描完成，待处理文件：{len(files)}")
         uploaded_paths: set[Path] = set()
         completed_uploads: Dict[Path, tuple[str, bool]] = {}
+        per_file_details: list[dict[str, Any]] = []
         for file_index, (local_path, target_path, kind, source_root, strm_target) in enumerate(files):
             self._validate_source_file(local_path, source_root)
             record_metadata = (
@@ -691,6 +702,24 @@ class DirectoryUploader:
                 )
                 counts["instant" if result.reused else "uploaded"] += 1
                 completed_uploads[local_path] = (target_path, result.reused)
+                file_detail = {
+                    "name": local_path.name,
+                    "local_path": str(local_path),
+                    "target_path": target_path,
+                    "size": local_path.stat().st_size,
+                    "method": "instant" if result.reused else "upload",
+                    "kind": kind,
+                    "source_root": str(source_root),
+                    "mapping_label": mapping_labels.get(source_root, source_root.name),
+                    "strm_generated": False,
+                    "sidecars": [],
+                }
+                if kind == "media":
+                    per_file_details.append(file_detail)
+                    if self._poster_search is not None:
+                        file_detail["poster_url"] = self._poster_search(
+                            file_detail["name"]
+                        )
                 upload_metadata = {}
                 if (result.file_item or {}).get("pickcode"):
                     upload_metadata["pickcode"] = str(result.file_item["pickcode"])
@@ -740,6 +769,8 @@ class DirectoryUploader:
                         counts,
                         errors,
                     )
+                    if completed and file_detail.get("kind") == "media":
+                        file_detail["strm_generated"] = True
                 if completed:
                     uploaded_paths.add(local_path)
             except (U115AccessLimitError, U115AuthError) as err:
@@ -767,11 +798,23 @@ class DirectoryUploader:
             self._delete_uploaded_sources(files, uploaded_paths, counts, errors)
         self._log_completed_uploads(files, completed_uploads)
         self._store.save_upload_records(records)
+        # 将附属文件关联到对应的媒体文件详情
+        media_by_path: dict[Path, dict] = {
+            Path(d["local_path"]): d for d in per_file_details
+        }
+        for local_path, _target_path, kind, _source_root, _strm_target in files:
+            if kind != "sidecar":
+                continue
+            for media_path in sorted(media_by_path, key=lambda p: len(str(p)), reverse=True):
+                if local_path.parent == media_path.parent and local_path.name.startswith(f"{media_path.stem}."):
+                    media_by_path[media_path]["sidecars"].append(local_path.name)
+                    break
         return {
             "kind": "upload",
             "time": datetime.now().isoformat(timespec="seconds"),
             "incremental": incremental,
             **counts,
             "errors_detail": errors[:20],
+            "per_file_details": per_file_details,
             "duration_ms": int((monotonic() - started) * 1000),
         }

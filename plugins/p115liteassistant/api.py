@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 from base64 import b64encode
 from contextlib import contextmanager
@@ -12,6 +13,8 @@ from time import monotonic, time
 from typing import Any, Callable, Dict, Iterator
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
 from zoneinfo import ZoneInfo
+
+import requests
 
 from app.core.config import settings
 from app.log import logger
@@ -460,22 +463,16 @@ class Api:
         has_errors = bool(totals["errors"])
         headline = "❌ 有失败" if has_errors else "✅ 完成"
         lines = [
-            "📋 概况",
-            f"   模式：{'增量' if incremental else '全量'}",
-            f"   映射：{len(entries)} 条",
-            f"   耗时：{self._duration_text(totals['duration_ms'])}",
+            "━━ 115 轻量助手 · STRM 同步 ━━",
             "",
-            "📊 统计",
-            f"   新增 {totals['added']}",
-            f"   更新 {totals['updated']}",
-            f"   清理 {totals['removed']}",
-            f"   附属 {totals['sidecars']}",
-            f"   跳过 {totals['skipped']}",
-            f"   失败 {totals['errors']}",
+            f"  {headline}  │  {'增量' if incremental else '全量'}  │  {len(entries)} 映射  │  {self._duration_text(totals['duration_ms'])}",
+            "────────────────────────────",
+            f"  新增 {totals['added']}  ·  更新 {totals['updated']}  ·  清理 {totals['removed']}",
+            f"  附属 {totals['sidecars']}  ·  跳过 {totals['skipped']}  ·  失败 {totals['errors']}",
         ]
         if totals.get("cloud_deleted") or totals.get("cloud_dirs_deleted"):
             lines.append(
-                f"   云端删除文件 {totals['cloud_deleted']} · 目录 {totals['cloud_dirs_deleted']}"
+                f"  云端删除 文件 {totals['cloud_deleted']}  ·  目录 {totals['cloud_dirs_deleted']}"
             )
         has_mapping_detail = False
         for entry in entries:
@@ -485,20 +482,23 @@ class Api:
             else:
                 parts = []
                 if int(entry.get("added") or 0):
-                    parts.append(f"➕ 新增 {int(entry.get('added') or 0)}")
+                    parts.append(f"+{int(entry.get('added') or 0)}")
                 if int(entry.get("updated") or 0):
-                    parts.append(f"🔄 更新 {int(entry.get('updated') or 0)}")
+                    parts.append(f"~{int(entry.get('updated') or 0)}")
                 if int(entry.get("removed") or 0):
-                    parts.append(f"🗑 清理 {int(entry.get('removed') or 0)}")
+                    parts.append(f"✕{int(entry.get('removed') or 0)}")
                 if int(entry.get("cloud_deleted") or 0):
-                    parts.append(f"☁️ 删除 {int(entry.get('cloud_deleted') or 0)}")
-                detail = " · ".join(parts) if parts else "无变化"
-            message = str(entry.get("message") or "").strip()
+                    parts.append(f"☁{int(entry.get('cloud_deleted') or 0)}")
+                detail = "  ".join(parts) if parts else "无变化"
             if not has_mapping_detail:
                 lines.append("")
+                lines.append("─── 映射详情 ────────────────────")
                 has_mapping_detail = True
-            lines.append(f"📁 {mapping}")
-            lines.append(f"   {detail}" + (f"（{message}）" if message else ""))
+            message = str(entry.get("message") or "").strip()
+            if message:
+                lines.append(f"  📁 {mapping}  {detail}  ·  {message}")
+            else:
+                lines.append(f"  📁 {mapping}  {detail}")
         self._notifier.notify("strm", headline, lines)
 
     @staticmethod
@@ -511,6 +511,150 @@ class Api:
             return "-"
         return f"{value}ms" if value < 1000 else f"{value / 1000:.1f}s"
 
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """将字节转换为人类可读的文件大小。"""
+        if not size_bytes:
+            return "-"
+        units = ["B", "KB", "MB", "GB", "TB"]
+        value = float(size_bytes)
+        unit_idx = 0
+        while value >= 1024 and unit_idx < len(units) - 1:
+            value /= 1024
+            unit_idx += 1
+        if unit_idx == 0:
+            return f"{int(value)} {units[unit_idx]}"
+        return f"{value:.1f} {units[unit_idx]}"
+
+    @staticmethod
+    def _extract_media_title(filename: str) -> str:
+        """从文件名中提取媒体标题，用于分组。"""
+        stem = str(Path(filename).stem)
+        title = re.sub(
+            r"(?:19\d{2}|20\d{2})|"
+            r"\b(?:2160p|1080p|720p|4K|BluRay|WEB-DL|WEBRip|HDRip|"
+            r"HEVC|x264|x265|H\.264|H\.265|AAC|DTS|AC3|TrueHD|"
+            r"CHS|CHT|ENG|SUB|SUBBED|)"
+            r"|[-.\s]+$",
+            "",
+            stem,
+            flags=re.IGNORECASE,
+        ).strip().replace(".", " ").replace("_", " ").replace("-", " ")
+        title = re.sub(r"\s+", " ", title).strip()
+        # 去掉 S01E01 / EP01 / 第 N 集 等剧集编号使其归到同一组
+        title = re.sub(
+            r"\s*[SE]\d{2,}(?:E\d{2,})*\s*|\s*第\s*\d+\s*集\s*",
+            " ",
+            title,
+            flags=re.IGNORECASE,
+        ).strip()
+        # 如果标题太短（可能是纯剧集编号），保留原始文件名
+        if len(title) < 2:
+            title = stem
+        return title
+
+    @staticmethod
+    def _extract_season_episode(filename: str) -> tuple[int, int] | None:
+        """从文件名提取 (季, 集)。匹配 S01E01 / S01E01-E09 / 第1季第1集 等格式。"""
+        name = str(filename)
+        m = re.search(r"[Ss](\d{1,2})\s*[Ee](\d{1,3})", name)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        m = re.search(r"第\s*(\d+)\s*季.*?第\s*(\d+)\s*集", name)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        return None
+
+    @staticmethod
+    def _format_season_episodes(files: list[dict]) -> str:
+        """按季聚合同组文件的集数范围，如：第1季 第1-8集，第2季 第1-9集。
+
+        跨季时按季分段显示；电影或无法识别的文件返回空串。
+        """
+        seasons: dict[int, set[int]] = {}
+        for f in files:
+            se = Api._extract_season_episode(f.get("name", ""))
+            if se:
+                seasons.setdefault(se[0], set()).add(se[1])
+        if not seasons:
+            return ""
+        parts: list[str] = []
+        for season in sorted(seasons):
+            eps = sorted(seasons[season])
+            # 合并连续集数：1,2,3,5 -> 1-3,5
+            ranges: list[tuple[int, int]] = []
+            start = prev = eps[0]
+            for ep in eps[1:]:
+                if ep == prev + 1:
+                    prev = ep
+                else:
+                    ranges.append((start, prev))
+                    start = prev = ep
+            ranges.append((start, prev))
+            ep_text = "、".join(
+                f"{a}" if a == b else f"{a}-{b}" for a, b in ranges
+            )
+            parts.append(f"第{season}季 第{ep_text}集")
+        return "，".join(parts)
+
+    _TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/multi"
+    _TMDB_BACKDROP_URL = "https://image.tmdb.org/t/p/w500"
+    _TMDB_POSTER_URL = "https://image.tmdb.org/t/p/w342"
+
+    def _tmdb_api_key(self) -> str:
+        """优先使用 MoviePilot 内置的 TMDB API Key，插件配置作为可选回退。"""
+        try:
+            from app.core.config import settings
+            key = str(getattr(settings, "TMDB_API_KEY", "") or "").strip()
+            if key:
+                return key
+        except Exception:
+            pass
+        try:
+            return str((self._store.get_config() or {}).get("tmdb_api_key") or "").strip()
+        except Exception:
+            return ""
+
+    def _search_poster(self, filename: str) -> str:
+        """从文件名中提取标题，搜索 TMDB 获取海报 URL。"""
+        api_key = self._tmdb_api_key()
+        if not api_key:
+            return ""
+        title = self._extract_media_title(filename)
+        if not title or len(title) < 2:
+            return ""
+        try:
+            resp = requests.get(
+                self._TMDB_SEARCH_URL,
+                params={"api_key": api_key, "query": title, "language": "zh-CN"},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results") or []
+            if not results:
+                # 用英文再试一次
+                resp = requests.get(
+                    self._TMDB_SEARCH_URL,
+                    params={"api_key": api_key, "query": title, "language": "en-US"},
+                    timeout=5,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("results") or []
+            for item in results:
+                # 与 MoviePilot get_message_image 一致：优先横版背景图（16:9），
+                # 飞书 fit_horizontal 模式下高度自然，不会撑得过高；无背景图再退回海报。
+                backdrop = item.get("backdrop_path") or ""
+                if backdrop:
+                    return f"{self._TMDB_BACKDROP_URL}{backdrop}"
+                poster = item.get("poster_path") or ""
+                if poster:
+                    return f"{self._TMDB_POSTER_URL}{poster}"
+        except Exception:
+            logger.debug(f"【海报搜索】TMDB 搜索失败: {filename}")
+            return ""
+
     def run_upload(self, incremental: bool = True, moviepilot_url: str = "") -> Dict[str, Any]:
         config = self._store.get_config()
         mappings = [mapping for mapping in config.get("upload_mappings") or [] if mapping.get("enabled", True)]
@@ -521,6 +665,7 @@ class Api:
                 self._store,
                 config,
                 moviepilot_url or str(config.get("moviepilot_address") or ""),
+                poster_search=self._search_poster,
             ).run(incremental)
         except Exception as err:  # noqa: BLE001
             logger.error(f"【目录上传】执行失败：{safe_error_text(err)}")
@@ -547,29 +692,117 @@ class Api:
         return entry
 
     def _notify_upload(self, entry: Dict[str, Any], incremental: bool) -> None:
-        """上传通道执行完成后的通知。"""
+        """上传通道执行完成后的通知，按媒体条目分组发送。"""
         if not self._notifier.is_enabled("upload"):
             return
         errors = int(entry.get("errors") or 0)
-        headline = "❌ 有失败" if errors else "✅ 完成"
-        lines = [
-            "📋 概况",
-            f"   模式：{'增量' if incremental else '全量'}",
-            f"   耗时：{self._duration_text(entry.get('duration_ms'))}",
-            "",
-            "📊 统计",
-            f"   上传 {int(entry.get('uploaded') or 0)}",
-            f"   秒传 {int(entry.get('instant') or 0)}",
-            f"   生成 STRM {int(entry.get('strm_generated') or 0)}",
-            f"   跳过 {int(entry.get('skipped') or 0)}",
-            f"   删除 {int(entry.get('deleted') or 0)}",
-            f"   延后 {int(entry.get('deferred') or 0)}",
-            f"   失败 {errors}",
-        ]
-        if message := str(entry.get("message") or "").strip():
-            lines.append("")
-            lines.append(f"📝 说明：{message}")
-        self._notifier.notify("upload", headline, lines)
+        per_file = entry.get("per_file_details") or []
+        per_file = [d for d in per_file if d.get("method") in ("upload", "instant")]
+        if not per_file and not errors:
+            return
+        # 按媒体标题分组
+        groups: dict[str, list[dict]] = {}
+        for d in per_file:
+            title = self._extract_media_title(d.get("name", ""))
+            groups.setdefault(title, []).append(d)
+        # 每组发一条通知
+        for title, files in sorted(groups.items()):
+            _count = len(files)
+            _size = self._format_size(sum(int(f.get("size", 0)) for f in files))
+            _methods: dict[str, int] = {}
+            for f in files:
+                m = f.get("method", "upload")
+                _methods[m] = _methods.get(m, 0) + 1
+            _method_parts = []
+            if _methods.get("upload"):
+                _method_parts.append(f"上传 {_methods['upload']}")
+            if _methods.get("instant"):
+                _method_parts.append(f"秒传 {_methods['instant']}")
+            _method_str = "，".join(_method_parts) if _method_parts else "上传"
+            if _methods.get("instant"):
+                _method_str = f"秒传 {_methods['instant']}"
+            _strm = sum(1 for f in files if f.get("strm_generated"))
+            _sidecars = sum(len(f.get("sidecars") or []) for f in files)
+            _labels = sorted(set(f.get("mapping_label", "") for f in files if f.get("mapping_label")))
+            _label_str = "、".join(_labels) if _labels else "媒体库"
+            _se_text = self._format_season_episodes(files)
+            poster = next(
+                (f.get("poster_url", "") for f in files if f.get("poster_url")),
+                "",
+            )
+
+            # 构造 column_set 卡片（季集在上，统计在下）
+            elements: list[dict] = []
+            if _se_text:
+                elements.append(
+                    {"tag": "markdown", "content": "**季集**", "text_size": "normal", "margin": "0px 16px 0px 16px"}
+                )
+                entries: list[tuple[str, str]] = []
+                for season_part in [s.strip() for s in _se_text.split("，")]:
+                    m = re.match(r"第(\d+)季 第([\d、\-]+)集", season_part)
+                    if m:
+                        entries.append((f"第{m.group(1)}季", f"第{m.group(2)}集"))
+                for i in range(0, len(entries), 3):
+                    cols = []
+                    for season, eps in entries[i:i+3]:
+                        cols.append({
+                            "tag": "column", "width": "weighted", "weight": 1,
+                            "elements": [{"tag": "markdown", "content": f"**{season}**\n{eps}", "margin": "0px", "text_align": "center"}],
+                        })
+                    while len(cols) < 3:
+                        cols.append({
+                            "tag": "column", "width": "weighted", "weight": 1,
+                            "elements": [{"tag": "markdown", "content": " ", "margin": "0px"}],
+                        })
+                    elements.append({
+                        "tag": "column_set", "flex_mode": "none",
+                        "columns": cols, "margin": "2px 16px 0px 16px",
+                    })
+            # 统计区
+            elements.append({"tag": "hr", "margin": "8px 16px 4px 16px"})
+            elements.append({
+                "tag": "column_set", "flex_mode": "none",
+                "columns": [
+                    {"tag": "column", "width": "weighted", "weight": 1,
+                     "elements": [{"tag": "markdown", "content": f"**{_count}**\n文件", "margin": "0px", "text_align": "center"}]},
+                    {"tag": "column", "width": "weighted", "weight": 1,
+                     "elements": [{"tag": "markdown", "content": f"**{_size}**\n大小", "margin": "0px", "text_align": "center"}]},
+                    {"tag": "column", "width": "weighted", "weight": 1,
+                     "elements": [{"tag": "markdown", "content": f"**{_method_str}**\n方式", "margin": "0px", "text_align": "center"}]},
+                ],
+                "margin": "4px 16px 0px 16px",
+            })
+            elements.append({
+                "tag": "column_set", "flex_mode": "none",
+                "columns": [
+                    {"tag": "column", "width": "weighted", "weight": 1,
+                     "elements": [{"tag": "markdown", "content": _label_str, "margin": "0px", "text_align": "center"}]},
+                    {"tag": "column", "width": "weighted", "weight": 1,
+                     "elements": [{"tag": "markdown", "content": f"STRM {_strm}", "margin": "0px", "text_align": "center"}]},
+                    {"tag": "column", "width": "weighted", "weight": 1,
+                     "elements": [{"tag": "markdown", "content": f"附属 {_sidecars}", "margin": "0px", "text_align": "center"}]},
+                ],
+                "margin": "0px 16px 12px 16px",
+            })
+            # 优先飞书美化卡片，失败回退文本
+            card_title = f"115 网盘・{title} 已入库"
+            if not self._notifier.send_upload_feishu_card(card_title, elements, poster):
+                lines = [
+                    f"类型：媒体，映射：{_label_str}，共 {_count} 个文件，大小：{_size}"
+                    f"，方式：{_method_str}，STRM {_strm} 个，附属 {_sidecars} 个",
+                ]
+                if _se_text:
+                    lines.append(_se_text)
+                self._notifier.notify(
+                    "upload", f"{title} 已入库", lines, image=poster,
+                )
+        # 汇总通知（有错误时补充）
+        if errors:
+            self._notifier.notify(
+                "upload",
+                "❌ 有失败",
+                [f"本次上传共 {len(per_file)} 个文件，以下文件处理失败：{errors} 个"],
+            )
 
     def run_checkin(self) -> Dict[str, Any]:
         if not self._checkin_lock.acquire(blocking=False):
@@ -613,27 +846,30 @@ class Api:
                 "checkin",
                 "❌ 失败",
                 [
-                    "📋 概况",
-                    f"   时间：{entry.get('time') or '-'}",
+                    "━━ 115 轻量助手 · 每日签到 ━━",
                     "",
-                    f"❌ 原因：{message or '未知错误'}",
+                    "  ❌ 签到失败",
+                    "────────────────────────────",
+                    f"  时间：{entry.get('time') or '-'}",
+                    f"  原因：{message or '未知错误'}",
                 ],
             )
             return
         headline = "✅ 今日已签到" if entry.get("already") else "✅ 签到成功"
         lines = [
-            "📋 概况",
-            f"   时间：{entry.get('time') or '-'}",
+            "━━ 115 轻量助手 · 每日签到 ━━",
             "",
-            "📊 统计",
+            f"  {headline}",
+            "────────────────────────────",
+            f"  时间：{entry.get('time') or '-'}",
         ]
         if continuous := int(entry.get("continuous_day") or 0):
-            lines.append(f"   连续签到：{continuous} 天")
+            lines.append(f"  连续签到：{continuous} 天")
         if points := int(entry.get("points_num") or 0):
-            lines.append(f"   本次积分：+{points}")
+            lines.append(f"  本次积分：+{points}")
         if message:
             lines.append("")
-            lines.append(f"📝 回执：{message}")
+            lines.append(f"  📝 回执：{message}")
         self._notifier.notify("checkin", headline, lines)
 
     @staticmethod

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .log_utils import safe_error_text
@@ -13,6 +14,33 @@ try:
     from app.schemas.types import NotificationType
 except Exception:  # noqa: BLE001  # pragma: no cover
     NotificationType = None  # type: ignore[assignment]
+
+# 飞书 SDK 与 MoviePilot 通知配置（运行环境可用时导入；缺失不影响其它平台文本通知）
+try:  # pragma: no cover
+    import lark_oapi as _lark
+    from lark_oapi.api.im.v1 import (
+        CreateImageRequest as _CreateImageRequest,
+        CreateImageRequestBody as _CreateImageRequestBody,
+        CreateMessageRequest as _CreateMessageRequest,
+        CreateMessageRequestBody as _CreateMessageRequestBody,
+    )
+    _LARK_OK = True
+except Exception:  # noqa: BLE001  # pragma: no cover
+    _lark = None  # type: ignore[assignment]
+    _CreateImageRequest = None  # type: ignore[assignment]
+    _CreateImageRequestBody = None  # type: ignore[assignment]
+    _CreateMessageRequest = None  # type: ignore[assignment]
+    _CreateMessageRequestBody = None  # type: ignore[assignment]
+    _LARK_OK = False
+
+try:  # pragma: no cover
+    from app.runtime.extensions.service_config import ServiceConfigHelper
+    from app.core.config import settings as _mp_settings
+    _MP_HELPER_OK = True
+except Exception:  # noqa: BLE001  # pragma: no cover
+    ServiceConfigHelper = None  # type: ignore[assignment]
+    _mp_settings = None  # type: ignore[assignment]
+    _MP_HELPER_OK = False
 
 
 DEFAULT_NOTIFY_TYPE = "Plugin"
@@ -87,21 +115,27 @@ class Notifier:
             return False
         return bool(config.get(meta["enabled_key"]))
 
-    def notify(self, channel: str, headline: str, lines: Iterable[Any]) -> None:
+    def notify(self, channel: str, headline: str, lines: Iterable[Any], image: str = "") -> None:
         """发一条通道通知；通道未开启或宿主不可用时静默跳过。"""
         meta = CHANNELS.get(channel)
         if not meta or not self.is_enabled(channel):
             return
         body = self._compose(lines)
-        title = f"{self._title_prefix} · {meta['label']}"
-        if headline:
-            title = f"{title} {headline}"
+        # 上传通道标题：115 网盘・{媒体标题} 已入库（不带通道名）
+        if channel == "upload":
+            title = f"115 网盘・{headline}" if headline else "115 网盘"
+        else:
+            title = f"{self._title_prefix} · {meta['label']}"
+            if headline:
+                title = f"{title} {headline}"
         try:
             config = self._config_provider() or {}
             mtype = resolve_notify_type(config.get(meta["type_key"]))
             kwargs: Dict[str, Any] = {"title": title, "text": body}
             if mtype is not None:
                 kwargs["mtype"] = mtype
+            if image:
+                kwargs["image"] = image
             self._poster(**kwargs)  # type: ignore[misc]
         except Exception as err:  # noqa: BLE001
             self._log_error(f"【{meta['label']}】发送通知失败：{safe_error_text(err)}")
@@ -127,3 +161,155 @@ class Notifier:
     def _log_error(message: str) -> None:
         if logger is not None:
             logger.error(message)
+
+    # ---------- 飞书美化卡片（仅上传通道） ----------
+
+    @staticmethod
+    def _feishu_channels() -> list[dict]:
+        """读取 MoviePilot 内置启用的飞书通知渠道，返回 [{app_id, app_secret, chat_id}]。"""
+        raw_configs: Any = None
+        try:  # 优先直接读数据库 systemconfig，不依赖启动期注入的 reader
+            from app.db.oper.systemconfig import SystemConfigOper
+            try:
+                from app.schemas.types import SystemConfigKey
+            except Exception:  # noqa: BLE001
+                from app.runtime.enums import SystemConfigKey  # type: ignore[no-redef]  # pragma: no cover
+            op = SystemConfigOper()
+            key = getattr(SystemConfigKey, "Notifications", None)
+            raw_configs = op.get(key.value if key else "Notifications")
+        except Exception as err:  # noqa: BLE001
+            Notifier._log_error(f"读取通知渠道配置失败：{safe_error_text(err)}")
+            return []
+        if not raw_configs and _MP_HELPER_OK and ServiceConfigHelper is not None:
+            try:
+                raw_configs = [
+                    c.model_dump() if hasattr(c, "model_dump") else vars(c)
+                    for c in ServiceConfigHelper.get_notification_configs()
+                ]
+            except Exception:  # noqa: BLE001
+                raw_configs = None
+        if not raw_configs:
+            return []
+        channels: list[dict] = []
+        seen: set[tuple] = set()
+        for conf in raw_configs:
+            if not isinstance(conf, dict):
+                continue
+            if conf.get("type") != "feishu" or not conf.get("enabled"):
+                continue
+            cfg = conf.get("config") or {}
+            app_id = str(cfg.get("FEISHU_APP_ID") or "").strip()
+            app_secret = str(cfg.get("FEISHU_APP_SECRET") or "").strip()
+            chat_id = str(cfg.get("FEISHU_CHAT_ID") or "").strip()
+            if not app_id or not app_secret or not chat_id:
+                continue
+            key = (app_id, app_secret, chat_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            channels.append(
+                {"app_id": app_id, "app_secret": app_secret, "chat_id": chat_id}
+            )
+        return channels
+
+    @staticmethod
+    def _upload_feishu_image(
+        client: Any, image_url: str,
+    ) -> Optional[str]:
+        """下载远端图片上传到飞书，返回 image_key；失败返回 None。"""
+        if not image_url or _CreateImageRequest is None or _CreateImageRequestBody is None:
+            return None
+        try:
+            import requests
+            import tempfile
+            from pathlib import Path as _Path
+            resp = requests.get(image_url, timeout=10)
+            if resp.status_code != 200:
+                return None
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as fp:
+                fp.write(resp.content)
+                temp_path = _Path(fp.name)
+            try:
+                with temp_path.open("rb") as fp:
+                    req = _CreateImageRequest.builder().request_body(
+                        _CreateImageRequestBody.builder()
+                        .image_type("message")
+                        .image(fp)
+                        .build()
+                    ).build()
+                    result = client.im.v1.image.create(req)
+                return getattr(result.data, "image_key", None) if result.success() else None
+            finally:
+                temp_path.unlink(missing_ok=True)
+        except Exception as err:  # noqa: BLE001
+            Notifier._log_error(f"飞书海报上传失败：{safe_error_text(err)}")
+            return None
+
+    def send_upload_feishu_card(
+        self,
+        title: str,
+        body_elements: list[dict],
+        image_url: str = "",
+    ) -> bool:
+        """发送「115 网盘」美化卡片（schema 2.0 column_set 布局）。
+
+        读取 MoviePilot 内置飞书渠道配置直发；任何异常返回 False 由调用方回退文本。
+        """
+        if not _LARK_OK or _lark is None or _CreateMessageRequest is None or _CreateMessageRequestBody is None:
+            return False
+        channels = self._feishu_channels()
+        if not channels:
+            return False
+        sent_any = False
+        for chan in channels:
+            try:
+                client = _lark.Client.builder() \
+                    .app_id(chan["app_id"]) \
+                    .app_secret(chan["app_secret"]) \
+                    .build()
+                image_key = self._upload_feishu_image(client, image_url)
+                elements: list[dict] = []
+                if image_key:
+                    elements.append({
+                        "tag": "img",
+                        "img_key": image_key,
+                        "alt": {"tag": "plain_text", "content": "海报"},
+                        "mode": "fit_horizontal",
+                    })
+                elements.append({
+                    "tag": "markdown",
+                    "content": f"**{title}**",
+                    "text_size": "heading",
+                    "margin": "16px 16px 0px 16px",
+                })
+                elements.append({"tag": "hr", "margin": "8px 16px 4px 16px"})
+                elements.extend(body_elements)
+                card = {
+                    "schema": "2.0",
+                    "config": {
+                        "wide_screen_mode": True,
+                        "enable_forward": True,
+                        "update_multi": True,
+                        "summary": {"content": title or "115 网盘"},
+                    },
+                    "body": {
+                        "direction": "vertical",
+                        "padding": "0px 0px 0px 0px",
+                        "elements": elements,
+                    },
+                }
+                body = _CreateMessageRequestBody.builder() \
+                    .receive_id(chan["chat_id"]) \
+                    .msg_type("interactive") \
+                    .content(json.dumps(card, ensure_ascii=False)) \
+                    .build()
+                req = _CreateMessageRequest.builder() \
+                    .receive_id_type("chat_id") \
+                    .request_body(body) \
+                    .build()
+                resp = client.im.v1.message.create(req)
+                if resp.success():
+                    sent_any = True
+            except Exception as err:  # noqa: BLE001
+                Notifier._log_error(f"飞书美化卡片发送失败：{safe_error_text(err)}")
+        return sent_any

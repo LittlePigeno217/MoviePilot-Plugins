@@ -385,7 +385,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 v-model:enabled="config.upload_notify"
                 v-model:type="config.upload_notify_type"
                 label="上传完成后发送通知"
-                hint="汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。"
+                hint="汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。通知海报自动使用 MoviePilot 内置的 TMDB 配置。"
               />
             </div>
           </div>
