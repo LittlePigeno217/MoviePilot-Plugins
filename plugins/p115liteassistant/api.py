@@ -598,8 +598,90 @@ class Api:
         return "，".join(parts)
 
     _TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/multi"
+    _TMDB_MOVIE_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+    _TMDB_TV_SEARCH_URL = "https://api.themoviedb.org/3/search/tv"
+    _TMDB_TV_DETAIL_URL = "https://api.themoviedb.org/3/tv/{tv_id}/season/{season}"
     _TMDB_BACKDROP_URL = "https://image.tmdb.org/t/p/w500"
     _TMDB_POSTER_URL = "https://image.tmdb.org/t/p/w342"
+
+    def _tmdb_tv_id(self, title: str, year: str) -> int:
+        """用标题+年份搜索 TMDB 获取 tv id；失败返回 0。"""
+        api_key = self._tmdb_api_key()
+        if not api_key or not title:
+            return 0
+        try:
+            resp = requests.get(
+                self._TMDB_TV_SEARCH_URL,
+                params={"api_key": api_key, "query": title, "language": "zh-CN"},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            results = (resp.json()).get("results") or []
+            if not results:
+                resp = requests.get(
+                    self._TMDB_TV_SEARCH_URL,
+                    params={"api_key": api_key, "query": title, "language": "en-US"},
+                    timeout=5,
+                )
+                resp.raise_for_status()
+                results = (resp.json()).get("results") or []
+            if not results:
+                return 0
+            first = results[0]
+            # 若传了年份，优先匹配同年条目
+            if year:
+                for item in results:
+                    item_year = str(item.get("first_air_date") or "")[:4]
+                    if item_year == str(year):
+                        first = item
+                        break
+            return int(first.get("id") or 0)
+        except Exception:
+            return 0
+
+    def _tmdb_season_episodes(self, tv_id: int, season: int) -> set[int]:
+        """查 TMDB 某剧某季的集号集合；失败返回空集。"""
+        api_key = self._tmdb_api_key()
+        if not api_key or not tv_id:
+            return set()
+        try:
+            resp = requests.get(
+                self._TMDB_TV_DETAIL_URL.format(tv_id=tv_id, season=season),
+                params={"api_key": api_key, "language": "zh-CN"},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                int(e.get("episode_number") or 0)
+                for e in (data.get("episodes") or [])
+                if e.get("episode_number")
+            }
+        except Exception:
+            return set()
+
+    def _complete_seasons(
+        self,
+        title: str,
+        year: str,
+        cloud_seasons: dict[int, set[int]],
+    ) -> list[int]:
+        """判断哪些季在网盘中已整季完整。
+
+        网盘已有集数 == TMDB 该季总集数 → 该季完整。
+        返回完整季号列表，如 [1, 2]。失败（无 TMDB 数据）返回空。
+        """
+        if not cloud_seasons:
+            return []
+        tv_id = self._tmdb_tv_id(title, year)
+        if not tv_id:
+            return []
+        complete: list[int] = []
+        for season, cloud_eps in cloud_seasons.items():
+            total = self._tmdb_season_episodes(tv_id, season)
+            if total and cloud_eps == total:
+                complete.append(season)
+        return complete
 
     def _tmdb_api_key(self) -> str:
         """优先使用 MoviePilot 内置的 TMDB API Key，插件配置作为可选回退。"""
@@ -615,45 +697,225 @@ class Api:
         except Exception:
             return ""
 
-    def _search_poster(self, filename: str) -> str:
-        """从文件名中提取标题，搜索 TMDB 获取海报 URL。"""
+    def _search_poster(self, filename: str, exact_title: str = "", exact_year: str = "") -> str:
+        """从文件名中提取标题，搜索 TMDB 获取海报 URL。
+
+        根据文件名是否包含季集信息，自动选择 TV 或 Movie 搜索，
+        避免 `search/multi` 混合搜索返回同名但类型错误的结果（如"安娜"）。
+        同时提取年份（`(2022)` / `.2022.`）作为搜索过滤参数，
+        避免同名不同年份的作品互相误匹配（如"安娜"电影/剧/安娜的爱人）。
+
+        可传 exact_title/exact_year（来自 MoviePilot 整理历史，100% 准确），
+        优先使用；否则从文件名猜测。
+        """
         api_key = self._tmdb_api_key()
         if not api_key:
             return ""
-        title = self._extract_media_title(filename)
+        if exact_title:
+            title = exact_title
+        else:
+            title = self._extract_media_title(filename)
         if not title or len(title) < 2:
             return ""
-        try:
-            resp = requests.get(
-                self._TMDB_SEARCH_URL,
-                params={"api_key": api_key, "query": title, "language": "zh-CN"},
-                timeout=5,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            results = data.get("results") or []
-            if not results:
-                # 用英文再试一次
-                resp = requests.get(
-                    self._TMDB_SEARCH_URL,
-                    params={"api_key": api_key, "query": title, "language": "en-US"},
-                    timeout=5,
-                )
+
+        # 年份：优先精确年份，否则从文件名提取
+        year = exact_year
+        if not year:
+            year_match = re.search(r"(?:\(|\[|\s|\.)(19\d{2}|20\d{2})(?:\)|\]|\s|\.)", str(filename))
+            if year_match:
+                year = year_match.group(1)
+
+        # 判断媒体类型：有季集信息 → TV，否则 → Movie
+        has_season = self._extract_season_episode(filename) is not None
+        search_url = (
+            self._TMDB_TV_SEARCH_URL
+            if has_season
+            else self._TMDB_MOVIE_SEARCH_URL
+        )
+        # 年份过滤参数：TV 用 first_air_date_year，Movie 用 year
+        year_param = "first_air_date_year" if has_season else "year"
+
+        def _try_search(url: str, lang: str, extra_year: str = "") -> list[dict]:
+            try:
+                params = {"api_key": api_key, "query": title, "language": lang}
+                if extra_year:
+                    params[year_param] = extra_year
+                resp = requests.get(url, params=params, timeout=5)
                 resp.raise_for_status()
-                data = resp.json()
-                results = data.get("results") or []
-            for item in results:
-                # 与 MoviePilot get_message_image 一致：优先横版背景图（16:9），
-                # 飞书 fit_horizontal 模式下高度自然，不会撑得过高；无背景图再退回海报。
-                backdrop = item.get("backdrop_path") or ""
-                if backdrop:
-                    return f"{self._TMDB_BACKDROP_URL}{backdrop}"
-                poster = item.get("poster_path") or ""
-                if poster:
-                    return f"{self._TMDB_POSTER_URL}{poster}"
-        except Exception:
-            logger.debug(f"【海报搜索】TMDB 搜索失败: {filename}")
+                return (resp.json()).get("results") or []
+            except Exception:
+                return []
+
+        results = _try_search(search_url, "zh-CN", year)
+        if not results:
+            results = _try_search(search_url, "en-US", year)
+        # 回退：带年份无结果时去掉年份再试
+        if not results:
+            results = _try_search(search_url, "zh-CN")
+            if not results:
+                results = _try_search(search_url, "en-US")
+        # 回退：search_type 未找到时试试另一种类型
+        if not results:
+            fallback_url = (
+                self._TMDB_MOVIE_SEARCH_URL
+                if has_season
+                else self._TMDB_TV_SEARCH_URL
+            )
+            results = _try_search(fallback_url, "zh-CN")
+            if not results:
+                results = _try_search(fallback_url, "en-US")
+        # 最后回退 search/multi
+        if not results:
+            results = _try_search(self._TMDB_SEARCH_URL, "zh-CN")
+            if not results:
+                results = _try_search(self._TMDB_SEARCH_URL, "en-US")
+
+        for item in results:
+            # 与 MoviePilot get_message_image 一致：优先横版背景图（16:9），
+            # 飞书 fit_horizontal 模式下高度自然，不会撑得过高；无背景图再退回海报。
+            backdrop = item.get("backdrop_path") or ""
+            if backdrop:
+                return f"{self._TMDB_BACKDROP_URL}{backdrop}"
+            poster = item.get("poster_path") or ""
+            if poster:
+                return f"{self._TMDB_POSTER_URL}{poster}"
+        return ""
+
+    def _transfer_meta(self, local_path: str) -> dict:
+        """按上传路径查询 MoviePilot 整理历史，返回已识别的媒体信息。
+
+        100% 准确数据源：MoviePilot 整理时已完成媒体识别，transferhistory
+        表存有 title/year/seasons/episodes/image。插件上传的文件路径正是
+        transferhistory.dest，直接按路径查询即可，不依赖文件名猜测。
+
+        返回 {title, year, seasons, episodes, image}，未命中返回空 dict。
+        """
+        try:
+            from app.db.oper.transferhistory import TransferHistoryOper
+            hit = TransferHistoryOper().get_by_dest(local_path)
+            if hit:
+                return self._transfer_meta_from_hit(hit)
+        except Exception as err:  # noqa: BLE001
+            logger.debug(f"【整理历史】TransferHistoryOper 不可用，改直连查询: {safe_error_text(err)}")
+        # 回退：直连 PostgreSQL（独立脚本/Oper 未装配时可用）
+        try:
+            return self._transfer_meta_direct(local_path)
+        except Exception as err:  # noqa: BLE001
+            logger.debug(f"【整理历史】直连查询失败: {safe_error_text(err)}")
+            return {}
+
+    @staticmethod
+    def _transfer_meta_from_hit(hit: Any) -> dict:
+        """从 TransferHistory 模型对象提取字段。"""
+        return {
+            "title": str(hit.title or "").strip(),
+            "year": str(hit.year or "").strip(),
+            "seasons": str(hit.seasons or "").strip(),
+            "episodes": str(hit.episodes or "").strip(),
+            "image": str(hit.image or "").strip(),
+        }
+
+    def _transfer_meta_direct(self, local_path: str) -> dict:
+        """直连 PostgreSQL 查询 transferhistory（不依赖应用组合根）。"""
+        from sqlalchemy import create_engine, text
+        db_user = str(settings.DB_POSTGRESQL_USERNAME or "moviepilot")
+        db_pass = str(settings.DB_POSTGRESQL_PASSWORD or "")
+        db_host = str(settings.DB_POSTGRESQL_HOST or "localhost")
+        db_port = int(settings.DB_POSTGRESQL_PORT or 5433)
+        db_name = str(settings.DB_POSTGRESQL_DATABASE or "moviepilot")
+        url = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+        engine = create_engine(url, pool_pre_ping=True, pool_size=1, max_overflow=1)
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT title, year, seasons, episodes, image "
+                        "FROM transferhistory WHERE dest = :dest LIMIT 1"
+                    ),
+                    {"dest": local_path},
+                ).mappings().first()
+            if not row:
+                return {}
+            return {
+                "title": str(row.get("title") or "").strip(),
+                "year": str(row.get("year") or "").strip(),
+                "seasons": str(row.get("seasons") or "").strip(),
+                "episodes": str(row.get("episodes") or "").strip(),
+                "image": str(row.get("image") or "").strip(),
+            }
+        finally:
+            engine.dispose()
+
+    def _aggregate_seasons(
+        self,
+        details: list[dict],
+        cloud_records: dict | None = None,
+    ) -> str:
+        """聚合季集范围：本次上传 + 115 网盘已存在的并集。
+
+        输入为 transferhistory 查询结果（每条含 seasons/episodes），
+        cloud_records 为 upload_records.to_dict()（键=本地路径，值含 target）。
+        当本组文件同目录下网盘已有更多集（漏集补传场景）时，合并显示完整范围。
+
+        输出格式：第1季 第1-6集，第2季 第1-8集（按季分组、集数去重合并）。
+        """
+        per_season: dict[int, set[int]] = {}
+        for d in details:
+            seasons = str(d.get("seasons") or "").strip()
+            episodes = str(d.get("episodes") or "").strip()
+            # seasons 如 "S01"，episodes 如 "E01-E06" 或 "E01"
+            for s_part in re.findall(r"[Ss](\d{1,2})", seasons):
+                s_num = int(s_part)
+                eps = per_season.setdefault(s_num, set())
+                for e_part in re.findall(r"[Ee](\d{1,3})", episodes):
+                    eps.add(int(e_part))
+
+        # 合并 115 网盘已有集数：按 target 目录前缀匹配同剧集
+        if cloud_records:
+            # 收集本组文件的 target 目录前缀（如 /媒体库/.../安娜 (2022)/Season 1/）
+            dir_prefixes: set[str] = set()
+            for d in details:
+                local_path = str(d.get("local_path") or d.get("dest") or "")
+                record = cloud_records.get(local_path)
+                target = str((record or {}).get("target") or "")
+                if not target:
+                    continue
+                # 取到 Season N/ 目录为止的前缀；无 Season 则取到文件名父目录
+                season_m = re.search(r"^(.*?/Season \d+/)(?:[^/]+)$", target)
+                if season_m:
+                    dir_prefixes.add(season_m.group(1))
+                else:
+                    dir_prefixes.add(str(Path(target).parent.as_posix()) + "/")
+            for _local, record in cloud_records.items():
+                target = str((record or {}).get("target") or "")
+                if not target:
+                    continue
+                for prefix in dir_prefixes:
+                    if target.startswith(prefix) and re.search(r"[Ee]\d{1,3}", target):
+                        m_season = re.search(r"/Season (\d+)/", target)
+                        m_ep = re.search(r"[Ee](\d{1,3})", target)
+                        if m_season and m_ep:
+                            per_season.setdefault(int(m_season.group(1)), set()).add(
+                                int(m_ep.group(1))
+                            )
+
+        if not per_season:
             return ""
+        parts = []
+        for season in sorted(per_season):
+            ep_list = sorted(per_season[season])
+            # 连续区间合并
+            ranges: list[tuple[int, int]] = []
+            for ep in ep_list:
+                if ranges and ep == ranges[-1][1] + 1:
+                    ranges[-1] = (ranges[-1][0], ep)
+                else:
+                    ranges.append((ep, ep))
+            range_text = "、".join(
+                f"{a}-{b}" if a != b else f"{a}" for a, b in ranges
+            )
+            parts.append(f"第{season}季 第{range_text}集")
+        return "，".join(parts)
 
     def run_upload(self, incremental: bool = True, moviepilot_url: str = "") -> Dict[str, Any]:
         config = self._store.get_config()
@@ -692,7 +954,14 @@ class Api:
         return entry
 
     def _notify_upload(self, entry: Dict[str, Any], incremental: bool) -> None:
-        """上传通道执行完成后的通知，按媒体条目分组发送。"""
+        """上传通道执行完成后的通知，按媒体条目分组发送。
+
+        优先使用 MoviePilot 整理历史（transferhistory）的识别结果：
+        - 分组键：识别出的 title+year（100% 准确，含年份避免同名混淆）
+        - 季集范围：transferhistory.seasons/episodes 聚合（100% 准确）
+        - 海报：transferhistory.image（MoviePilot 识别时存的准确海报）
+        未命中整理历史时回退文件名猜测逻辑。
+        """
         if not self._notifier.is_enabled("upload"):
             return
         errors = int(entry.get("errors") or 0)
@@ -700,13 +969,28 @@ class Api:
         per_file = [d for d in per_file if d.get("method") in ("upload", "instant")]
         if not per_file and not errors:
             return
-        # 按媒体标题分组
+
+        # 逐文件查询整理历史，附带识别结果
+        transfer_meta_by_path: dict[str, dict] = {}
+        for d in per_file:
+            local_path = str(d.get("local_path") or "")
+            if local_path and local_path not in transfer_meta_by_path:
+                meta = self._transfer_meta(local_path)
+                if meta:
+                    transfer_meta_by_path[local_path] = meta
+
+        # 分组键：优先识别标题（含年份），回退文件名提取
         groups: dict[str, list[dict]] = {}
         for d in per_file:
-            title = self._extract_media_title(d.get("name", ""))
-            groups.setdefault(title, []).append(d)
+            meta = transfer_meta_by_path.get(str(d.get("local_path") or ""), {})
+            if meta.get("title"):
+                title_key = f"{meta['title']} ({meta['year']})" if meta.get("year") else meta["title"]
+            else:
+                title_key = self._extract_media_title(d.get("name", ""))
+            groups.setdefault(title_key, []).append(d)
+
         # 每组发一条通知
-        for title, files in sorted(groups.items()):
+        for title_key, files in sorted(groups.items()):
             _count = len(files)
             _size = self._format_size(sum(int(f.get("size", 0)) for f in files))
             _methods: dict[str, int] = {}
@@ -719,17 +1003,82 @@ class Api:
             if _methods.get("instant"):
                 _method_parts.append(f"秒传 {_methods['instant']}")
             _method_str = "，".join(_method_parts) if _method_parts else "上传"
-            if _methods.get("instant"):
-                _method_str = f"秒传 {_methods['instant']}"
             _strm = sum(1 for f in files if f.get("strm_generated"))
             _sidecars = sum(len(f.get("sidecars") or []) for f in files)
             _labels = sorted(set(f.get("mapping_label", "") for f in files if f.get("mapping_label")))
             _label_str = "、".join(_labels) if _labels else "媒体库"
-            _se_text = self._format_season_episodes(files)
-            poster = next(
-                (f.get("poster_url", "") for f in files if f.get("poster_url")),
-                "",
-            )
+
+            # 季集范围：优先整理历史聚合（含网盘已有集数），回退文件名提取
+            meta_list = [
+                transfer_meta_by_path.get(str(f.get("local_path") or ""), {})
+                for f in files
+            ]
+            has_meta = any(m.get("title") for m in meta_list)
+            if has_meta:
+                try:
+                    cloud_records = self._store.get_upload_records().to_dict()
+                except Exception:  # noqa: BLE001
+                    cloud_records = None
+                _se_text = self._aggregate_seasons(meta_list, cloud_records)
+            else:
+                _se_text = self._format_season_episodes(files)
+
+            # 整季完整提示：网盘已有集数 == TMDB 该季总集数
+            complete_hint = ""
+            if has_meta and _se_text:
+                first_meta = next((m for m in meta_list if m.get("title")), {})
+                title_meta = first_meta.get("title", "")
+                year_meta = first_meta.get("year", "")
+                try:
+                    cloud_records = self._store.get_upload_records().to_dict()
+                except Exception:  # noqa: BLE001
+                    cloud_records = None
+                if title_meta:
+                    cloud_seasons: dict[int, set[int]] = {}
+                    meta_for_cloud = [m for m in meta_list if m.get("title")]
+                    se_text_with_cloud = self._aggregate_seasons(meta_for_cloud, cloud_records)
+                    # 从聚合文本解析出网盘集数分布（含 cloud 合并后）
+                    for part in [p.strip() for p in se_text_with_cloud.split("，")]:
+                        m = re.match(r"第(\d+)季 第([\d、\-]+)集", part)
+                        if m:
+                            s = int(m.group(1))
+                            eps: set[int] = set()
+                            for seg in re.findall(r"\d+(?:-\d+)?", m.group(2)):
+                                if "-" in seg:
+                                    a, b = seg.split("-")
+                                    eps.update(range(int(a), int(b) + 1))
+                                else:
+                                    eps.add(int(seg))
+                            cloud_seasons[s] = eps
+                    complete = self._complete_seasons(title_meta, year_meta, cloud_seasons)
+                    if complete:
+                        complete_hint = "✅ " + "、".join(
+                            f"第{s}季已整季完整" for s in complete
+                        )
+            _complete_hint = complete_hint
+
+            # 海报：优先用识别出的 title+year 精确搜 TMDB backdrop（横版），
+            # 其次 transferhistory.image（豆瓣，可能竖版），最后回退文件名搜索
+            poster = ""
+            if has_meta:
+                # 取第一个有 title 的 meta 作为搜索依据
+                first_meta = next((m for m in meta_list if m.get("title")), {})
+                if first_meta.get("title"):
+                    poster = self._search_poster(
+                        "",
+                        exact_title=first_meta.get("title", ""),
+                        exact_year=first_meta.get("year", ""),
+                    )
+                if not poster:
+                    poster = next(
+                        (m.get("image", "") for m in meta_list if m.get("image")),
+                        "",
+                    )
+            if not poster:
+                poster = next(
+                    (f.get("poster_url", "") for f in files if f.get("poster_url")),
+                    "",
+                )
 
             # 构造 column_set 卡片（季集在上，统计在下）
             elements: list[dict] = []
@@ -758,6 +1107,13 @@ class Api:
                         "tag": "column_set", "flex_mode": "none",
                         "columns": cols, "margin": "2px 16px 0px 16px",
                     })
+            # 整季完整提示（季集区下方）
+            if _complete_hint:
+                elements.append({
+                    "tag": "markdown",
+                    "content": f"<font color='green'>{_complete_hint}</font>",
+                    "margin": "4px 16px 0px 16px",
+                })
             # 统计区
             elements.append({"tag": "hr", "margin": "8px 16px 4px 16px"})
             elements.append({
@@ -785,7 +1141,7 @@ class Api:
                 "margin": "0px 16px 12px 16px",
             })
             # 优先飞书美化卡片，失败回退文本
-            card_title = f"115 网盘・{title} 已入库"
+            card_title = f"115 网盘・{title_key} 已入库"
             if not self._notifier.send_upload_feishu_card(card_title, elements, poster):
                 lines = [
                     f"类型：媒体，映射：{_label_str}，共 {_count} 个文件，大小：{_size}"
@@ -794,7 +1150,7 @@ class Api:
                 if _se_text:
                     lines.append(_se_text)
                 self._notifier.notify(
-                    "upload", f"{title} 已入库", lines, image=poster,
+                    "upload", f"{title_key} 已入库", lines, image=poster,
                 )
         # 汇总通知（有错误时补充）
         if errors:
