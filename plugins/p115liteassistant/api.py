@@ -25,7 +25,13 @@ from .checkin_schedule import random_epoch_for_date, pick_next_run_epoch
 from .client import U115AccessLimitError, U115ApiError, U115AuthError, U115Client
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
-from .notify import CHANNELS as NOTIFY_CHANNELS, Notifier, normalize_notify_type
+from .notify import (
+    CHANNELS as NOTIFY_CHANNELS,
+    NOTIFY_TYPE_NAMES,
+    NOTIFY_TYPE_SWITCHS_NAMES,
+    Notifier,
+    normalize_notify_type,
+)
 from .rate_limiter import RateLimiter
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
@@ -86,6 +92,16 @@ class Api:
     def get_config(self) -> Dict[str, Any]:
         config = deepcopy(self._store.get_config())
         config.pop("tokens", None)
+        # 附加动态通知类型列表（从 MoviePilot MessageType 源派生），供前端渲染「消息类型」下拉，
+        # 与 MoviePilot 通知渠道 switchs 分流的中文 value 保持同步。
+        try:
+            config["notify_types"] = [
+                {"value": name, "title": NOTIFY_TYPE_SWITCHS_NAMES[name]}
+                for name in NOTIFY_TYPE_NAMES
+                if name in NOTIFY_TYPE_SWITCHS_NAMES
+            ]
+        except Exception:  # noqa: BLE001
+            config.pop("notify_types", None)
         return config
 
     def save_config(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
@@ -137,6 +153,36 @@ class Api:
                 logger.error(f"【配置】保存后刷新运行服务失败：{safe_error_text(err)}")
                 return _error(f"配置已保存，但刷新运行服务失败：{err}")
         return _ok(message="配置已保存")
+
+    def test_notify(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """发送一条模拟通知，走 MoviePilot 完整通知管道（post_message → 模板渲染 → 渠道分流 → 各模块发送）。
+
+        可选参数：
+        - channel: strm | upload | checkin（默认 upload）
+        - title: 自定义标题（默认按通道生成）
+        """
+        payload = payload or {}
+        channel = str(payload.get("channel") or "upload").strip()
+        meta = NOTIFY_CHANNELS.get(channel)
+        if not meta:
+            return _error(f"未知通知通道: {channel}，可选: {', '.join(NOTIFY_CHANNELS)}")
+        if not self._notifier.is_enabled(channel):
+            return _error(
+                f"通道未开启：{meta['label']}（{meta['enabled_key']}=True 才发送），"
+                f"当前类型 {meta['type_key']}="
+                f"{self._store.get_config().get(meta['type_key'])}"
+            )
+        headline = str(payload.get("title") or "模拟测试通知")
+        lines = [
+            "━━━━━━━━━━━━━",
+            "**📨 MoviePilot 通知管道测试**",
+            "• 通道：115 轻量助手",
+            f"• 消息类型：{self._store.get_config().get(meta['type_key'])}",
+            "• 说明：本条由插件 API /test-notify 触发，走宿主 post_message 完整链路",
+            f"• 时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        ]
+        self._notifier.notify(channel, headline, lines)
+        return _ok(message=f"已通过 MoviePilot 通知管道发送（{meta['label']}）")
 
     @property
     def cloud_task_lock(self) -> threading.Lock:
@@ -457,49 +503,106 @@ class Api:
         totals: Dict[str, int],
         incremental: bool,
     ) -> None:
-        """STRM 通道执行完成后的通知，逐条映射列出变化。"""
+        """STRM 通道执行完成后的通知，美化卡片 + 按消息类型分流。"""
         if not self._notifier.is_enabled("strm"):
             return
-        has_errors = bool(totals["errors"])
-        headline = "❌ 有失败" if has_errors else "✅ 完成"
-        lines = [
-            "━━ 115 轻量助手 · STRM 同步 ━━",
-            "",
-            f"  {headline}  │  {'增量' if incremental else '全量'}  │  {len(entries)} 映射  │  {self._duration_text(totals['duration_ms'])}",
-            "────────────────────────────",
-            f"  新增 {totals['added']}  ·  更新 {totals['updated']}  ·  清理 {totals['removed']}",
-            f"  附属 {totals['sidecars']}  ·  跳过 {totals['skipped']}  ·  失败 {totals['errors']}",
-        ]
+        has_errors = bool(totals.get("errors"))
+        status_icon = "❌" if has_errors else "✅"
+        status_text = "有失败" if has_errors else "完成"
+        duration = self._duration_text(totals.get("duration_ms"))
+        title = "115 轻量助手・STRM 同步"
+
+        # 构造卡片元素
+        elements: list[dict] = []
+        # 状态行
+        elements.append({
+            "tag": "markdown",
+            "content": f"**{status_icon} {status_text}**　<font color='grey'>{'增量' if incremental else '全量'} · {len(entries)} 映射 · {duration}</font>",
+            "margin": "0px 16px 0px 16px",
+        })
+        elements.append({"tag": "hr", "margin": "8px 16px 4px 16px"})
+
+        # 统计三列（新增/更新/清理）
+        stat_cols = []
+        for value, label in [
+            (totals.get("added", 0), "新增"),
+            (totals.get("updated", 0), "更新"),
+            (totals.get("removed", 0), "清理"),
+        ]:
+            stat_cols.append({
+                "tag": "column", "width": "weighted", "weight": 1,
+                "elements": [
+                    {"tag": "markdown", "content": f"**{value}**", "margin": "0px", "text_align": "center"},
+                    {"tag": "markdown", "content": label, "margin": "0px", "text_align": "center"},
+                ],
+            })
+        elements.append({"tag": "column_set", "flex_mode": "none", "columns": stat_cols,
+                         "margin": "8px 16px 0px 16px"})
+
+        # 附属/跳过/失败
+        sub_cols = []
+        for value, label in [
+            (totals.get("sidecars", 0), "附属"),
+            (totals.get("skipped", 0), "跳过"),
+            (totals.get("errors", 0), "失败"),
+        ]:
+            sub_cols.append({
+                "tag": "column", "width": "weighted", "weight": 1,
+                "elements": [
+                    {"tag": "markdown", "content": f"**{value}**", "margin": "0px", "text_align": "center"},
+                    {"tag": "markdown", "content": label, "margin": "0px", "text_align": "center"},
+                ],
+            })
         if totals.get("cloud_deleted") or totals.get("cloud_dirs_deleted"):
-            lines.append(
-                f"  云端删除 文件 {totals['cloud_deleted']}  ·  目录 {totals['cloud_dirs_deleted']}"
-            )
-        has_mapping_detail = False
+            sub_cols.append({
+                "tag": "column", "width": "weighted", "weight": 1,
+                "elements": [
+                    {"tag": "markdown", "content": f"**{int(totals.get('cloud_deleted', 0))}**",
+                     "margin": "0px", "text_align": "center"},
+                    {"tag": "markdown", "content": "云端删除", "margin": "0px", "text_align": "center"},
+                ],
+            })
+        elements.append({"tag": "column_set", "flex_mode": "none", "columns": sub_cols,
+                         "margin": "8px 16px 0px 16px"})
+
+        # 映射详情
+        has_mapping = False
         for entry in entries:
             mapping = str(entry.get("mapping") or "-")
             if int(entry.get("errors") or 0):
                 detail = f"❌ 失败 {int(entry.get('errors') or 0)}"
             else:
                 parts = []
-                if int(entry.get("added") or 0):
-                    parts.append(f"+{int(entry.get('added') or 0)}")
-                if int(entry.get("updated") or 0):
-                    parts.append(f"~{int(entry.get('updated') or 0)}")
-                if int(entry.get("removed") or 0):
-                    parts.append(f"✕{int(entry.get('removed') or 0)}")
-                if int(entry.get("cloud_deleted") or 0):
-                    parts.append(f"☁{int(entry.get('cloud_deleted') or 0)}")
+                for k, sym in [("added", "+"), ("updated", "~"), ("removed", "✕"), ("cloud_deleted", "☁")]:
+                    v = int(entry.get(k) or 0)
+                    if v:
+                        parts.append(f"{sym}{v}")
                 detail = "  ".join(parts) if parts else "无变化"
-            if not has_mapping_detail:
-                lines.append("")
-                lines.append("─── 映射详情 ────────────────────")
-                has_mapping_detail = True
             message = str(entry.get("message") or "").strip()
+
+            if not has_mapping:
+                elements.append({"tag": "hr", "margin": "8px 16px 8px 16px"})
+                elements.append({"tag": "markdown", "content": "**映射**", "margin": "0px 16px 0px 16px"})
+                has_mapping = True
+            line = f"📁 {mapping}  {detail}"
             if message:
-                lines.append(f"  📁 {mapping}  {detail}  ·  {message}")
-            else:
-                lines.append(f"  📁 {mapping}  {detail}")
-        self._notifier.notify("strm", headline, lines)
+                line += f"  ·  {message}"
+            elements.append({
+                "tag": "markdown", "content": line,
+                "margin": "4px 16px 0px 16px",
+            })
+
+        # 优先飞书卡片，失败回退文本
+        strm_mtype = normalize_notify_type(
+            self._store.get_config().get("strm_notify_type")
+        )
+        if not self._notifier.send_upload_feishu_card(title, elements, mtype=strm_mtype):
+            # 文本回退（保持原有纯文本格式）
+            headline = "❌ 有失败" if has_errors else "✅ 完成"
+            lines = [
+                f"  {headline}  │  {'增量' if incremental else '全量'}  │  {len(entries)} 映射  │  {duration}",
+            ]
+            self._notifier.notify("strm", headline, lines)
 
     @staticmethod
     def _duration_text(duration_ms: Any) -> str:
@@ -1140,9 +1243,12 @@ class Api:
                 ],
                 "margin": "0px 16px 12px 16px",
             })
-            # 优先飞书美化卡片，失败回退文本
+            # 优先飞书美化卡片，失败回退文本（mtype 用配置的消息类型分流渠道）
             card_title = f"115 网盘・{title_key} 已入库"
-            if not self._notifier.send_upload_feishu_card(card_title, elements, poster):
+            upload_mtype = normalize_notify_type(
+                self._store.get_config().get("upload_notify_type")
+            )
+            if not self._notifier.send_upload_feishu_card(card_title, elements, poster, upload_mtype):
                 lines = [
                     f"类型：媒体，映射：{_label_str}，共 {_count} 个文件，大小：{_size}"
                     f"，方式：{_method_str}，STRM {_strm} 个，附属 {_sidecars} 个",

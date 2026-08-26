@@ -2,7 +2,10 @@
 /**
  * 通道通知开关。一条通道一个实例，开关和消息类型都是独立字段——
  * STRM 只关心自己的，签到失败不会因为上传没开通知而静默。
+ * 消息类型下拉优先用宿主注入的动态列表（types prop，来自 MoviePilot MessageType 源，
+ * 与渠道 switchs 分流中文 value 同步），没有才回退到静态 NOTIFY_TYPES。
  */
+import { computed } from 'vue'
 import { NOTIFY_TYPES } from '../../plugin.js'
 
 const props = defineProps({
@@ -10,8 +13,13 @@ const props = defineProps({
   type: { type: String, default: 'Plugin' },
   label: { type: String, default: '执行后发送通知' },
   hint: { type: String, default: '' },
+  types: { type: Array, default: null },
 })
 const emit = defineEmits(['update:enabled', 'update:type'])
+
+const typeOptions = computed(
+  () => (Array.isArray(props.types) && props.types.length ? props.types : NOTIFY_TYPES)
+)
 </script>
 
 <template>
@@ -27,7 +35,7 @@ const emit = defineEmits(['update:enabled', 'update:type'])
       />
       <v-select
         :model-value="props.type"
-        :items="NOTIFY_TYPES"
+        :items="typeOptions"
         :disabled="!props.enabled"
         class="ntf__type"
         label="消息类型"

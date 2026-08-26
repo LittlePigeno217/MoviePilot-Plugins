@@ -20,7 +20,7 @@ class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.2.4"
+    plugin_version = "1.2.5"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -124,7 +124,7 @@ class P115LiteAssistant(_PluginBase):
         return []
 
     def get_render_mode(self) -> Tuple[str, Optional[str]]:
-        return "vue", "dist/assets-v121"
+        return "vue", "dist/assets-v122"
 
     def get_form(self) -> Tuple[Optional[List[dict]], Dict[str, Any]]:
         config = self._store.get_config()
@@ -146,6 +146,7 @@ class P115LiteAssistant(_PluginBase):
             {"path": "/strm/sync", "endpoint": self._api.trigger_strm, "methods": ["POST"], "auth": "bear", "summary": "开始 STRM 同步"},
             {"path": "/upload", "endpoint": self._api.trigger_upload, "methods": ["POST"], "auth": "bear", "summary": "开始目录上传"},
             {"path": "/checkin", "endpoint": self._api.run_checkin, "methods": ["POST"], "auth": "bear", "summary": "执行 115 签到"},
+            {"path": "/test-notify", "endpoint": self._api.test_notify, "methods": ["POST"], "auth": "bear", "summary": "发送测试通知（走 MoviePilot 完整通知管道）"},
             {"path": "/history", "endpoint": self._api.history, "methods": ["GET"], "auth": "bear", "summary": "读取执行历史"},
             {
                 "path": "/redirect",

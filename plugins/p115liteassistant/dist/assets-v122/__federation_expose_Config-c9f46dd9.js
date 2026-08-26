@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, p as pluginGet, N as NOTIFY_TYPES, a as pluginPost, n as normalizeConfig, u as useHostNotice, A as AppBar, c as clone, b as newId } from './kit-45b19bd5.js';
+import { _ as _export_sfc, p as pluginGet, N as NOTIFY_TYPES, a as pluginPost, n as normalizeConfig, u as useHostNotice, A as AppBar, c as clone, b as newId } from './kit-a6d4b6ea.js';
 
 const Conduit_vue_vue_type_style_index_0_scoped_1ac6f414_lang = '';
 
@@ -25,7 +25,7 @@ const _hoisted_8$3 = {
   class: "conduit__stop-path conduit__stop-path--empty"
 };
 
-const {computed: computed$3} = await importShared('vue');
+const {computed: computed$4} = await importShared('vue');
 
 
 
@@ -50,7 +50,7 @@ const _sfc_main$4 = {
 const props = __props;
 const emit = __emit;
 
-const live = computed$3(() => props.enabled);
+const live = computed$4(() => props.enabled);
 
 return (_ctx, _cache) => {
   const _component_v_switch = _resolveComponent$4("v-switch");
@@ -141,7 +141,7 @@ const _hoisted_7$2 = {
 };
 const _hoisted_8$2 = { class: "picker__foot" };
 
-const {computed: computed$2,reactive: reactive$2,ref: ref$2,watch: watch$2} = await importShared('vue');
+const {computed: computed$3,reactive: reactive$2,ref: ref$2,watch: watch$2} = await importShared('vue');
 
 
 const _sfc_main$3 = {
@@ -171,16 +171,16 @@ const items = ref$2([]);
 const loading = ref$2(false);
 const state = reactive$2({ failed: '' });
 
-const remotePath = computed$2(() => {
+const remotePath = computed$3(() => {
   const joined = trail.value.map(stop => stop.name).join('/');
   return joined ? `/${joined}` : '/'
 });
-const localPath = computed$2(() => {
+const localPath = computed$3(() => {
   const base = localBase.value.replace(/[\\/]+$/, '');
   return path.value ? `${base}/${path.value}` : base || '/'
 });
-const here = computed$2(() => (props.remote ? remotePath.value : localPath.value));
-const canAscend = computed$2(() => (props.remote ? trail.value.length > 0 : Boolean(path.value)));
+const here = computed$3(() => (props.remote ? remotePath.value : localPath.value));
+const canAscend = computed$3(() => (props.remote ? trail.value.length > 0 : Boolean(path.value)));
 
 async function load(step) {
   loading.value = true;
@@ -378,9 +378,9 @@ return (_ctx, _cache) => {
 };
 const DirPicker = /*#__PURE__*/_export_sfc(_sfc_main$3, [['__scopeId',"data-v-753346c2"]]);
 
-const NotifyRow_vue_vue_type_style_index_0_scoped_db171d2a_lang = '';
+const NotifyRow_vue_vue_type_style_index_0_scoped_b8cb2d38_lang = '';
 
-const {resolveComponent:_resolveComponent$2,createVNode:_createVNode$2,unref:_unref$1,createElementVNode:_createElementVNode$2,toDisplayString:_toDisplayString$2,openBlock:_openBlock$2,createElementBlock:_createElementBlock$2,createCommentVNode:_createCommentVNode$2} = await importShared('vue');
+const {resolveComponent:_resolveComponent$2,createVNode:_createVNode$2,createElementVNode:_createElementVNode$2,toDisplayString:_toDisplayString$2,openBlock:_openBlock$2,createElementBlock:_createElementBlock$2,createCommentVNode:_createCommentVNode$2} = await importShared('vue');
 
 
 const _hoisted_1$2 = { class: "ntf" };
@@ -390,6 +390,8 @@ const _hoisted_3$2 = {
   class: "p115-hint"
 };
 
+const {computed: computed$2} = await importShared('vue');
+
 
 const _sfc_main$2 = {
   __name: 'NotifyRow',
@@ -398,6 +400,7 @@ const _sfc_main$2 = {
   type: { type: String, default: 'Plugin' },
   label: { type: String, default: '执行后发送通知' },
   hint: { type: String, default: '' },
+  types: { type: Array, default: null },
 },
   emits: ['update:enabled', 'update:type'],
   setup(__props, { emit: __emit }) {
@@ -405,9 +408,15 @@ const _sfc_main$2 = {
 /**
  * 通道通知开关。一条通道一个实例，开关和消息类型都是独立字段——
  * STRM 只关心自己的，签到失败不会因为上传没开通知而静默。
+ * 消息类型下拉优先用宿主注入的动态列表（types prop，来自 MoviePilot MessageType 源，
+ * 与渠道 switchs 分流中文 value 同步），没有才回退到静态 NOTIFY_TYPES。
  */
 const props = __props;
 const emit = __emit;
+
+const typeOptions = computed$2(
+  () => (Array.isArray(props.types) && props.types.length ? props.types : NOTIFY_TYPES)
+);
 
 return (_ctx, _cache) => {
   const _component_v_switch = _resolveComponent$2("v-switch");
@@ -425,7 +434,7 @@ return (_ctx, _cache) => {
       }, null, 8, ["model-value", "label"]),
       _createVNode$2(_component_v_select, {
         "model-value": props.type,
-        items: _unref$1(NOTIFY_TYPES),
+        items: typeOptions.value,
         disabled: !props.enabled,
         class: "ntf__type",
         label: "消息类型",
@@ -443,7 +452,7 @@ return (_ctx, _cache) => {
 }
 
 };
-const NotifyRow = /*#__PURE__*/_export_sfc(_sfc_main$2, [['__scopeId',"data-v-db171d2a"]]);
+const NotifyRow = /*#__PURE__*/_export_sfc(_sfc_main$2, [['__scopeId',"data-v-b8cb2d38"]]);
 
 const QrLogin_vue_vue_type_style_index_0_scoped_fb3a5ece_lang = '';
 
@@ -680,7 +689,7 @@ return (_ctx, _cache) => {
 };
 const QrLogin = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-fb3a5ece"]]);
 
-const Config_vue_vue_type_style_index_0_scoped_29467c29_lang = '';
+const Config_vue_vue_type_style_index_0_scoped_f009881f_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,withCtx:_withCtx,createBlock:_createBlock,unref:_unref} = await importShared('vue');
 
@@ -1093,9 +1102,10 @@ return (_ctx, _cache) => {
                       "onUpdate:enabled": _cache[13] || (_cache[13] = $event => ((config.strm_notify) = $event)),
                       type: config.strm_notify_type,
                       "onUpdate:type": _cache[14] || (_cache[14] = $event => ((config.strm_notify_type) = $event)),
+                      types: config.notify_types,
                       label: "STRM 同步完成后发送通知",
                       hint: "每次同步结束发一条，逐条列出映射的新增、更新与失败数。"
-                    }, null, 8, ["enabled", "type"])
+                    }, null, 8, ["enabled", "type", "types"])
                   ])
                 ]),
                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.strm_mappings, (mapping, index) => {
@@ -1192,9 +1202,10 @@ return (_ctx, _cache) => {
                         "onUpdate:enabled": _cache[20] || (_cache[20] = $event => ((config.upload_notify) = $event)),
                         type: config.upload_notify_type,
                         "onUpdate:type": _cache[21] || (_cache[21] = $event => ((config.upload_notify_type) = $event)),
+                        types: config.notify_types,
                         label: "上传完成后发送通知",
                         hint: "汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。通知海报自动使用 MoviePilot 内置的 TMDB 配置。"
-                      }, null, 8, ["enabled", "type"])
+                      }, null, 8, ["enabled", "type", "types"])
                     ])
                   ]),
                   (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.upload_mappings, (mapping, index) => {
@@ -1255,9 +1266,10 @@ return (_ctx, _cache) => {
                         "onUpdate:enabled": _cache[25] || (_cache[25] = $event => ((config.checkin_notify) = $event)),
                         type: config.checkin_notify_type,
                         "onUpdate:type": _cache[26] || (_cache[26] = $event => ((config.checkin_notify_type) = $event)),
+                        types: config.notify_types,
                         label: "签到后发送通知",
                         hint: "成功带上连续天数和本次积分，失败带上原因。"
-                      }, null, 8, ["enabled", "type"])
+                      }, null, 8, ["enabled", "type", "types"])
                     ])
                   ])
                 ]))
@@ -1312,6 +1324,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-29467c29"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-f009881f"]]);
 
 export { Config as default };

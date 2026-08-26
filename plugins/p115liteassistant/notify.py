@@ -50,16 +50,49 @@ DEFAULT_NOTIFY_TYPE = "Plugin"
 # 与 MoviePilot 原生资源入库通知保持一致。
 RESOURCE_NOTIFY_TYPE = "Organize"
 
-# 可选的消息类型。MoviePilot 的通知渠道按类型分流，所以每条通道都能挑自己的类型，
-# 比如签到发到「站点」，STRM 发到「插件」。名字对不上时统一退回 Plugin。
-NOTIFY_TYPE_NAMES: tuple[str, ...] = (
-    "Plugin",
-    "Organize",
-    "SiteMessage",
-    "MediaServer",
-    "Manual",
-    "Other",
-)
+# 可选的消息类型。MoviePilot 的通知渠道按类型分流，所以每条通道都能挑自己的类型。
+# 以下均从 MoviePilot 的 MessageType 枚举**动态派生**（NotificationType 是其兼容别名），
+# 保证与 MoviePilot 通知渠道 switchs 分流用的中文 value 永远一致，避免硬编码失步：
+#   - NOTIFY_TYPE_NAMES         = 枚举成员名元组（英文，白名单）
+#   - NOTIFY_TYPE_SWITCHS_NAMES = 枚举成员名 → value（中文，渠道 switchs 匹配用）
+# MoviePilot 不可用（如单元测试/独立脚本）时回退到一份与当前版本一致的核对静态备份。
+_NOTIFY_TYPE_BACKUP = {
+    "Download": "资源下载",
+    "Organize": "整理入库",
+    "Subscribe": "订阅",
+    "SiteMessage": "站点",
+    "MediaServer": "媒体服务器",
+    "Manual": "手动处理",
+    "Plugin": "插件",
+    "Agent": "智能体",
+    "Other": "其它",
+}
+
+
+def _derive_notify_types() -> tuple[tuple[str, ...], dict[str, str]]:
+    """从 MoviePilot MessageType 枚举派生类型列表与 switch 中文映射。
+
+    NotificationType 是 MessageType 的兼容别名（见 manifest.py SymbolAlias），
+    成员名即英文值，成员 value 即渠道 switchs 中文值。无法导入时返回静态备份。
+    """
+    src = NotificationType
+    if src is None:
+        names = tuple(_NOTIFY_TYPE_BACKUP)
+        return names, dict(_NOTIFY_TYPE_BACKUP)
+    try:
+        names = tuple(member.name for member in src)
+        mapping = {member.name: str(member.value) for member in src}
+        if not mapping:
+            raise RuntimeError("枚举为空")
+        return names, mapping
+    except Exception:  # noqa: BLE001
+        names = tuple(_NOTIFY_TYPE_BACKUP)
+        return names, dict(_NOTIFY_TYPE_BACKUP)
+
+
+NOTIFY_TYPE_NAMES: tuple[str, ...]
+NOTIFY_TYPE_SWITCHS_NAMES: dict[str, str]
+NOTIFY_TYPE_NAMES, NOTIFY_TYPE_SWITCHS_NAMES = _derive_notify_types()
 
 # 三条通道各自独立：键名、界面标签，互不共享开关。
 CHANNELS: Dict[str, Dict[str, str]] = {
@@ -165,8 +198,12 @@ class Notifier:
     # ---------- 飞书美化卡片（仅上传通道） ----------
 
     @staticmethod
-    def _feishu_channels() -> list[dict]:
-        """读取 MoviePilot 内置启用的飞书通知渠道，返回 [{app_id, app_secret, chat_id}]。"""
+    def _feishu_channels(mtype: str = "") -> list[dict]:
+        """读取 MoviePilot 内置启用的飞书通知渠道，返回 [{app_id, app_secret, chat_id}]。
+
+        mtype 传消息类型名（如 "Organize" / "Plugin"）时，只返回 switchs
+        包含该类型对应中文名的渠道；不传则返回全部启用的飞书渠道。
+        """
         raw_configs: Any = None
         try:  # 优先直接读数据库 systemconfig，不依赖启动期注入的 reader
             from app.db.oper.systemconfig import SystemConfigOper
@@ -190,6 +227,8 @@ class Notifier:
                 raw_configs = None
         if not raw_configs:
             return []
+        # mtype 对应渠道分流中文名
+        switch_name = NOTIFY_TYPE_SWITCHS_NAMES.get(mtype, "") if mtype else ""
         channels: list[dict] = []
         seen: set[tuple] = set()
         for conf in raw_configs:
@@ -197,6 +236,11 @@ class Notifier:
                 continue
             if conf.get("type") != "feishu" or not conf.get("enabled"):
                 continue
+            # 按消息类型分流：渠道的 switchs 必须包含对应中文名
+            if switch_name:
+                switchs = conf.get("switchs") or []
+                if not any(str(s).strip() == switch_name for s in switchs):
+                    continue
             cfg = conf.get("config") or {}
             app_id = str(cfg.get("FEISHU_APP_ID") or "").strip()
             app_secret = str(cfg.get("FEISHU_APP_SECRET") or "").strip()
@@ -250,14 +294,16 @@ class Notifier:
         title: str,
         body_elements: list[dict],
         image_url: str = "",
+        mtype: str = "",
     ) -> bool:
         """发送「115 网盘」美化卡片（schema 2.0 column_set 布局）。
 
         读取 MoviePilot 内置飞书渠道配置直发；任何异常返回 False 由调用方回退文本。
+        mtype 传消息类型名（如 "Organize"）时只发送到该类型对应的渠道。
         """
         if not _LARK_OK or _lark is None or _CreateMessageRequest is None or _CreateMessageRequestBody is None:
             return False
-        channels = self._feishu_channels()
+        channels = self._feishu_channels(mtype)
         if not channels:
             return False
         sent_any = False

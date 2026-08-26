@@ -307,6 +307,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
               <NotifyRow
                 v-model:enabled="config.strm_notify"
                 v-model:type="config.strm_notify_type"
+                :types="config.notify_types"
                 label="STRM 同步完成后发送通知"
                 hint="每次同步结束发一条，逐条列出映射的新增、更新与失败数。"
               />
@@ -384,6 +385,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
               <NotifyRow
                 v-model:enabled="config.upload_notify"
                 v-model:type="config.upload_notify_type"
+                :types="config.notify_types"
                 label="上传完成后发送通知"
                 hint="汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。通知海报自动使用 MoviePilot 内置的 TMDB 配置。"
               />
@@ -442,6 +444,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
               <NotifyRow
                 v-model:enabled="config.checkin_notify"
                 v-model:type="config.checkin_notify_type"
+                :types="config.notify_types"
                 label="签到后发送通知"
                 hint="成功带上连续天数和本次积分，失败带上原因。"
               />

@@ -101,13 +101,17 @@ const AppBar = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-bc4e1f9
 
 const PLUGIN_ID = 'P115LiteAssistant';
 
-// 与后端 notify.py 的 NOTIFY_TYPE_NAMES 一一对应，顺序即界面顺序
+// 与后端 notify.py 的 NOTIFY_TYPE_NAMES/SWITCHS_NAMES 一致（均自 MoviePilot MessageType 源派生）。
+// 运行时后端 get_config 会注入 notify_types（同步优先），此静态表仅作加载期回退。
 const NOTIFY_TYPES = [
-  { title: '插件', value: 'Plugin' },
+  { title: '资源下载', value: 'Download' },
   { title: '整理入库', value: 'Organize' },
+  { title: '订阅', value: 'Subscribe' },
   { title: '站点', value: 'SiteMessage' },
   { title: '媒体服务器', value: 'MediaServer' },
   { title: '手动处理', value: 'Manual' },
+  { title: '插件', value: 'Plugin' },
+  { title: '智能体', value: 'Agent' },
   { title: '其它', value: 'Other' },
 ];
 

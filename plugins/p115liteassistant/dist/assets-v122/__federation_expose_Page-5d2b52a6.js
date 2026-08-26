@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, u as useHostNotice, A as AppBar, p as pluginGet, a as pluginPost } from './kit-45b19bd5.js';
+import { _ as _export_sfc, u as useHostNotice, A as AppBar, p as pluginGet, a as pluginPost } from './kit-a6d4b6ea.js';
 
 const Page_vue_vue_type_style_index_0_scoped_1186fb72_lang = '';
 
