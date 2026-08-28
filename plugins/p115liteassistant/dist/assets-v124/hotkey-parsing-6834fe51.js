@@ -80,6 +80,7 @@ const SUPPORTS_TOUCH = IN_BROWSER && ('ontouchstart' in window || window.navigat
 const SUPPORTS_EYE_DROPPER = IN_BROWSER && 'EyeDropper' in window;
 const SUPPORTS_MATCH_MEDIA = IN_BROWSER && 'matchMedia' in window && typeof window.matchMedia === 'function';
 const PREFERS_REDUCED_MOTION = () => SUPPORTS_MATCH_MEDIA && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const IS_WEBKIT = IN_BROWSER && CSS?.supports?.('-webkit-backdrop-filter', 'none');
 
 function _classPrivateFieldInitSpec(e, t, a) { _checkPrivateRedeclaration(e, t), t.set(e, a); }
 function _checkPrivateRedeclaration(e, t) { if (t.has(e)) throw new TypeError("Cannot initialize the same private elements twice on an object"); }
@@ -469,21 +470,21 @@ function getNextElement(elements, location, condition) {
   } while ((!_el || _el.offsetParent == null || !(condition?.(_el) ?? true)) && idx < elements.length && idx >= 0);
   return _el;
 }
-function focusChild(el, location) {
+function focusChild(el, location, options) {
   const focusable = focusableChildren(el);
   if (location == null) {
     if (el === document.activeElement || !el.contains(document.activeElement)) {
-      focusable[0]?.focus();
+      focusable[0]?.focus(options);
     }
   } else if (location === 'first') {
-    focusable[0]?.focus();
+    focusable[0]?.focus(options);
   } else if (location === 'last') {
-    focusable.at(-1)?.focus();
+    focusable.at(-1)?.focus(options);
   } else if (typeof location === 'number') {
-    focusable[location]?.focus();
+    focusable[location]?.focus(options);
   } else {
     const _el = getNextElement(focusable, location);
-    if (_el) _el.focus();else focusChild(el, location === 'next' ? 'first' : 'last');
+    if (_el) _el.focus();else focusChild(el, location === 'next' ? 'first' : 'last', options);
   }
 }
 function isEmpty(val) {
@@ -1666,7 +1667,10 @@ const en = {
       sortNone: 'Not sorted.',
       activateNone: 'Activate to remove sorting.',
       activateDescending: 'Activate to sort descending.',
-      activateAscending: 'Activate to sort ascending.'
+      activateAscending: 'Activate to sort ascending.',
+      selectRow: 'Select row',
+      selectAll: 'Select all',
+      selectGroup: 'Select group'
     },
     sortBy: 'Sort by'
   },
@@ -3816,4 +3820,4 @@ function splitKeySequence(str) {
   return collapsed;
 }
 
-export { consoleError as $, onlyDefinedProps as A, clamp as B, consoleWarn as C, makeLayoutItemProps as D, useProxiedModel as E, useToggleScope as F, useLayoutItem as G, wrapInArray as H, findChildrenWithProvide as I, IconValue as J, useTheme as K, useIcon as L, flattenFragments as M, useResizeObserver as N, hasEvent as O, PREFERS_REDUCED_MOTION as P, IN_BROWSER as Q, useLocale as R, SUPPORTS_INTERSECTION as S, EventProp as T, filterInputAttrs as U, matchesSelector as V, pick as W, makeDisplayProps as X, useDisplay as Y, useGoTo as Z, focusableChildren as _, isOn as a, DisplaySymbol as a$, defineComponent as a0, deprecate as a1, getPropertyFromItem as a2, focusChild as a3, CircularBuffer as a4, defer as a5, templateRef as a6, isClickInsideElement as a7, getNextElement as a8, debounce as a9, getObjectValueByPath as aA, isEmpty as aB, defineFunctionalComponent as aC, breakpoints as aD, createDateRange as aE, daysDiff as aF, humanReadableFileSize as aG, splitKeySequence as aH, splitKeyCombination as aI, mergeDeep as aJ, useLayout as aK, extractNumber as aL, VuetifyLayoutKey as aM, refElement as aN, SUPPORTS_MATCH_MEDIA as aO, renderSlot as aP, VClassIcon as aQ, VComponentIcon as aR, VLigatureIcon as aS, VSvgIcon as aT, createDefaults as aU, createDisplay as aV, createTheme as aW, createLocale as aX, createDate as aY, createGoTo as aZ, DefaultsSymbol as a_, camelizeProps as aa, ensureValidVNode as ab, checkPrintable as ac, noop as ad, pickWithRest as ae, provideLocale as af, useDate as ag, keys as ah, getEventCoordinates as ai, HSVtoRGB as aj, RGBtoHSV as ak, HSVtoHSL as al, HSLtoHSV as am, HSVtoHex as an, HexToHSV as ao, has as ap, getDecimals as aq, createRange as ar, keyValues as as, SUPPORTS_EYE_DROPPER as at, HSVtoCSS as au, RGBtoCSS as av, getContrast as aw, escapeForRegex as ax, isComposingIgnoreKey as ay, deepToRaw as az, isPrimitive as b, ThemeSymbol as b0, IconSymbol as b1, LocaleSymbol as b2, DateOptionsSymbol as b3, DateAdapterSymbol as b4, GoToSymbol as b5, useDefaults as b6, callEvent as c, getCurrentInstance as d, eventName as e, makeThemeProps as f, genericComponent as g, provideTheme as h, includes as i, createLayout as j, deceleratedEasing as k, acceleratedEasing as l, makeLayoutProps as m, provideDefaults as n, omit as o, propsFactory as p, convertToUnit as q, destructComputed as r, standardEasing as s, isCssColor as t, useRtl as u, isParsableColor as v, parseColor as w, getForeground as x, getCurrentInstanceName as y, isObject as z };
+export { focusableChildren as $, onlyDefinedProps as A, clamp as B, consoleWarn as C, makeLayoutItemProps as D, useProxiedModel as E, useToggleScope as F, useLayoutItem as G, wrapInArray as H, IS_WEBKIT as I, findChildrenWithProvide as J, IconValue as K, useTheme as L, useIcon as M, flattenFragments as N, useResizeObserver as O, PREFERS_REDUCED_MOTION as P, hasEvent as Q, IN_BROWSER as R, SUPPORTS_INTERSECTION as S, useLocale as T, EventProp as U, filterInputAttrs as V, matchesSelector as W, pick as X, makeDisplayProps as Y, useDisplay as Z, useGoTo as _, isOn as a, DefaultsSymbol as a$, consoleError as a0, defineComponent as a1, deprecate as a2, getPropertyFromItem as a3, focusChild as a4, CircularBuffer as a5, defer as a6, templateRef as a7, isClickInsideElement as a8, getNextElement as a9, deepToRaw as aA, getObjectValueByPath as aB, isEmpty as aC, defineFunctionalComponent as aD, breakpoints as aE, createDateRange as aF, daysDiff as aG, humanReadableFileSize as aH, splitKeySequence as aI, splitKeyCombination as aJ, mergeDeep as aK, useLayout as aL, extractNumber as aM, VuetifyLayoutKey as aN, refElement as aO, SUPPORTS_MATCH_MEDIA as aP, renderSlot as aQ, VClassIcon as aR, VComponentIcon as aS, VLigatureIcon as aT, VSvgIcon as aU, createDefaults as aV, createDisplay as aW, createTheme as aX, createLocale as aY, createDate as aZ, createGoTo as a_, debounce as aa, camelizeProps as ab, ensureValidVNode as ac, checkPrintable as ad, noop as ae, pickWithRest as af, provideLocale as ag, useDate as ah, keys as ai, getEventCoordinates as aj, HSVtoRGB as ak, RGBtoHSV as al, HSVtoHSL as am, HSLtoHSV as an, HSVtoHex as ao, HexToHSV as ap, has as aq, getDecimals as ar, createRange as as, keyValues as at, SUPPORTS_EYE_DROPPER as au, HSVtoCSS as av, RGBtoCSS as aw, getContrast as ax, escapeForRegex as ay, isComposingIgnoreKey as az, isPrimitive as b, DisplaySymbol as b0, ThemeSymbol as b1, IconSymbol as b2, LocaleSymbol as b3, DateOptionsSymbol as b4, DateAdapterSymbol as b5, GoToSymbol as b6, useDefaults as b7, callEvent as c, getCurrentInstance as d, eventName as e, makeThemeProps as f, genericComponent as g, provideTheme as h, includes as i, createLayout as j, deceleratedEasing as k, acceleratedEasing as l, makeLayoutProps as m, provideDefaults as n, omit as o, propsFactory as p, convertToUnit as q, destructComputed as r, standardEasing as s, isCssColor as t, useRtl as u, isParsableColor as v, parseColor as w, getForeground as x, getCurrentInstanceName as y, isObject as z };

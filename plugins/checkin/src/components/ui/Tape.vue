@@ -61,7 +61,7 @@ function title(cell) {
 .tape {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tape__run {
@@ -81,14 +81,14 @@ function title(cell) {
 
 // 今天那一格既是记录也是按钮，给它更宽的落点
 .tape__slot--today {
-  flex: 0 0 34px;
+  flex: 0 0 30px;
 }
 
 // 每格是一道刻痕：没签是空槽，签上了是实心
 .tape__cell {
   flex: 1 1 auto;
   min-width: 0;
-  block-size: 46px;
+  block-size: 30px;
   border: 1px solid var(--ck-line);
   border-radius: 3px;
   background: var(--ck-well);
@@ -141,7 +141,7 @@ function title(cell) {
 .tape__today-hit {
   display: block;
   inline-size: 2px;
-  block-size: 14px;
+  block-size: 10px;
   margin: 0 auto;
   border-radius: 1px;
   background: var(--ck-ink);
@@ -185,11 +185,11 @@ function title(cell) {
   }
 
   .tape__cell {
-    block-size: 38px;
+    block-size: 26px;
   }
 
   .tape__slot--today {
-    flex: 0 0 28px;
+    flex: 0 0 24px;
   }
 
   .tape__scale-mid {

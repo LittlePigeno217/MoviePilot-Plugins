@@ -115,7 +115,7 @@ function todayVerdict(status = {}, now = new Date()) {
   return { rank, headline: '今天没签上', detail: status.last_result?.message || '看站点行的原因，处理后再跑一次' }
 }
 
-const Tape_vue_vue_type_style_index_0_scoped_9bea435c_lang = '';
+const Tape_vue_vue_type_style_index_0_scoped_e2265714_lang = '';
 
 const {renderList:_renderList$1,Fragment:_Fragment$1,openBlock:_openBlock$1,createElementBlock:_createElementBlock$1,unref:_unref$1,createElementVNode:_createElementVNode$1,normalizeClass:_normalizeClass$1,createCommentVNode:_createCommentVNode$1,toDisplayString:_toDisplayString$1} = await importShared('vue');
 
@@ -198,76 +198,73 @@ return (_ctx, _cache) => {
 }
 
 };
-const Tape = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-9bea435c"]]);
+const Tape = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-e2265714"]]);
 
-const Page_vue_vue_type_style_index_0_scoped_5a0a34bb_lang = '';
+const Page_vue_vue_type_style_index_0_scoped_4b107ce2_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,unref:_unref,resolveComponent:_resolveComponent,withCtx:_withCtx,renderList:_renderList,Fragment:_Fragment} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "ck run" };
-const _hoisted_2 = { class: "run__lede ck-sheet" };
-const _hoisted_3 = { class: "lede__read" };
-const _hoisted_4 = { class: "lede__note" };
-const _hoisted_5 = { class: "lede__facts" };
-const _hoisted_6 = { class: "fact" };
-const _hoisted_7 = { class: "fact__v ck-mono" };
-const _hoisted_8 = { class: "fact" };
-const _hoisted_9 = { class: "fact__v ck-mono" };
-const _hoisted_10 = { class: "fact" };
-const _hoisted_11 = { class: "fact__v ck-mono" };
-const _hoisted_12 = { class: "fact" };
-const _hoisted_13 = { class: "fact__v ck-mono" };
-const _hoisted_14 = { class: "lede__acts" };
-const _hoisted_15 = { class: "ck-sheet" };
-const _hoisted_16 = {
+const _hoisted_2 = { class: "ck-sheet run__lede" };
+const _hoisted_3 = { class: "lede__row" };
+const _hoisted_4 = { class: "lede__fact ck-mono" };
+const _hoisted_5 = { class: "lede__fact ck-mono" };
+const _hoisted_6 = { class: "lede__fact ck-mono" };
+const _hoisted_7 = { class: "lede__fact ck-mono" };
+const _hoisted_8 = { class: "lede__acts" };
+const _hoisted_9 = { class: "lede__note" };
+const _hoisted_10 = { class: "ck-sheet" };
+const _hoisted_11 = {
   key: 0,
   class: "sites"
 };
-const _hoisted_17 = {
+const _hoisted_12 = {
   class: "site__badge ck-mono",
   "aria-hidden": "true"
 };
-const _hoisted_18 = { class: "site__id" };
-const _hoisted_19 = { class: "site__name" };
-const _hoisted_20 = { class: "site__acct ck-mono" };
-const _hoisted_21 = { class: "site__tags" };
-const _hoisted_22 = { class: "ck-chip" };
-const _hoisted_23 = {
+const _hoisted_13 = { class: "site__id" };
+const _hoisted_14 = { class: "site__name" };
+const _hoisted_15 = { class: "site__acct ck-mono" };
+const _hoisted_16 = { class: "site__tags" };
+const _hoisted_17 = { class: "ck-chip" };
+const _hoisted_18 = {
   key: 0,
   class: "ck-chip"
 };
-const _hoisted_24 = {
+const _hoisted_19 = {
   key: 1,
   class: "ck-chip ck-chip--warn"
 };
-const _hoisted_25 = { class: "site__result" };
-const _hoisted_26 = { class: "site__msg" };
-const _hoisted_27 = { class: "site__when ck-mono" };
-const _hoisted_28 = {
+const _hoisted_20 = { class: "site__result" };
+const _hoisted_21 = { class: "site__msg" };
+const _hoisted_22 = { class: "site__when ck-mono" };
+const _hoisted_23 = {
   key: 1,
   class: "ck-empty"
 };
-const _hoisted_29 = { class: "ck-sheet" };
-const _hoisted_30 = { class: "ck-sheet__head" };
-const _hoisted_31 = { class: "ck-hint" };
-const _hoisted_32 = {
+const _hoisted_24 = { class: "ck-sheet" };
+const _hoisted_25 = { class: "ck-sheet__head" };
+const _hoisted_26 = { class: "ck-hint" };
+const _hoisted_27 = {
   key: 0,
-  class: "log"
+  class: "log-grid"
 };
-const _hoisted_33 = ["open"];
-const _hoisted_34 = { class: "log__sum" };
-const _hoisted_35 = { class: "log__when ck-mono" };
-const _hoisted_36 = { class: "log__msg" };
-const _hoisted_37 = { class: "log__score ck-mono" };
-const _hoisted_38 = { class: "detail" };
-const _hoisted_39 = { class: "detail__site" };
-const _hoisted_40 = { class: "detail__msg" };
-const _hoisted_41 = {
+const _hoisted_28 = ["open"];
+const _hoisted_29 = { class: "log-card__sum" };
+const _hoisted_30 = { class: "log-card__top" };
+const _hoisted_31 = { class: "log-card__when ck-mono" };
+const _hoisted_32 = { class: "log-card__score ck-mono" };
+const _hoisted_33 = { class: "log-card__mid" };
+const _hoisted_34 = { class: "log-card__msg" };
+const _hoisted_35 = { class: "detail" };
+const _hoisted_36 = { class: "detail__site" };
+const _hoisted_37 = { class: "detail__msg" };
+const _hoisted_38 = {
   key: 0,
   class: "detail__gain ck-mono"
 };
-const _hoisted_42 = {
+const _hoisted_39 = {
   key: 1,
   class: "ck-empty"
 };
@@ -298,6 +295,8 @@ const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
 });
 
 const history = computed(() => status.value.history || []);
+// 执行记录：只显示最近 6 条（卡片式，节约空间）
+const visibleHistory = computed(() => history.value.slice(0, 6));
 const sites = computed(() => (status.value.sites || []).filter(site => site.enabled));
 const verdict = computed(() => todayVerdict(status.value));
 const streak = computed(() => streakOf(history.value));
@@ -353,11 +352,24 @@ async function call(key, path, fallback) {
 
 const punch = () => call('run', '/run', '签到已执行');
 const test = () => call('test', '/test-login', '连通性测试完成');
-const wipe = () => call('clear', '/history/clear', '历史已清空');
+
+// 清空历史是危险操作：先确认再执行，防止误触
+const clearConfirm = ref(false);
+const wipe = () => {
+  if (!clearConfirm.value) {
+    clearConfirm.value = true;
+    // 3 秒没二次点击就复位
+    setTimeout(() => (clearConfirm.value = false), 3000);
+    return
+  }
+  clearConfirm.value = false;
+  call('clear', '/history/clear', '历史已清空');
+};
 
 onMounted(refresh);
 
 return (_ctx, _cache) => {
+  const _component_v_icon = _resolveComponent("v-icon");
   const _component_v_btn = _resolveComponent("v-btn");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
@@ -384,165 +396,182 @@ return (_ctx, _cache) => {
         ], 2))
       : _createCommentVNode("", true),
     _createElementVNode("section", _hoisted_2, [
-      _createElementVNode("div", _hoisted_3, [
-        _cache[4] || (_cache[4] = _createElementVNode("p", { class: "ck-eyebrow" }, "今天", -1)),
-        _createElementVNode("h2", {
-          class: _normalizeClass(["lede__head", `lede__head--${TONE[verdict.value.rank]}`])
-        }, _toDisplayString(verdict.value.headline), 3),
-        _createElementVNode("p", _hoisted_4, _toDisplayString(verdict.value.detail), 1)
-      ]),
       _createVNode(Tape, {
         cells: tape.value,
         busy: busy.run,
         disabled: !status.value.enabled,
         onPunch: punch
       }, null, 8, ["cells", "busy", "disabled"]),
-      _createElementVNode("dl", _hoisted_5, [
-        _createElementVNode("div", _hoisted_6, [
-          _cache[5] || (_cache[5] = _createElementVNode("dt", { class: "fact__k ck-eyebrow" }, "连续", -1)),
-          _createElementVNode("dd", _hoisted_7, _toDisplayString(streak.value) + " 天", 1)
+      _createElementVNode("div", _hoisted_3, [
+        _createElementVNode("span", {
+          class: _normalizeClass(["lede__tag", `lede__tag--${TONE[verdict.value.rank]}`])
+        }, _toDisplayString(verdict.value.headline), 3),
+        _createElementVNode("span", _hoisted_4, [
+          _cache[4] || (_cache[4] = _createTextVNode(" 连续 ", -1)),
+          _createElementVNode("strong", null, _toDisplayString(streak.value), 1),
+          _cache[5] || (_cache[5] = _createTextVNode(" 天 ", -1))
         ]),
-        _createElementVNode("div", _hoisted_8, [
-          _cache[6] || (_cache[6] = _createElementVNode("dt", { class: "fact__k ck-eyebrow" }, "下次执行", -1)),
-          _createElementVNode("dd", _hoisted_9, _toDisplayString(status.value.next_run_time || '未配置'), 1)
+        _createElementVNode("span", _hoisted_5, [
+          _cache[6] || (_cache[6] = _createTextVNode(" 下次 ", -1)),
+          _createElementVNode("strong", null, _toDisplayString(status.value.next_run_time || '—'), 1)
         ]),
-        _createElementVNode("div", _hoisted_10, [
-          _cache[7] || (_cache[7] = _createElementVNode("dt", { class: "fact__k ck-eyebrow" }, "上次执行", -1)),
-          _createElementVNode("dd", _hoisted_11, _toDisplayString(_unref(shortTime)(status.value.last_run)), 1)
+        _createElementVNode("span", _hoisted_6, [
+          _cache[7] || (_cache[7] = _createTextVNode(" 上次 ", -1)),
+          _createElementVNode("strong", null, _toDisplayString(_unref(shortTime)(status.value.last_run)), 1)
         ]),
-        _createElementVNode("div", _hoisted_12, [
-          _cache[8] || (_cache[8] = _createElementVNode("dt", { class: "fact__k ck-eyebrow" }, "站点", -1)),
-          _createElementVNode("dd", _hoisted_13, _toDisplayString(status.value.configured_site_count || 0) + " / " + _toDisplayString(status.value.enabled_site_count || 0) + " 配置完整", 1)
+        _createElementVNode("span", _hoisted_7, [
+          _cache[8] || (_cache[8] = _createTextVNode(" 站点 ", -1)),
+          _createElementVNode("strong", null, _toDisplayString(status.value.configured_site_count || 0) + " / " + _toDisplayString(status.value.enabled_site_count || 0), 1)
+        ]),
+        _createElementVNode("span", _hoisted_8, [
+          _createVNode(_component_v_btn, {
+            class: "ck-btn ck-btn--primary",
+            variant: "flat",
+            color: "primary",
+            size: "small",
+            loading: busy.run,
+            disabled: !status.value.enabled,
+            onClick: punch
+          }, {
+            default: _withCtx(() => [
+              _createVNode(_component_v_icon, {
+                start: "",
+                icon: "mdi-calendar-check",
+                size: "16"
+              }),
+              _cache[9] || (_cache[9] = _createTextVNode(" 签到 ", -1))
+            ]),
+            _: 1
+          }, 8, ["loading", "disabled"]),
+          _createVNode(_component_v_btn, {
+            class: "ck-btn ck-btn--ghost",
+            variant: "outlined",
+            size: "small",
+            loading: busy.test,
+            onClick: test
+          }, {
+            default: _withCtx(() => [
+              _createVNode(_component_v_icon, {
+                start: "",
+                icon: "mdi-connection",
+                size: "16"
+              }),
+              _cache[10] || (_cache[10] = _createTextVNode(" 测试 ", -1))
+            ]),
+            _: 1
+          }, 8, ["loading"]),
+          _createVNode(_component_v_btn, {
+            class: _normalizeClass(["ck-btn ck-btn--danger", { 'ck-btn--danger-confirm': clearConfirm.value }]),
+            variant: "outlined",
+            size: "small",
+            loading: busy.clear,
+            disabled: !history.value.length,
+            onClick: wipe
+          }, {
+            default: _withCtx(() => [
+              _createVNode(_component_v_icon, {
+                start: "",
+                icon: clearConfirm.value ? 'mdi-alert' : 'mdi-trash-can-outline',
+                size: "16"
+              }, null, 8, ["icon"]),
+              _createTextVNode(" " + _toDisplayString(clearConfirm.value ? '确认清空？' : '清空'), 1)
+            ]),
+            _: 1
+          }, 8, ["class", "loading", "disabled"])
         ])
       ]),
-      _createElementVNode("div", _hoisted_14, [
-        _createVNode(_component_v_btn, {
-          variant: "flat",
-          color: "primary",
-          size: "small",
-          loading: busy.run,
-          disabled: !status.value.enabled,
-          onClick: punch
-        }, {
-          default: _withCtx(() => [...(_cache[9] || (_cache[9] = [
-            _createTextVNode(" 立即签到 ", -1)
-          ]))]),
-          _: 1
-        }, 8, ["loading", "disabled"]),
-        _createVNode(_component_v_btn, {
-          variant: "outlined",
-          size: "small",
-          loading: busy.test,
-          onClick: test
-        }, {
-          default: _withCtx(() => [...(_cache[10] || (_cache[10] = [
-            _createTextVNode("测试连通性", -1)
-          ]))]),
-          _: 1
-        }, 8, ["loading"]),
-        _createVNode(_component_v_btn, {
-          variant: "text",
-          size: "small",
-          loading: busy.clear,
-          disabled: !history.value.length,
-          onClick: wipe
-        }, {
-          default: _withCtx(() => [...(_cache[11] || (_cache[11] = [
-            _createTextVNode(" 清空历史 ", -1)
-          ]))]),
-          _: 1
-        }, 8, ["loading", "disabled"])
-      ])
+      _createElementVNode("p", _hoisted_9, _toDisplayString(verdict.value.detail), 1)
     ]),
-    _createElementVNode("section", _hoisted_15, [
-      _cache[12] || (_cache[12] = _createElementVNode("div", { class: "ck-sheet__head" }, [
+    _createElementVNode("section", _hoisted_10, [
+      _cache[11] || (_cache[11] = _createElementVNode("div", { class: "ck-sheet__head" }, [
         _createElementVNode("h3", { class: "ck-title" }, "站点"),
         _createElementVNode("p", { class: "ck-hint" }, "每行一个已启用的站点，写的是它上一次的结果。")
       ], -1)),
       (sites.value.length)
-        ? (_openBlock(), _createElementBlock("ul", _hoisted_16, [
+        ? (_openBlock(), _createElementBlock("ul", _hoisted_11, [
             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(sites.value, (site) => {
               return (_openBlock(), _createElementBlock("li", {
                 key: site.key,
                 class: "site"
               }, [
-                _createElementVNode("span", _hoisted_17, _toDisplayString(badge(site.key)), 1),
-                _createElementVNode("span", _hoisted_18, [
-                  _createElementVNode("span", _hoisted_19, _toDisplayString(site.name), 1),
-                  _createElementVNode("span", _hoisted_20, _toDisplayString(site.account || '未填账号'), 1)
+                _createElementVNode("span", _hoisted_12, _toDisplayString(badge(site.key)), 1),
+                _createElementVNode("span", _hoisted_13, [
+                  _createElementVNode("span", _hoisted_14, _toDisplayString(site.name), 1),
+                  _createElementVNode("span", _hoisted_15, _toDisplayString(site.account || '未填账号'), 1)
                 ]),
-                _createElementVNode("span", _hoisted_21, [
-                  _createElementVNode("span", _hoisted_22, _toDisplayString(site.mode), 1),
+                _createElementVNode("span", _hoisted_16, [
+                  _createElementVNode("span", _hoisted_17, _toDisplayString(site.mode), 1),
                   (site.use_proxy)
-                    ? (_openBlock(), _createElementBlock("span", _hoisted_23, "代理"))
+                    ? (_openBlock(), _createElementBlock("span", _hoisted_18, "代理"))
                     : _createCommentVNode("", true),
                   (!site.configured)
-                    ? (_openBlock(), _createElementBlock("span", _hoisted_24, "待填写"))
+                    ? (_openBlock(), _createElementBlock("span", _hoisted_19, "待填写"))
                     : _createCommentVNode("", true)
                 ]),
-                _createElementVNode("span", _hoisted_25, [
+                _createElementVNode("span", _hoisted_20, [
                   _createElementVNode("span", {
                     class: _normalizeClass(["ck-chip", chip(site.last_status)])
                   }, _toDisplayString(site.last_status), 3),
-                  _createElementVNode("span", _hoisted_26, _toDisplayString(site.last_message === '-' ? '' : site.last_message), 1)
+                  _createElementVNode("span", _hoisted_21, _toDisplayString(site.last_message === '-' ? '' : site.last_message), 1)
                 ]),
-                _createElementVNode("span", _hoisted_27, _toDisplayString(_unref(shortTime)(site.last_run)), 1)
+                _createElementVNode("span", _hoisted_22, _toDisplayString(_unref(shortTime)(site.last_run)), 1)
               ]))
             }), 128))
           ]))
-        : (_openBlock(), _createElementBlock("p", _hoisted_28, "还没有启用站点。去设置里打开一个站点、填好账号，这里就会出现它的签到行。"))
+        : (_openBlock(), _createElementBlock("p", _hoisted_23, "还没有启用站点。去设置里打开一个站点、填好账号，这里就会出现它的签到行。"))
     ]),
-    _createElementVNode("section", _hoisted_29, [
-      _createElementVNode("div", _hoisted_30, [
-        _cache[13] || (_cache[13] = _createElementVNode("h3", { class: "ck-title" }, "执行记录", -1)),
-        _createElementVNode("p", _hoisted_31, "保留最近 " + _toDisplayString(history.value.length) + " 次，展开看每个站点当次的回复。", 1)
+    _createElementVNode("section", _hoisted_24, [
+      _createElementVNode("div", _hoisted_25, [
+        _cache[12] || (_cache[12] = _createElementVNode("h3", { class: "ck-title" }, "执行记录", -1)),
+        _createElementVNode("p", _hoisted_26, "保留最近 " + _toDisplayString(visibleHistory.value.length) + " 次，展开看每个站点当次的回复。", 1)
       ]),
-      (history.value.length)
-        ? (_openBlock(), _createElementBlock("ul", _hoisted_32, [
-            (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(history.value, (entry, index) => {
-              return (_openBlock(), _createElementBlock("li", {
+      (visibleHistory.value.length)
+        ? (_openBlock(), _createElementBlock("div", _hoisted_27, [
+            (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleHistory.value, (entry, index) => {
+              return (_openBlock(), _createElementBlock("details", {
                 key: `${entry.time}-${index}`,
-                class: "log__row"
+                class: "log-card",
+                open: index === 0
               }, [
-                _createElementVNode("details", {
-                  open: index === 0
-                }, [
-                  _createElementVNode("summary", _hoisted_34, [
-                    _createElementVNode("span", _hoisted_35, _toDisplayString(_unref(shortTime)(entry.time)), 1),
+                _createElementVNode("summary", _hoisted_29, [
+                  _createElementVNode("span", _hoisted_30, [
+                    _createElementVNode("span", _hoisted_31, _toDisplayString(_unref(shortTime)(entry.time)), 1),
+                    _createElementVNode("span", _hoisted_32, _toDisplayString(entry.success_count) + "/" + _toDisplayString(entry.site_count), 1)
+                  ]),
+                  _createElementVNode("span", _hoisted_33, [
                     _createElementVNode("span", {
                       class: _normalizeClass(["ck-chip", chip(entry.status)])
                     }, _toDisplayString(entry.status), 3),
-                    _createElementVNode("span", _hoisted_36, _toDisplayString(entry.message), 1),
-                    _createElementVNode("span", _hoisted_37, _toDisplayString(entry.success_count) + "/" + _toDisplayString(entry.site_count), 1)
-                  ]),
-                  _createElementVNode("ul", _hoisted_38, [
-                    (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(entry.details, (item, di) => {
-                      return (_openBlock(), _createElementBlock("li", {
-                        key: di,
-                        class: "detail__row"
-                      }, [
-                        _createElementVNode("span", _hoisted_39, _toDisplayString(item.site_name), 1),
-                        _createElementVNode("span", {
-                          class: _normalizeClass(["ck-chip", chip(item.status)])
-                        }, _toDisplayString(item.status), 3),
-                        _createElementVNode("span", _hoisted_40, _toDisplayString(item.message), 1),
-                        (item.reward_mb && item.reward_mb !== '-')
-                          ? (_openBlock(), _createElementBlock("span", _hoisted_41, " +" + _toDisplayString(item.reward_mb), 1))
-                          : _createCommentVNode("", true)
-                      ]))
-                    }), 128))
+                    _createElementVNode("span", _hoisted_34, _toDisplayString(entry.message), 1)
                   ])
-                ], 8, _hoisted_33)
-              ]))
+                ]),
+                _createElementVNode("ul", _hoisted_35, [
+                  (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(entry.details, (item, di) => {
+                    return (_openBlock(), _createElementBlock("li", {
+                      key: di,
+                      class: "detail__row"
+                    }, [
+                      _createElementVNode("span", _hoisted_36, _toDisplayString(item.site_name), 1),
+                      _createElementVNode("span", {
+                        class: _normalizeClass(["ck-chip", chip(item.status)])
+                      }, _toDisplayString(item.status), 3),
+                      _createElementVNode("span", _hoisted_37, _toDisplayString(item.message), 1),
+                      (item.reward_mb && item.reward_mb !== '-')
+                        ? (_openBlock(), _createElementBlock("span", _hoisted_38, " +" + _toDisplayString(item.reward_mb), 1))
+                        : _createCommentVNode("", true)
+                    ]))
+                  }), 128))
+                ])
+              ], 8, _hoisted_28))
             }), 128))
           ]))
-        : (_openBlock(), _createElementBlock("p", _hoisted_42, "还没有执行记录。按一次「立即签到」，这里就会记下每个站点的回复。"))
+        : (_openBlock(), _createElementBlock("p", _hoisted_39, "还没有执行记录。按一次「立即签到」，这里就会记下每个站点的回复。"))
     ])
   ]))
 }
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-5a0a34bb"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-4b107ce2"]]);
 
 export { Page as default };

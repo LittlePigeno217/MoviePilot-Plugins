@@ -1,4 +1,4 @@
-// 115 轻量助手 —— 共享视觉底座
+// 115 轻量助手 —— 共享视觉底座（简约版 2026-08-29）
 //
 // 规则：这里不允许出现任何写死的颜色值。所有颜色都从 MoviePilot 运行时注入的
 // Vuetify 主题变量读取，因此浅色 / 深色 / 紫色主题切换时插件自动跟随。
@@ -7,6 +7,9 @@
 //   rgb(var(--v-theme-primary))                        强调色（方向、启用态）
 //   rgba(var(--v-border-color), var(--v-border-opacity)) 细分隔线
 // Vuetify 以裸 `r,g,b` 三元组输出这些变量，所以 rgba(var(--x), .12) 可直接取透明度。
+//
+// 设计原则（简约）：少即是多。只保留信息层次需要的对比，不做毛玻璃/渐变/
+// 光晕等装饰。唯一签名亮点 = 服务条顶部的状态细线（亮=该链路正常）。
 //
 // 所有选择器都收敛在 .p115 命名空间下，不会泄漏到宿主应用。
 //
@@ -19,12 +22,15 @@
   --p115-paper: rgb(var(--v-theme-surface));
   --p115-well: rgb(var(--v-theme-background));
   --p115-accent: rgb(var(--v-theme-primary));
-  --p115-accent-soft: rgba(var(--v-theme-primary), 0.1);
+  --p115-accent-soft: rgba(var(--v-theme-primary), 0.08);
   --p115-hairline: rgba(var(--v-border-color), var(--v-border-opacity));
   --p115-muted: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity, 0.6));
-  --p115-faint: rgba(var(--v-theme-on-surface), 0.04);
-  --p115-radius: 10px;
+  --p115-faint: rgba(var(--v-theme-on-surface), 0.03);
+  --p115-radius: 12px;
+  --p115-radius-sm: 8px;
   --p115-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  // 极淡阴影：只给浮起的面板一点点层次，不喧宾夺主
+  --p115-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
 .p115 {
@@ -74,15 +80,16 @@
   line-height: 1.5;
 }
 
-// ── 面板 ────────────────────────────────────────────────────────────
+// ── 面板（简约：留白大于边框）──────────────────────────────────────
 .p115-panel {
   border: 1px solid var(--p115-hairline);
   border-radius: var(--p115-radius);
   background: var(--p115-paper);
+  box-shadow: var(--p115-shadow);
 }
 
 .p115-panel + .p115-panel {
-  margin-top: 14px;
+  margin-top: 18px;
 }
 
 .p115-panel__head {
@@ -90,11 +97,11 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 16px 18px 0;
 }
 
 .p115-panel__body {
-  padding: 0 16px 16px;
+  padding: 12px 18px 18px;
 }
 
 .p115-panel--well {
@@ -118,7 +125,7 @@
 .p115-empty {
   border: 1px dashed var(--p115-hairline);
   border-radius: var(--p115-radius);
-  padding: 22px 16px;
+  padding: 24px 18px;
   text-align: center;
   font-size: 13px;
   color: var(--p115-muted);
@@ -128,6 +135,11 @@
 .p115 .v-btn {
   text-transform: none;
   letter-spacing: 0;
+}
+
+.p115 .v-btn--size-small,
+.p115 .v-btn--size-default {
+  border-radius: var(--p115-radius-sm);
 }
 
 .p115 .v-switch .v-label,

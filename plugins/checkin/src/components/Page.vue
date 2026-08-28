@@ -23,6 +23,8 @@ const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
 })
 
 const history = computed(() => status.value.history || [])
+// 执行记录：只显示最近 6 条（卡片式，节约空间）
+const visibleHistory = computed(() => history.value.slice(0, 6))
 const sites = computed(() => (status.value.sites || []).filter(site => site.enabled))
 const verdict = computed(() => todayVerdict(status.value))
 const streak = computed(() => streakOf(history.value))
@@ -78,7 +80,19 @@ async function call(key, path, fallback) {
 
 const punch = () => call('run', '/run', '签到已执行')
 const test = () => call('test', '/test-login', '连通性测试完成')
-const wipe = () => call('clear', '/history/clear', '历史已清空')
+
+// 清空历史是危险操作：先确认再执行，防止误触
+const clearConfirm = ref(false)
+const wipe = () => {
+  if (!clearConfirm.value) {
+    clearConfirm.value = true
+    // 3 秒没二次点击就复位
+    setTimeout(() => (clearConfirm.value = false), 3000)
+    return
+  }
+  clearConfirm.value = false
+  call('clear', '/history/clear', '历史已清空')
+}
 
 onMounted(refresh)
 </script>
@@ -102,51 +116,72 @@ onMounted(refresh)
       <span class="run__local-x">知道了</span>
     </button>
 
-    <!-- 招牌：一条 30 天打卡带，今天那一格就是签到按钮 -->
-    <section class="run__lede ck-sheet">
-      <div class="lede__read">
-        <p class="ck-eyebrow">今天</p>
-        <h2 class="lede__head" :class="`lede__head--${TONE[verdict.rank]}`">{{ verdict.headline }}</h2>
-        <p class="lede__note">{{ verdict.detail }}</p>
-      </div>
-
+    <!-- ── 紧凑招牌：打卡带 + 一行状态/统计/操作 ── -->
+    <section class="ck-sheet run__lede">
       <Tape
         :cells="tape"
         :busy="busy.run"
         :disabled="!status.enabled"
         @punch="punch"
       />
-
-      <dl class="lede__facts">
-        <div class="fact">
-          <dt class="fact__k ck-eyebrow">连续</dt>
-          <dd class="fact__v ck-mono">{{ streak }} 天</dd>
-        </div>
-        <div class="fact">
-          <dt class="fact__k ck-eyebrow">下次执行</dt>
-          <dd class="fact__v ck-mono">{{ status.next_run_time || '未配置' }}</dd>
-        </div>
-        <div class="fact">
-          <dt class="fact__k ck-eyebrow">上次执行</dt>
-          <dd class="fact__v ck-mono">{{ shortTime(status.last_run) }}</dd>
-        </div>
-        <div class="fact">
-          <dt class="fact__k ck-eyebrow">站点</dt>
-          <dd class="fact__v ck-mono">{{ status.configured_site_count || 0 }} / {{ status.enabled_site_count || 0 }} 配置完整</dd>
-        </div>
-      </dl>
-
-      <div class="lede__acts">
-        <v-btn variant="flat" color="primary" size="small" :loading="busy.run" :disabled="!status.enabled" @click="punch">
-          立即签到
-        </v-btn>
-        <v-btn variant="outlined" size="small" :loading="busy.test" @click="test">测试连通性</v-btn>
-        <v-btn variant="text" size="small" :loading="busy.clear" :disabled="!history.length" @click="wipe">
-          清空历史
-        </v-btn>
+      <div class="lede__row">
+        <span class="lede__tag" :class="`lede__tag--${TONE[verdict.rank]}`">{{ verdict.headline }}</span>
+        <span class="lede__fact ck-mono">
+          连续 <strong>{{ streak }}</strong> 天
+        </span>
+        <span class="lede__fact ck-mono">
+          下次 <strong>{{ status.next_run_time || '—' }}</strong>
+        </span>
+        <span class="lede__fact ck-mono">
+          上次 <strong>{{ shortTime(status.last_run) }}</strong>
+        </span>
+        <span class="lede__fact ck-mono">
+          站点 <strong>{{ status.configured_site_count || 0 }} / {{ status.enabled_site_count || 0 }}</strong>
+        </span>
+        <span class="lede__acts">
+          <!-- 签到 = 主操作：实心 + 图标 + 光晕，视觉焦点 -->
+          <v-btn
+            class="ck-btn ck-btn--primary"
+            variant="flat"
+            color="primary"
+            size="small"
+            :loading="busy.run"
+            :disabled="!status.enabled"
+            @click="punch"
+          >
+            <v-icon start icon="mdi-calendar-check" size="16" />
+            签到
+          </v-btn>
+          <!-- 测试 = 次级：描边 + 图标 -->
+          <v-btn
+            class="ck-btn ck-btn--ghost"
+            variant="outlined"
+            size="small"
+            :loading="busy.test"
+            @click="test"
+          >
+            <v-icon start icon="mdi-connection" size="16" />
+            测试
+          </v-btn>
+          <!-- 清空 = 危险：红色描边 + 图标 + hover 警示，需二次确认 -->
+          <v-btn
+            class="ck-btn ck-btn--danger"
+            :class="{ 'ck-btn--danger-confirm': clearConfirm }"
+            variant="outlined"
+            size="small"
+            :loading="busy.clear"
+            :disabled="!history.length"
+            @click="wipe"
+          >
+            <v-icon start :icon="clearConfirm ? 'mdi-alert' : 'mdi-trash-can-outline'" size="16" />
+            {{ clearConfirm ? '确认清空？' : '清空' }}
+          </v-btn>
+        </span>
       </div>
+      <p class="lede__note">{{ verdict.detail }}</p>
     </section>
 
+    <!-- ── 站点 ── -->
     <section class="ck-sheet">
       <div class="ck-sheet__head">
         <h3 class="ck-title">站点</h3>
@@ -175,34 +210,37 @@ onMounted(refresh)
       <p v-else class="ck-empty">还没有启用站点。去设置里打开一个站点、填好账号，这里就会出现它的签到行。</p>
     </section>
 
+    <!-- ── 执行记录 ── -->
     <section class="ck-sheet">
       <div class="ck-sheet__head">
         <h3 class="ck-title">执行记录</h3>
-        <p class="ck-hint">保留最近 {{ history.length }} 次，展开看每个站点当次的回复。</p>
+        <p class="ck-hint">保留最近 {{ visibleHistory.length }} 次，展开看每个站点当次的回复。</p>
       </div>
 
-      <ul v-if="history.length" class="log">
-        <li v-for="(entry, index) in history" :key="`${entry.time}-${index}`" class="log__row">
-          <details :open="index === 0">
-            <summary class="log__sum">
-              <span class="log__when ck-mono">{{ shortTime(entry.time) }}</span>
+      <div v-if="visibleHistory.length" class="log-grid">
+        <details v-for="(entry, index) in visibleHistory" :key="`${entry.time}-${index}`" class="log-card" :open="index === 0">
+          <summary class="log-card__sum">
+            <span class="log-card__top">
+              <span class="log-card__when ck-mono">{{ shortTime(entry.time) }}</span>
+              <span class="log-card__score ck-mono">{{ entry.success_count }}/{{ entry.site_count }}</span>
+            </span>
+            <span class="log-card__mid">
               <span class="ck-chip" :class="chip(entry.status)">{{ entry.status }}</span>
-              <span class="log__msg">{{ entry.message }}</span>
-              <span class="log__score ck-mono">{{ entry.success_count }}/{{ entry.site_count }}</span>
-            </summary>
-            <ul class="detail">
-              <li v-for="(item, di) in entry.details" :key="di" class="detail__row">
-                <span class="detail__site">{{ item.site_name }}</span>
-                <span class="ck-chip" :class="chip(item.status)">{{ item.status }}</span>
-                <span class="detail__msg">{{ item.message }}</span>
-                <span v-if="item.reward_mb && item.reward_mb !== '-'" class="detail__gain ck-mono">
-                  +{{ item.reward_mb }}
-                </span>
-              </li>
-            </ul>
-          </details>
-        </li>
-      </ul>
+              <span class="log-card__msg">{{ entry.message }}</span>
+            </span>
+          </summary>
+          <ul class="detail">
+            <li v-for="(item, di) in entry.details" :key="di" class="detail__row">
+              <span class="detail__site">{{ item.site_name }}</span>
+              <span class="ck-chip" :class="chip(item.status)">{{ item.status }}</span>
+              <span class="detail__msg">{{ item.message }}</span>
+              <span v-if="item.reward_mb && item.reward_mb !== '-'" class="detail__gain ck-mono">
+                +{{ item.reward_mb }}
+              </span>
+            </li>
+          </ul>
+        </details>
+      </div>
       <p v-else class="ck-empty">还没有执行记录。按一次「立即签到」，这里就会记下每个站点的回复。</p>
     </section>
   </div>
@@ -216,7 +254,7 @@ onMounted(refresh)
   gap: 12px;
   width: 100%;
   margin: 0;
-  padding: 8px 16px;
+  padding: 6px 14px;
   border: 0;
   border-bottom: 1px solid var(--ck-line);
   background: var(--ck-faint);
@@ -241,65 +279,123 @@ onMounted(refresh)
   color: var(--ck-ok);
 }
 
-// ── 招牌区 ──────────────────────────────────────────────────────────
+// ── 紧凑招牌 ──
 .run__lede {
+  padding-bottom: 14px;
+}
+
+.lede__row {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
 }
 
-.lede__head {
-  font-size: 26px;
+.lede__tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
-  margin: 4px 0 0;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
-.lede__head--on {
+.lede__tag--on {
   color: var(--ck-accent);
+  background: var(--ck-accent-soft);
+  border: 1px solid var(--ck-accent-line);
 }
 
-.lede__head--warn {
+.lede__tag--warn {
   color: var(--ck-warn);
+  background: var(--ck-warn-soft);
+  border: 1px solid var(--ck-warn-line);
 }
 
-.lede__head--bad {
+.lede__tag--bad {
   color: var(--ck-bad);
+  background: var(--ck-bad-soft);
+  border: 1px solid var(--ck-bad-line);
 }
 
-.lede__note {
-  font-size: 13px;
+.lede__tag--idle {
+  color: var(--ck-ink-50);
+  background: var(--ck-faint);
+  border: 1px solid var(--ck-line-strong);
+}
+
+.lede__fact {
+  font-size: 11px;
   color: var(--ck-ink-70);
-  margin: 4px 0 0;
+  white-space: nowrap;
 }
 
-.lede__facts {
-  display: grid;
-  gap: 10px 20px;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  margin: 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--ck-line);
-}
-
-.fact__k {
-  display: block;
-}
-
-.fact__v {
-  margin: 2px 0 0;
-  font-size: 13px;
-  font-weight: 600;
+.lede__fact strong {
+  font-weight: 700;
+  color: var(--ck-ink);
 }
 
 .lede__acts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
-// ── 站点行 ──────────────────────────────────────────────────────────
+// ── 操作按钮：签到是主操作，测试是次级，清空是危险 ──
+.ck-btn {
+  border-radius: var(--ck-radius);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+// 签到：实心主色 + 柔和光晕，是这一行唯一的视觉焦点
+.ck-btn--primary {
+  box-shadow: 0 2px 10px rgba(var(--v-theme-primary), 0.32);
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.ck-btn--primary:hover:not(:disabled) {
+  box-shadow: 0 3px 16px rgba(var(--v-theme-primary), 0.45);
+  transform: translateY(-1px);
+}
+
+// 测试：纯描边，安静
+.ck-btn--ghost {
+  color: var(--ck-ink-70);
+}
+
+// 清空：危险操作，平时中性、hover 变警示红
+.ck-btn--danger {
+  color: var(--ck-ink-50);
+  border-color: var(--ck-line-strong);
+}
+
+.ck-btn--danger:hover:not(:disabled) {
+  color: var(--ck-bad);
+  border-color: var(--ck-bad);
+  background: var(--ck-bad-soft);
+}
+
+// 确认清空态：整颗按钮变警示红，提示"再点一次就删"
+.ck-btn--danger-confirm {
+  color: var(--ck-bad) !important;
+  border-color: var(--ck-bad) !important;
+  background: var(--ck-bad-soft) !important;
+  box-shadow: 0 2px 10px rgba(var(--v-theme-error), 0.3);
+}
+
+.lede__note {
+  font-size: 11px;
+  color: var(--ck-ink-50);
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+
+// ── 站点行 ──
 .sites,
 .log {
   margin: 0;
@@ -309,10 +405,10 @@ onMounted(refresh)
 
 .site {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1.1fr) auto minmax(0, 1.3fr) auto;
+  grid-template-columns: 24px minmax(0, 1.1fr) auto minmax(0, 1.3fr) auto;
   align-items: center;
-  gap: 6px 12px;
-  padding: 11px 0;
+  gap: 4px 10px;
+  padding: 6px 0;
   border-top: 1px solid var(--ck-line);
 }
 
@@ -323,11 +419,11 @@ onMounted(refresh)
 .site__badge {
   display: grid;
   place-items: center;
-  inline-size: 30px;
-  block-size: 22px;
+  inline-size: 24px;
+  block-size: 18px;
   border: 1px solid var(--ck-line-strong);
-  border-radius: 4px;
-  font-size: 10px;
+  border-radius: 3px;
+  font-size: 9px;
   font-weight: 700;
   color: var(--ck-ink-70);
 }
@@ -339,7 +435,7 @@ onMounted(refresh)
 }
 
 .site__name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -347,7 +443,7 @@ onMounted(refresh)
 }
 
 .site__acct {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--ck-ink-50);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -358,12 +454,12 @@ onMounted(refresh)
 .site__result {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
 .site__msg {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--ck-ink-50);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -371,73 +467,102 @@ onMounted(refresh)
 }
 
 .site__when {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--ck-ink-50);
   white-space: nowrap;
 }
 
-// ── 执行记录 ────────────────────────────────────────────────────────
-.log__row {
-  border-top: 1px solid var(--ck-line);
-}
-
-.log__row:first-child {
-  border-top: 0;
-}
-
-.log__sum {
+// ── 执行记录（卡片式，简约）───────────────────────────────────
+.log-grid {
   display: grid;
-  grid-template-columns: 5.6rem auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px 12px;
-  padding: 11px 0;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.log-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ck-line);
+  border-radius: var(--ck-radius);
+  background: var(--ck-paper);
+  min-width: 0;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.log-card:hover {
+  border-color: var(--ck-line-strong);
+  box-shadow: var(--ck-shadow);
+}
+
+.log-card__sum {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 13px;
   cursor: pointer;
   list-style: none;
 }
 
-.log__sum::-webkit-details-marker {
+.log-card__sum::-webkit-details-marker {
   display: none;
 }
 
-.log__sum:focus-visible {
+.log-card__sum:focus-visible {
   outline: 2px solid var(--ck-accent);
   outline-offset: 2px;
+  border-radius: var(--ck-radius);
 }
 
-.log__when {
-  font-size: 12px;
+.log-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.log-card__when {
+  font-size: 11px;
   color: var(--ck-ink-70);
   white-space: nowrap;
 }
 
-.log__msg {
-  font-size: 12px;
+.log-card__score {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.log-card__mid {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.log-card__msg {
+  font-size: 11px;
   color: var(--ck-ink-50);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.log__score {
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
+// 展开明细（保留竖线缩进）
 .detail {
-  margin: 0 0 12px;
-  padding: 0;
+  margin: 0;
+  padding: 0 13px 10px;
   list-style: none;
   border-inline-start: 2px solid var(--ck-line);
+  margin-inline-start: 13px;
 }
 
 .detail__row {
   display: grid;
-  grid-template-columns: 7rem auto minmax(0, 1fr) auto;
+  grid-template-columns: 6.5rem auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px 12px;
-  padding: 7px 0 7px 12px;
-  font-size: 12px;
+  gap: 4px 10px;
+  padding: 5px 0 5px 10px;
+  font-size: 11px;
 }
 
 .detail__site {
@@ -461,12 +586,18 @@ onMounted(refresh)
 }
 
 @media (max-width: 720px) {
-  .lede__head {
-    font-size: 22px;
+  .lede__row {
+    gap: 4px 8px;
+  }
+
+  .lede__acts {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
   }
 
   .site {
-    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
   }
 
   .site__tags {
@@ -482,12 +613,8 @@ onMounted(refresh)
     grid-column: 3;
   }
 
-  .log__sum {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .log__msg {
-    grid-column: 1 / -1;
+  .log-grid {
+    grid-template-columns: 1fr;
   }
 
   .detail__row {

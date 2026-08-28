@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
 import { p as propsFactory, i as includes, I as IS_WEBKIT, a as isOn, e as eventName, g as genericComponent, b as isPrimitive, c as callEvent, d as getCurrentInstance, o as omit, m as makeLayoutProps, f as makeThemeProps, h as provideTheme, j as createLayout, u as useRtl, P as PREFERS_REDUCED_MOTION, k as deceleratedEasing, s as standardEasing, l as acceleratedEasing, n as provideDefaults, q as convertToUnit, r as destructComputed, t as isCssColor, v as isParsableColor, w as parseColor, x as getForeground, y as getCurrentInstanceName, z as isObject, A as onlyDefinedProps, S as SUPPORTS_INTERSECTION, B as clamp, C as consoleWarn, D as makeLayoutItemProps, E as useProxiedModel, F as useToggleScope, G as useLayoutItem, H as wrapInArray, J as findChildrenWithProvide, K as IconValue, L as useTheme$1, M as useIcon, N as flattenFragments, O as useResizeObserver, Q as hasEvent, R as IN_BROWSER, T as useLocale, U as EventProp, V as filterInputAttrs, W as matchesSelector, X as pick, Y as makeDisplayProps, Z as useDisplay, _ as useGoTo, $ as focusableChildren, a0 as consoleError, a1 as defineComponent, a2 as deprecate, a3 as getPropertyFromItem, a4 as focusChild, a5 as CircularBuffer, a6 as defer, a7 as templateRef, a8 as isClickInsideElement, a9 as getNextElement, aa as debounce, ab as camelizeProps, ac as ensureValidVNode, ad as checkPrintable, ae as noop, af as pickWithRest, ag as provideLocale, ah as useDate, ai as keys, aj as getEventCoordinates, ak as HSVtoRGB, al as RGBtoHSV, am as HSVtoHSL, an as HSLtoHSV, ao as HSVtoHex, ap as HexToHSV, aq as has, ar as getDecimals, as as createRange, at as keyValues, au as SUPPORTS_EYE_DROPPER, av as HSVtoCSS, aw as RGBtoCSS, ax as getContrast, ay as escapeForRegex, az as isComposingIgnoreKey, aA as deepToRaw, aB as getObjectValueByPath, aC as isEmpty, aD as defineFunctionalComponent, aE as breakpoints, aF as createDateRange, aG as daysDiff, aH as humanReadableFileSize, aI as splitKeySequence, aJ as splitKeyCombination, aK as mergeDeep, aL as useLayout, aM as extractNumber, aN as VuetifyLayoutKey, aO as refElement, aP as SUPPORTS_MATCH_MEDIA, aQ as renderSlot, aR as VClassIcon, aS as VComponentIcon, aT as VLigatureIcon, aU as VSvgIcon } from './hotkey-parsing-6834fe51.js';
-import Config from './__federation_expose_Config-c9f46dd9.js';
-import Page from './__federation_expose_Page-7ac65dc7.js';
+import Config from './__federation_expose_Config-6c714ca3.js';
+import Page from './__federation_expose_Page-47727e97.js';
 
 true&&(function polyfill() {
     const relList = document.createElement('link').relList;
@@ -31545,7 +31545,7 @@ const VTimePickerField = genericComponent()({
 
 // Types
 
-function pad(n) {
+function pad$1(n) {
   let length = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 2;
   return String(n).padStart(length, '0');
 }
@@ -31736,7 +31736,7 @@ const VTimePickerControls = genericComponent()({
       in: v => {
         if (v == null || isNaN(Number(v))) return null;
         const val = Number(v);
-        return props.ampm ? pad(convert24to12(val)) : pad(val);
+        return props.ampm ? pad$1(convert24to12(val)) : pad$1(val);
       },
       out: v => {
         if (isNaN(Number(v)) || v == null || v === '') return null;
@@ -31747,7 +31747,7 @@ const VTimePickerControls = genericComponent()({
     };
     const hour = useProxiedModel(props, 'hour', undefined, transformHours.in, transformHours.out);
     const transformMinutesOrSeconds = {
-      in: v => v != null && !isNaN(Number(v)) ? pad(`${v}`) : null,
+      in: v => v != null && !isNaN(Number(v)) ? pad$1(`${v}`) : null,
       out: v => {
         if (isNaN(Number(v)) || v == null || v === '') return null;
         const val = typeof v === 'string' ? extractInteger(v) : Number(v);
@@ -31766,9 +31766,9 @@ const VTimePickerControls = genericComponent()({
       const togglePeriod = isAm && next >= 12 || !isAm && next < 12;
       if (props.ampm && togglePeriod) {
         emit('update:period', props.period === 'am' ? 'pm' : 'am');
-        nextTick(() => hour.value = pad(next));
+        nextTick(() => hour.value = pad$1(next));
       } else {
-        hour.value = pad(next);
+        hour.value = pad$1(next);
       }
     }
     function onMinuteFieldKeydown(e) {
@@ -31777,7 +31777,7 @@ const VTimePickerControls = genericComponent()({
       e.stopPropagation();
       const current = Number(minute.value ?? 0);
       const next = findNextAllowed('minute', current, e.key === 'ArrowUp', currentHour.value);
-      minute.value = pad(next);
+      minute.value = pad$1(next);
     }
     function onSecondFieldKeydown(e) {
       if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
@@ -31785,7 +31785,7 @@ const VTimePickerControls = genericComponent()({
       e.stopPropagation();
       const current = Number(second.value ?? 0);
       const next = findNextAllowed('second', current, e.key === 'ArrowUp', currentHour.value, currentMinute.value);
-      second.value = pad(next);
+      second.value = pad$1(next);
     }
     function createInputInterceptor(valueTransformOut, compare, apply) {
       return e => {
@@ -31821,7 +31821,7 @@ const VTimePickerControls = genericComponent()({
           const value = extractInteger(potentialNewInputVal);
           if (value > maxValue) {
             e.preventDefault();
-            inputElement.value = pad(String(extractInteger(e.data)).substring(0, 2));
+            inputElement.value = pad$1(String(extractInteger(e.data)).substring(0, 2));
             apply(inputElement.value);
             return;
           }
@@ -32050,7 +32050,7 @@ const VTimePicker = genericComponent()({
     });
     function genValue() {
       if (inputHour.value != null && inputMinute.value != null && (!props.useSeconds || inputSecond.value != null)) {
-        return `${pad(inputHour.value)}:${pad(inputMinute.value)}` + (props.useSeconds ? `:${pad(inputSecond.value)}` : '');
+        return `${pad$1(inputHour.value)}:${pad$1(inputMinute.value)}` + (props.useSeconds ? `:${pad$1(inputSecond.value)}` : '');
       }
       return null;
     }
@@ -32138,7 +32138,7 @@ const VTimePicker = genericComponent()({
         default: () => _createVNode$5(VTimePickerClock, _mergeProps$5(timePickerClockProps, {
           "allowedValues": clockValidation,
           "double": viewMode.value === 'hour' && !isAmPm.value,
-          "format": viewMode.value === 'hour' ? isAmPm.value ? convert24to12 : val => val : val => pad(val, 2),
+          "format": viewMode.value === 'hour' ? isAmPm.value ? convert24to12 : val => val : val => pad$1(val, 2),
           "max": viewMode.value === 'hour' ? isAmPm.value && period.value === 'am' ? 11 : 23 : 59,
           "min": viewMode.value === 'hour' && isAmPm.value && period.value === 'pm' ? 12 : 0,
           "size": 20,
@@ -33227,6 +33227,7 @@ const directives = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty
 /**
  * 独立联调用的宿主替身。MoviePilot 真正的宿主会注入自己的 Vuetify 主题，
  * 这里按 MoviePilot v2 的主题值复刻一份浅色 / 深色，用来验证插件是否真的跟随主题。
+ * 同时提供一个假的 api，让台账页在没有后端的情况下也能渲染出数据。
  */
 const {createApp,h,ref} = await importShared('vue');
 
@@ -33270,30 +33271,124 @@ const vuetify = createVuetify({
   },
 });
 
+// ── 假数据：形状与 __init__.py 的 /status、/config 返回一致 ──────────
+const pad = n => String(n).padStart(2, '0');
+const stamp = (back, hour = 8, minute = 10) => {
+  const d = new Date();
+  d.setDate(d.getDate() - back);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(hour)}:${pad(minute)}:02`
+};
+
+const FAKE_CONFIG = {
+  enabled: true,
+  notify: true,
+  cron: '10 8 * * *',
+  timeout: 10,
+  retry_count: 3,
+  sites: {
+    flzt: { enabled: true, use_proxy: false, email: 'me@example.com', password: 'secret' },
+    right_forum: { enabled: true, use_proxy: true, cookie: 'auth=abcdefghijklmnop; saltkey=qrstuvwx' },
+    ypojie: { enabled: true, use_proxy: false, email: '', password: '' },
+  },
+};
+
+const FAKE_HISTORY = [
+  { version: 2, time: stamp(0), status: '部分成功', message: '2 个站点成功，1 个失败', success_count: 2, failure_count: 1, site_count: 3, details: [
+    { site: 'flzt', site_name: 'FLZT', status: '签到成功', message: '签到成功，获得 128MB 上传量', account: 'me@example.com', reward_mb: '128', total_traffic: '32.5GB', time: stamp(0) },
+    { site: 'right_forum', site_name: '恩山无线论坛', status: '今日已签到', message: '今日已签到，明天再来', account: 'Cookie', reward_mb: '-', total_traffic: '-', time: stamp(0) },
+    { site: 'ypojie', site_name: '易破解', status: '执行失败', message: '账号或密码未填写', account: '-', reward_mb: '-', total_traffic: '-', time: stamp(0) },
+  ] },
+  { version: 2, time: stamp(1), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [
+    { site: 'flzt', site_name: 'FLZT', status: '签到成功', message: '签到成功，获得 96MB 上传量', account: 'me@example.com', reward_mb: '96', total_traffic: '32.4GB', time: stamp(1) },
+  ] },
+  { version: 2, time: stamp(2), status: '执行失败', message: '网络连接超时', success_count: 0, failure_count: 3, site_count: 3, details: [] },
+  { version: 2, time: stamp(3), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [] },
+  { version: 2, time: stamp(4), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [] },
+  { version: 2, time: stamp(6), status: '部分成功', message: '2 个站点成功，1 个失败', success_count: 2, failure_count: 1, site_count: 3, details: [] },
+  { version: 2, time: stamp(7), status: '全部成功', message: '3 个站点全部签到成功', success_count: 3, failure_count: 0, site_count: 3, details: [] },
+];
+
+const FAKE_STATUS = {
+  enabled: true,
+  notify: true,
+  cron: '10 8 * * *',
+  configured: true,
+  enabled_site_count: 3,
+  configured_site_count: 2,
+  last_status: '部分成功',
+  last_run: stamp(0),
+  last_result: FAKE_HISTORY[0],
+  next_run_time: stamp(-1),
+  task_status: '已注册',
+  history: FAKE_HISTORY,
+  history_count: FAKE_HISTORY.length,
+  sites: [
+    { key: 'flzt', name: 'FLZT', mode: '账号密码', enabled: true, use_proxy: false, configured: true, account: 'me@example.com', last_status: '签到成功', last_message: '签到成功，获得 128MB 上传量', last_run: stamp(0) },
+    { key: 'right_forum', name: '恩山无线论坛', mode: 'Cookie', enabled: true, use_proxy: true, configured: true, account: 'Cookie', last_status: '今日已签到', last_message: '今日已签到，明天再来', last_run: stamp(0) },
+    { key: 'ypojie', name: '易破解', mode: '账号密码', enabled: true, use_proxy: false, configured: false, account: '', last_status: '执行失败', last_message: '账号或密码未填写', last_run: stamp(0) },
+  ],
+};
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+const fakeApi = {
+  async get(path) {
+    await wait(220);
+    if (path.endsWith('/config')) return { data: FAKE_CONFIG }
+    if (path.endsWith('/status')) return { data: FAKE_STATUS }
+    if (path.endsWith('/history')) return { data: FAKE_HISTORY }
+    return { data: {} }
+  },
+  async post(path) {
+    await wait(600);
+    if (path.endsWith('/run')) return { success: true, message: '2 个站点成功，1 个失败' }
+    if (path.endsWith('/test-login')) return { success: true, message: '3 个站点可连通' }
+    if (path.endsWith('/history/clear')) return { success: true, message: '历史已清空' }
+    return { success: true, message: '' }
+  },
+};
+
 const Harness = {
   setup() {
     const theme = useTheme();
-    const view = ref('config');
-    const toggle = () => {
+    const view = ref('page');
+    const saving = ref(false);
+    const lastSavedAt = ref(0);
+
+    const toggleTheme = () => {
       const next = theme.global.name.value === 'mpLight' ? 'mpDark' : 'mpLight';
       if (typeof theme.change === 'function') theme.change(next);
       else theme.global.name.value = next;
     };
+    const toggleView = () => {
+      view.value = view.value === 'config' ? 'page' : 'config';
+    };
+    const onSave = async () => {
+      saving.value = true;
+      await wait(700);
+      saving.value = false;
+      lastSavedAt.value = Date.now();
+    };
+
     return () =>
       h('div', { style: 'min-height:100vh;background:rgb(var(--v-theme-background));padding:24px' }, [
         h('div', { style: 'display:flex;gap:8px;margin-bottom:16px' }, [
-          h(VBtn, { size: 'small', onClick: toggle }, () => `主题：${theme.global.name.value}`),
-          h(
-            VBtn,
-            { size: 'small', onClick: () => (view.value = view.value === 'config' ? 'page' : 'config') },
-            () => `视图：${view.value}`,
-          ),
+          h(VBtn, { size: 'small', onClick: toggleTheme }, () => `主题：${theme.global.name.value}`),
+          h(VBtn, { size: 'small', onClick: toggleView }, () => `视图：${view.value}`),
         ]),
-        h(
-          VCard,
-          { style: 'max-width:58rem;margin:auto;overflow:hidden' },
-          () => [h(view.value === 'config' ? Config : Page, { key: view.value })],
-        ),
+        h(VCard, { style: 'max-width:58rem;margin:auto;overflow:hidden' }, () => [
+          view.value === 'config'
+            ? h(Config, {
+                key: 'config',
+                api: fakeApi,
+                initialConfig: FAKE_CONFIG,
+                saving: saving.value,
+                lastSavedAt: lastSavedAt.value,
+                onSave,
+                onSwitch: toggleView,
+              })
+            : h(Page, { key: 'page', api: fakeApi, onSwitch: toggleView }),
+        ]),
       ])
   },
 };

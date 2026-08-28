@@ -21,6 +21,8 @@ const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
 const uploads = computed(() => status.value.recent_uploads || [])
 const visibleUploads = computed(() => uploads.value.slice(0, 10))
 const history = computed(() => status.value.history || [])
+// 执行记录：只显示最近 6 条（卡片式，节约空间）
+const visibleHistory = computed(() => history.value.slice(0, 6))
 const running = computed(() => status.value.running || [])
 const workingNow = computed(() => running.value.some(kind => kind === 'strm' || kind === 'upload'))
 
@@ -61,7 +63,7 @@ const services = computed(() => [
 const actions = [
   { key: 'strm', label: '生成 STRM', icon: 'mdi-file-link-outline', path: '/strm/sync', payload: {} },
   { key: 'full', label: '全量上传', icon: 'mdi-tray-arrow-up', path: '/upload', payload: { incremental: false } },
-  { key: 'inc', label: '增量上传', icon: 'mdi-tray-plus-outline', path: '/upload', payload: { incremental: true } },
+  { key: 'inc', label: '增量上传', icon: 'mdi-tray-plus', path: '/upload', payload: { incremental: true } },
   { key: 'checkin', label: '立即签到', icon: 'mdi-calendar-check-outline', path: '/checkin', payload: {} },
 ]
 
@@ -200,20 +202,22 @@ onMounted(refresh)
         <div class="p115-panel__head">
           <div>
             <h3 class="p115-section-title">执行记录</h3>
-            <p class="p115-hint">保留最近 50 次，最新的在最上面。</p>
+            <p class="p115-hint">最近 {{ visibleHistory.length }} 条，最新的在最上面。</p>
           </div>
         </div>
         <div class="p115-panel__body">
-          <ul v-if="history.length" class="log">
-            <li v-for="(entry, index) in history" :key="`${entry.kind}-${entry.time}-${index}`" class="log__row">
-              <span class="log__kind">{{ kindNames[entry.kind] || entry.kind }}</span>
-              <span class="log__when p115-mono">{{ entry.time || '' }}</span>
-              <span class="log__tally">
-                <span v-for="text in tally(entry)" :key="text" class="log__chip">{{ text }}</span>
-              </span>
-              <span v-if="seconds(entry.duration_ms)" class="log__cost p115-mono">{{ seconds(entry.duration_ms) }}</span>
-            </li>
-          </ul>
+          <div v-if="visibleHistory.length" class="log-grid">
+            <div v-for="(entry, index) in visibleHistory" :key="`${entry.kind}-${entry.time}-${index}`" class="log-card">
+              <div class="log-card__top">
+                <span class="log-card__kind">{{ kindNames[entry.kind] || entry.kind }}</span>
+                <span v-if="seconds(entry.duration_ms)" class="log-card__cost p115-mono">{{ seconds(entry.duration_ms) }}</span>
+              </div>
+              <div class="log-card__when p115-mono">{{ entry.time || '' }}</div>
+              <div class="log-card__tally">
+                <span v-for="text in tally(entry)" :key="text" class="log-card__chip">{{ text }}</span>
+              </div>
+            </div>
+          </div>
           <p v-else class="p115-empty">还没有执行记录。跑一次任务后这里会记下每次的结果。</p>
         </div>
       </div>
@@ -260,29 +264,44 @@ onMounted(refresh)
 }
 
 .run__body {
-  padding: 16px;
+  padding: 18px 18px 24px;
 }
 
+// ── 服务条（签名亮点：顶部状态细线）───────────────────────────────
 .run__strip {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
 .svc {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
+  gap: 3px;
+  padding: 14px 14px 12px;
   border: 1px solid var(--p115-hairline);
-  border-radius: var(--p115-radius);
-  background: var(--p115-well);
+  border-radius: var(--p115-radius-sm);
+  background: var(--p115-paper);
+  overflow: hidden;
 }
 
-.svc--ok {
-  border-color: var(--p115-accent);
-  background: var(--p115-accent-soft);
+// 签名：顶部 2px 状态细线。亮 = 该链路正常（primary 色），灰 = 未就绪。
+.svc::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--p115-faint);
+}
+
+.svc--ok::before {
+  background: var(--p115-accent);
+}
+
+.svc__label {
+  color: var(--p115-muted);
 }
 
 .svc__value {
@@ -292,7 +311,7 @@ onMounted(refresh)
 }
 
 .svc--ok .svc__value {
-  color: var(--p115-accent);
+  color: var(--p115-ink);
 }
 
 .svc__hint {
@@ -300,24 +319,28 @@ onMounted(refresh)
   color: var(--p115-muted);
 }
 
+// ── 手动跑一次按钮区（简约：主按钮实心，间距放大）────────────────
 .run__acts {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
-.haul,
-.log {
+
+.run__act {
+  min-width: 0;
+}
+
+.haul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.haul__row:first-child,
-.log__row:first-child {
+.haul__row:first-child {
   border-top: 0;
 }
 
-// ── 卡片网格（最近上传） ──
+// ── 卡片网格（最近上传，简约）───────────────────────────────────
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -327,12 +350,18 @@ onMounted(refresh)
 .card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 5px;
+  padding: 12px 14px;
   border: 1px solid var(--p115-hairline);
-  border-radius: var(--p115-radius);
-  background: var(--p115-well);
+  border-radius: var(--p115-radius-sm);
+  background: var(--p115-paper);
   min-width: 0;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.card:hover {
+  border-color: var(--p115-muted);
+  box-shadow: var(--p115-shadow);
 }
 
 .card__name {
@@ -347,7 +376,7 @@ onMounted(refresh)
 .card__meta {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 11px;
   color: var(--p115-muted);
 }
@@ -357,7 +386,7 @@ onMounted(refresh)
 }
 
 .card__tag {
-  padding: 1px 6px;
+  padding: 1px 8px;
   border: 1px solid var(--p115-hairline);
   border-radius: 999px;
   font-size: 10px;
@@ -369,30 +398,66 @@ onMounted(refresh)
   border-color: var(--p115-accent);
   color: var(--p115-accent);
 }
-.log__row {
-  grid-template-columns: 5.5rem 10rem minmax(0, 1fr) auto;
+
+// ── 执行记录（卡片式，简约）───────────────────────────────────
+.log-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
 }
 
-.log__kind {
+.log-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 13px;
+  border: 1px solid var(--p115-hairline);
+  border-radius: var(--p115-radius-sm);
+  background: var(--p115-paper);
+  min-width: 0;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.log-card:hover {
+  border-color: var(--p115-muted);
+  box-shadow: var(--p115-shadow);
+}
+
+.log-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.log-card__kind {
   font-size: 12px;
   font-weight: 700;
   color: var(--p115-accent);
+  white-space: nowrap;
 }
 
-.log__when,
-.log__cost {
+.log-card__cost {
   color: var(--p115-muted);
   white-space: nowrap;
 }
 
-.log__tally {
+.log-card__when {
+  color: var(--p115-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-card__tally {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.log__chip {
+.log-card__chip {
   padding: 1px 7px;
   border: 1px solid var(--p115-hairline);
   border-radius: 999px;
@@ -401,16 +466,9 @@ onMounted(refresh)
 }
 
 @media (max-width: 620px) {
-  .card-grid {
+  .card-grid,
+  .log-grid {
     grid-template-columns: 1fr;
-  }
-
-  .log__row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .log__tally {
-    grid-column: 1 / -1;
   }
 }
 
