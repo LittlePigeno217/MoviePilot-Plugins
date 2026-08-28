@@ -1167,8 +1167,16 @@ class Api:
                 # 取第一个有 title 的 meta 作为搜索依据
                 first_meta = next((m for m in meta_list if m.get("title")), {})
                 if first_meta.get("title"):
-                    poster = self._search_poster(
+                    # ⚠️ 必须传真实文件名（含 S01E01/第N集），否则 _search_poster 里
+                    # has_season 恒为 False → 剧集被当成电影搜 → 海报识别错误。
+                    # 取本组第一个带 meta 的文件名（local_path 含目录，name 是文件名）。
+                    _poster_src = next(
+                        (f.get("name", "") for f in files
+                         if transfer_meta_by_path.get(str(f.get("local_path") or ""), {}).get("title")),
                         "",
+                    )
+                    poster = self._search_poster(
+                        _poster_src,
                         exact_title=first_meta.get("title", ""),
                         exact_year=first_meta.get("year", ""),
                     )

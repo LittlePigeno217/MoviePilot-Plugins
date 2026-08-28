@@ -19,6 +19,7 @@ const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
 })
 
 const uploads = computed(() => status.value.recent_uploads || [])
+const visibleUploads = computed(() => uploads.value.slice(0, 10))
 const history = computed(() => status.value.history || [])
 const running = computed(() => status.value.running || [])
 const workingNow = computed(() => running.value.some(kind => kind === 'strm' || kind === 'upload'))
@@ -176,22 +177,21 @@ onMounted(refresh)
         <div class="p115-panel__head">
           <div>
             <h3 class="p115-section-title">最近上传</h3>
-            <p class="p115-hint">最新 {{ uploads.length }} 部，标了「秒传」的没有实际耗流量。</p>
+            <p class="p115-hint">最新 {{ visibleUploads.length }} 部，标了「秒传」的没有实际耗流量。</p>
           </div>
         </div>
         <div class="p115-panel__body">
-          <ul v-if="uploads.length" class="haul">
-            <li v-for="item in uploads" :key="`${item.path}-${item.uploaded_at}`" class="haul__row">
-              <span class="haul__name" :title="item.name">{{ item.name }}</span>
-              <span class="haul__dest p115-mono" :title="item.target">{{ item.target }}</span>
-              <span class="haul__meta">
-                <span class="p115-mono">{{ item.uploaded_at }}</span>
-                <span class="haul__way" :class="{ 'haul__way--instant': item.method === 'instant' }">
+          <div v-if="visibleUploads.length" class="card-grid">
+            <div v-for="item in visibleUploads" :key="`${item.path}-${item.uploaded_at}`" class="card">
+              <span class="card__name" :title="item.name">{{ item.name }}</span>
+              <span class="card__meta">
+                <span class="card__when p115-mono">{{ item.uploaded_at }}</span>
+                <span class="card__tag" :class="{ 'card__tag--instant': item.method === 'instant' }">
                   {{ item.method === 'instant' ? '秒传' : '上传' }}
                 </span>
               </span>
-            </li>
-          </ul>
+            </div>
+          </div>
           <p v-else class="p115-empty">还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。</p>
         </div>
       </div>
@@ -312,57 +312,60 @@ onMounted(refresh)
   list-style: none;
 }
 
-.haul__row,
-.log__row {
-  display: grid;
-  align-items: center;
-  gap: 4px 12px;
-  padding: 9px 0;
-  border-top: 1px solid var(--p115-hairline);
-}
-
 .haul__row:first-child,
 .log__row:first-child {
   border-top: 0;
 }
 
-.haul__row {
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+// ── 卡片网格（最近上传） ──
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
 }
 
-.haul__name {
-  font-size: 13px;
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--p115-hairline);
+  border-radius: var(--p115-radius);
+  background: var(--p115-well);
+  min-width: 0;
+}
+
+.card__name {
+  font-size: 12px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.4;
 }
 
-.haul__dest {
-  color: var(--p115-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: left;
-}
-
-.haul__meta {
+.card__meta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  font-size: 11px;
   color: var(--p115-muted);
+}
+
+.card__when {
   white-space: nowrap;
 }
 
-.haul__way {
+.card__tag {
   padding: 1px 6px;
   border: 1px solid var(--p115-hairline);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
-.haul__way--instant {
+.card__tag--instant {
   border-color: var(--p115-accent);
   color: var(--p115-accent);
 }
@@ -398,8 +401,8 @@ onMounted(refresh)
 }
 
 @media (max-width: 620px) {
-  .haul__row {
-    grid-template-columns: minmax(0, 1fr);
+  .card-grid {
+    grid-template-columns: 1fr;
   }
 
   .log__row {

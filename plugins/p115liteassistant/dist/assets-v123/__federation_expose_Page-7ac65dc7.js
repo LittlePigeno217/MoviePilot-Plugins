@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
 import { _ as _export_sfc, u as useHostNotice, A as AppBar, p as pluginGet, a as pluginPost } from './kit-a6d4b6ea.js';
 
-const Page_vue_vue_type_style_index_0_scoped_1186fb72_lang = '';
+const Page_vue_vue_type_style_index_0_scoped_b1b51fda_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,withCtx:_withCtx} = await importShared('vue');
 
@@ -26,30 +26,29 @@ const _hoisted_14 = { class: "p115-hint" };
 const _hoisted_15 = { class: "p115-panel__body" };
 const _hoisted_16 = {
   key: 0,
-  class: "haul"
+  class: "card-grid"
 };
 const _hoisted_17 = ["title"];
-const _hoisted_18 = ["title"];
-const _hoisted_19 = { class: "haul__meta" };
-const _hoisted_20 = { class: "p115-mono" };
-const _hoisted_21 = {
+const _hoisted_18 = { class: "card__meta" };
+const _hoisted_19 = { class: "card__when p115-mono" };
+const _hoisted_20 = {
   key: 1,
   class: "p115-empty"
 };
-const _hoisted_22 = { class: "p115-panel" };
-const _hoisted_23 = { class: "p115-panel__body" };
-const _hoisted_24 = {
+const _hoisted_21 = { class: "p115-panel" };
+const _hoisted_22 = { class: "p115-panel__body" };
+const _hoisted_23 = {
   key: 0,
   class: "log"
 };
-const _hoisted_25 = { class: "log__kind" };
-const _hoisted_26 = { class: "log__when p115-mono" };
-const _hoisted_27 = { class: "log__tally" };
-const _hoisted_28 = {
+const _hoisted_24 = { class: "log__kind" };
+const _hoisted_25 = { class: "log__when p115-mono" };
+const _hoisted_26 = { class: "log__tally" };
+const _hoisted_27 = {
   key: 0,
   class: "log__cost p115-mono"
 };
-const _hoisted_29 = {
+const _hoisted_28 = {
   key: 1,
   class: "p115-empty"
 };
@@ -78,6 +77,7 @@ const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
 });
 
 const uploads = computed(() => status.value.recent_uploads || []);
+const visibleUploads = computed(() => uploads.value.slice(0, 10));
 const history = computed(() => status.value.history || []);
 const running = computed(() => status.value.running || []);
 const workingNow = computed(() => running.value.some(kind => kind === 'strm' || kind === 'upload'));
@@ -248,55 +248,51 @@ return (_ctx, _cache) => {
         _createElementVNode("div", _hoisted_13, [
           _createElementVNode("div", null, [
             _cache[5] || (_cache[5] = _createElementVNode("h3", { class: "p115-section-title" }, "最近上传", -1)),
-            _createElementVNode("p", _hoisted_14, "最新 " + _toDisplayString(uploads.value.length) + " 部，标了「秒传」的没有实际耗流量。", 1)
+            _createElementVNode("p", _hoisted_14, "最新 " + _toDisplayString(visibleUploads.value.length) + " 部，标了「秒传」的没有实际耗流量。", 1)
           ])
         ]),
         _createElementVNode("div", _hoisted_15, [
-          (uploads.value.length)
-            ? (_openBlock(), _createElementBlock("ul", _hoisted_16, [
-                (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(uploads.value, (item) => {
-                  return (_openBlock(), _createElementBlock("li", {
+          (visibleUploads.value.length)
+            ? (_openBlock(), _createElementBlock("div", _hoisted_16, [
+                (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleUploads.value, (item) => {
+                  return (_openBlock(), _createElementBlock("div", {
                     key: `${item.path}-${item.uploaded_at}`,
-                    class: "haul__row"
+                    class: "card"
                   }, [
                     _createElementVNode("span", {
-                      class: "haul__name",
+                      class: "card__name",
                       title: item.name
                     }, _toDisplayString(item.name), 9, _hoisted_17),
-                    _createElementVNode("span", {
-                      class: "haul__dest p115-mono",
-                      title: item.target
-                    }, _toDisplayString(item.target), 9, _hoisted_18),
-                    _createElementVNode("span", _hoisted_19, [
-                      _createElementVNode("span", _hoisted_20, _toDisplayString(item.uploaded_at), 1),
+                    _createElementVNode("span", _hoisted_18, [
+                      _createElementVNode("span", _hoisted_19, _toDisplayString(item.uploaded_at), 1),
                       _createElementVNode("span", {
-                        class: _normalizeClass(["haul__way", { 'haul__way--instant': item.method === 'instant' }])
+                        class: _normalizeClass(["card__tag", { 'card__tag--instant': item.method === 'instant' }])
                       }, _toDisplayString(item.method === 'instant' ? '秒传' : '上传'), 3)
                     ])
                   ]))
                 }), 128))
               ]))
-            : (_openBlock(), _createElementBlock("p", _hoisted_21, "还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。"))
+            : (_openBlock(), _createElementBlock("p", _hoisted_20, "还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。"))
         ])
       ]),
-      _createElementVNode("div", _hoisted_22, [
+      _createElementVNode("div", _hoisted_21, [
         _cache[6] || (_cache[6] = _createElementVNode("div", { class: "p115-panel__head" }, [
           _createElementVNode("div", null, [
             _createElementVNode("h3", { class: "p115-section-title" }, "执行记录"),
             _createElementVNode("p", { class: "p115-hint" }, "保留最近 50 次，最新的在最上面。")
           ])
         ], -1)),
-        _createElementVNode("div", _hoisted_23, [
+        _createElementVNode("div", _hoisted_22, [
           (history.value.length)
-            ? (_openBlock(), _createElementBlock("ul", _hoisted_24, [
+            ? (_openBlock(), _createElementBlock("ul", _hoisted_23, [
                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(history.value, (entry, index) => {
                   return (_openBlock(), _createElementBlock("li", {
                     key: `${entry.kind}-${entry.time}-${index}`,
                     class: "log__row"
                   }, [
-                    _createElementVNode("span", _hoisted_25, _toDisplayString(kindNames[entry.kind] || entry.kind), 1),
-                    _createElementVNode("span", _hoisted_26, _toDisplayString(entry.time || ''), 1),
-                    _createElementVNode("span", _hoisted_27, [
+                    _createElementVNode("span", _hoisted_24, _toDisplayString(kindNames[entry.kind] || entry.kind), 1),
+                    _createElementVNode("span", _hoisted_25, _toDisplayString(entry.time || ''), 1),
+                    _createElementVNode("span", _hoisted_26, [
                       (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(tally(entry), (text) => {
                         return (_openBlock(), _createElementBlock("span", {
                           key: text,
@@ -305,12 +301,12 @@ return (_ctx, _cache) => {
                       }), 128))
                     ]),
                     (seconds(entry.duration_ms))
-                      ? (_openBlock(), _createElementBlock("span", _hoisted_28, _toDisplayString(seconds(entry.duration_ms)), 1))
+                      ? (_openBlock(), _createElementBlock("span", _hoisted_27, _toDisplayString(seconds(entry.duration_ms)), 1))
                       : _createCommentVNode("", true)
                   ]))
                 }), 128))
               ]))
-            : (_openBlock(), _createElementBlock("p", _hoisted_29, "还没有执行记录。跑一次任务后这里会记下每次的结果。"))
+            : (_openBlock(), _createElementBlock("p", _hoisted_28, "还没有执行记录。跑一次任务后这里会记下每次的结果。"))
         ])
       ])
     ])
@@ -319,6 +315,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1186fb72"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-b1b51fda"]]);
 
 export { Page as default };

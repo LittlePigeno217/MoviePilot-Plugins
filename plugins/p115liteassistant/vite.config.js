@@ -20,6 +20,6 @@ export default defineConfig({
       format: 'esm',
     }),
   ],
-  build: { target: 'esnext', assetsDir: 'assets-v122', minify: false, cssCodeSplit: false },
+  build: { target: 'esnext', assetsDir: 'assets-v123', minify: false, cssCodeSplit: false },
   server: { port: 5015, cors: true, origin: 'http://localhost:5015' },
 })
