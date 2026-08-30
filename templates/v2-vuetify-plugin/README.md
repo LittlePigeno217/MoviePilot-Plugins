@@ -12,7 +12,7 @@ v2-vuetify-plugin/
 
 ## 使用方式
 
-1. 复制整个目录到 `plugins/` 或 `plugins.v2/` 下的目标目录
+1. 复制整个目录到 `plugins/<你的插件目录名>/`
 2. 修改 `__init__.py` 中的：
    - 类名
    - `plugin_name`
@@ -22,7 +22,7 @@ v2-vuetify-plugin/
    - `plugin_author`
    - `author_url`
    - `plugin_config_prefix`
-3. 在仓库根目录 `package.json` 或 `package.v2.json` 中新增插件元数据
+3. 在仓库根目录 `package.json` 中新增插件元数据（含 `v2: true`、`v3: true`）
 4. 如需定时任务，可补充 `get_service()`
 5. 如需 API，可补充 `get_api()`
 
@@ -47,4 +47,4 @@ v2-vuetify-plugin/
 - 如果不需要 API，可以直接删除 `get_api()` 中的示例接口
 - `get_form()` 返回值为：`(页面 JSON, 默认模型)`
 - `get_page()` 返回值为：`页面 JSON`
-- 若需 V2 兼容元数据，请优先维护 `package.v2.json`
+- 索引条目声明 `"v2": true` 与 `"v3": true`，一套实现兼容两代宿主

@@ -13,117 +13,41 @@ REPO_NOTE = "> ⚠️ 注意：本插件库为个人维护，代码结构参考�
 GENERATED_NOTE = "> [!NOTE]\n> 本文件由 `scripts/generate_readme.py` 根据 `package.json` 自动生成，请优先修改数据源而不是直接手改本文件。"
 
 EMOJI_MAP = {
-    "外部消息转发": "📢",
-    "Lucky助手": "🍀",
-    "群聊区": "💬",
-    "朱雀助手": "🦅",
-    "Cloudflare订阅": "☁️",
-    "本地插件安装": "📥",
-    "象岛传说竞技场": "🎮",
-    "织梦勋章套装奖励": "🏆",
-    "勋章墙": "🏅",
-    "NAT类型检测": "🌐",
-    "Sun-Panel助手": "🌞",
-    "直连模式": "🌐",
-    "中兴问天Hosts": "🛜",
+    "自用签到工具": "✅",
+    "115 轻量助手": "☁️",
 }
 
 FEATURES_MAP = {
-    "MsgNotify": [
-        "🔄 支持 POST/GET 两种 API 接口方式",
-        "🔐 内置 API 令牌校验机制",
-        "📝 支持自定义消息格式",
-        "🔌 适配多种外部应用（群晖、QD 框架、Lucky 等）",
+    "Checkin": [
+        "🔐 支持 Cookie 签到与账号密码自动登录",
+        "🧩 已适配站点：FLZT、恩山无线论坛、易破解",
+        "⏰ 支持定时签到与手动立即签到",
+        "📨 签到结果统一通知，仅上报各站点签到状态",
+        "📋 30 天打卡带与卡片式执行记录",
+        "🎨 配色跟随 MoviePilot 注入的 Vuetify 主题变量，明暗与紫色主题自动适配",
     ],
-    "LuckyHelper": [
-        "⏰ 支持定时自动备份",
-        "📁 智能备份文件管理",
-        "📨 备份状态实时通知",
-        "⚙️ 支持自定义备份周期",
-        "💾 新增本地备份开关，支持 WebDAV 备份",
-    ],
-    "GroupChatZone": [
-        "🌐 支持多站点喊话管理",
-        "🤖 智能识别特殊喊话内容",
-        "📊 自动获取站点反馈",
-        "⏱️ 动态注册定时任务",
-        "⏭️ 支持消息跳过机制",
-    ],
-    "ZhuqueHelper": [
-        "⚡ 支持技能自动释放",
-        "⬆️ 一键角色升级功能",
-        "📈 收益统计图表展示",
-        "⏲️ 支持释放时间微调",
-        "📱 移动端优化显示",
-        "📋 完整的执行记录追踪",
-    ],
-    "CloudflaresSubscribe": [
-        "📦 支持批量订阅管理",
-        "🔄 自动 DNS 服务更新",
-        "🔁 订阅失败自动重试",
-        "⏰ 定时任务自动执行",
-        "🌐 支持自定义 Hosts 配置",
-    ],
-    "LocalPluginInstall": [
-        "📦 支持本地 ZIP 包安装",
-        "🖥️ 简单的安装界面",
-        "🚀 快速插件部署",
-        "🛠️ 支持自定义插件包",
-        "🤖 智能依赖处理，自动检测并安装插件依赖",
-        "🗜️ 支持自动创建 ZIP 备份并跳过 `__pycache__`",
-        "♻️ 支持安装失败后自动回滚恢复",
-        "🧰 支持从备份列表恢复安装与删除历史备份",
-        "🗂️ 支持按插件中文名分组展示备份并标记最新备份",
-        "🌙 支持拟态提示/确认弹窗与深色模式适配",
-        "🧩 支持 Vue 联邦插件 ZIP 结构安装",
-    ],
-    "VicomoVS": [
-        "🎯 对战次数统计",
-        "📜 历史记录追踪",
-        "📤 优化的消息输出",
-        "🤖 自动对战功能",
-        "🔄 失败重试机制",
-        "⚙️ 代理启用开关",
-    ],
-    "ZmedalRwd": [
-        "🎖️ 支持勋章系列开关",
-        "⏰ 动态定时器组件",
-        "📱 适配 V1/V2 版本",
-    ],
-    "MedalWall": [
-        "🔔 勋章购买提醒",
-        "📊 勋章统计展示",
-        "⏰ 定时任务自动执行",
-        "🔄 支持多站点管理",
-    ],
-    "NATdetect": [
-        "🔍 独立检测方法，不依赖外部服务",
-        "🎯 精准识别网络 NAT 类型",
-        "📱 优化的界面显示",
-        "⚡ 快速检测响应",
-    ],
-    "SpanelHelper": [
-        "🔄 一键同步站点",
-        "📂 指定分组管理",
-        "🔗 支持站点链接跳转",
-    ],
-    "NoProxy": [
-        "🎯 自动将 `MP_SERVER_HOST` 加入直连白名单",
-        "🌍 支持额外域名、完整 URL 与通配符域名配置",
-        "🔀 支持兼容模式，直连失败后自动回退系统代理",
-        "🐞 支持输出白名单命中、补丁注入、直连失败与回退流程等 debug 日志",
-        "♻️ 支持热切换，启用或禁用后补丁实时注入或回滚",
-        "🧩 适用于全局代理环境下少量站点仍需直连的场景",
-    ],
-    "ZTEHosts": [
-        "🛜 支持自动登录中兴问天路由后台并同步自定义 Hosts",
-        "🔐 支持管理密码密文输入与浏览器仿真登录",
-        "⏰ 支持定时同步与立即运行一次",
-        "📨 支持统一收口的任务通知消息",
+    "P115LiteAssistant": [
+        "📱 支持 115 扫码登录，Cookie 落盘加密存储",
+        "👀 115 生活事件监控，自动同步本地 STRM",
+        "🎬 STRM 生成与 302 直链播放，支持多端",
+        "⬆️ 目录上传与秒传，监听整理完成事件自动增量上传",
+        "🗂️ 通道式目录映射编辑器与目录选择器",
+        "🔔 STRM / 上传 / 签到各自独立通知开关与消息类型",
+        "🖼️ 入库通知走飞书卡片，海报与季集信息取自整理历史",
+        "🚦 302 取链限流，请求失败自动重试",
     ],
 }
 
-INACTIVE_PLUGINS = {"VicomoVS", "MedalWall"}
+INACTIVE_PLUGINS: set[str] = set()
+
+
+def version_sort_key(item: tuple[str, str]) -> tuple[int, ...]:
+    """把 "v1.2.10" 解析成可比较的数字元组，让更新历史按版本号倒序展示。"""
+    version = item[0].lstrip("v")
+    parts = []
+    for chunk in version.split("."):
+        parts.append(int(chunk) if chunk.isdigit() else 0)
+    return tuple(parts)
 
 
 def format_name(key: str, plugin: dict) -> str:
@@ -177,7 +101,7 @@ def build_section(index: int, key: str, plugin: dict) -> list[str]:
                 "  ",
             ]
         )
-        for version, desc in history.items():
+        for version, desc in sorted(history.items(), key=version_sort_key, reverse=True):
             lines.append(f"  - {version}: {desc}")
         lines.append("  </details>")
 
@@ -221,6 +145,15 @@ def build_readme(data: dict[str, dict]) -> str:
             "2. 部分插件需要特定权限或配置才能正常使用",
             "3. 如遇到问题，请先查看插件说明或提交 Issue",
             "4. 建议定期更新插件以获取最新功能和修复",
+            "",
+            "## 🛠 开发",
+            "",
+            "| 文档 | 内容 |",
+            "|------|------|",
+            "| [docs/Repository_Guide.md](docs/Repository_Guide.md) | 目录约定、版本规则、发布流程 |",
+            "| [tests/README.md](tests/README.md) | 测试目录结构、导入约定与运行方式 |",
+            "| [plugins/README.md](plugins/README.md) | 插件目录说明 |",
+            "| [templates/README.md](templates/README.md) | 插件开发模板与新增插件步骤 |",
             "",
             "## 🤝 贡献",
             "",

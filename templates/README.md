@@ -18,7 +18,6 @@
 - Vue 联邦前端骨架
 - `Config.vue` / `Page.vue`
 - `vite.config.js`
-- `build-zip.js`
 - `package.json`
 
 特点：
@@ -44,7 +43,7 @@
 
 特点：
 - 默认 `vuetify` 渲染模式
-- 无需 `vite` / `yarn build`
+- 无需 `vite` / `npm run build`
 - 适合快速开发简单插件
 
 ---
@@ -57,16 +56,20 @@
 
 ## 通用开发步骤
 
-1. 复制模板到目标目录
-2. 修改插件类名与元信息
-3. 修改配置前缀，避免冲突
-4. 在 `package.json` 中新增插件元数据；如插件仍需单独维护 V2 索引，可按宿主版本策略自行扩展
-5. 校验 Python 语法
-6. 如使用 Vue 模板，执行前端构建生成 `dist/`
+1. 复制模板到 `plugins/<插件 ID 小写>/`
+2. 修改插件类名与元信息（`plugin_name` / `plugin_version` 等）
+3. 修改配置前缀，避免与已有插件冲突
+4. 在根 `package.json` 中新增插件元数据：`version`、`release: true`、`v2: true`、`v3: true`、`history` 中的 `v<version>` 键（当前版本置顶、按语义版本降序）
+5. 在根 `tests/<插件 ID 小写>/` 下添加测试，通过 `app.plugins.<插件 ID 小写>` 导入，不要放在插件目录内
+6. 校验 Python 语法并运行 `pytest`
+7. 如使用 Vue 模板，执行 `npm run build` 生成 `dist/assets/` **并连同 `package-lock.json` 提交进 Git**
+
+发布相关的硬性要求见 [../docs/Repository_Guide.md](../docs/Repository_Guide.md)，测试约定见
+[../tests/README.md](../tests/README.md)。
 
 ## 建议
 
 - 轻量插件优先使用 `v2-vuetify-plugin`
 - 复杂交互插件优先使用 `v2-vue-plugin`
 - 插件类名、前端 `PLUGIN_ID`、索引元数据三者必须保持一致
-- 当前仓库插件主目录为 `plugins/`，如需兼容旧文档中的 `plugins.v2/` 结构，请按当前仓库实际目录调整
+- 插件源码目录固定为 `plugins/`，索引固定为根 `package.json`；一套实现兼容 V2 与 V3，不拆分代际目录

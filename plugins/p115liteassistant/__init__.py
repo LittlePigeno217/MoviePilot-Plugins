@@ -124,7 +124,7 @@ class P115LiteAssistant(_PluginBase):
         return []
 
     def get_render_mode(self) -> Tuple[str, Optional[str]]:
-        return "vue", "dist/assets-v124"
+        return "vue", "dist/assets"
 
     def get_form(self) -> Tuple[Optional[List[dict]], Dict[str, Any]]:
         config = self._store.get_config()

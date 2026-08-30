@@ -2,7 +2,7 @@ from datetime import datetime
 import unittest
 from zoneinfo import ZoneInfo
 
-from plugins.p115liteassistant.checkin_schedule import (
+from app.plugins.p115liteassistant.checkin_schedule import (
     parse_checkin_time_range,
     pick_next_run_epoch,
 )

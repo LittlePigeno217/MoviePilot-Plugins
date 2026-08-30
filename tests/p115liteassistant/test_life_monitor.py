@@ -8,8 +8,8 @@ from unittest.mock import patch
 import httpx
 from p115pickcode import id_to_pickcode
 
-from plugins.p115liteassistant.life_monitor import LifeEventRetryError, LifeMonitor
-from plugins.p115liteassistant.strm import build_strm_content
+from app.plugins.p115liteassistant.life_monitor import LifeEventRetryError, LifeMonitor
+from app.plugins.p115liteassistant.strm import build_strm_content
 
 
 VALID_PICKCODE = id_to_pickcode(101)
@@ -637,7 +637,7 @@ class LifeMonitorTest(unittest.TestCase):
             output = Path(directory) / "Film.strm"
 
             with patch(
-                "plugins.p115liteassistant.life_monitor.Path.unlink",
+                "app.plugins.p115liteassistant.life_monitor.Path.unlink",
                 side_effect=OSError("read-only filesystem"),
             ):
                 with self.assertRaises(Exception):

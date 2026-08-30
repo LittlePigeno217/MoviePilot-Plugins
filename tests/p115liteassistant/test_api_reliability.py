@@ -8,11 +8,11 @@ from unittest.mock import patch
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from p115pickcode import id_to_pickcode
-from plugins.p115liteassistant import P115LiteAssistant
-from plugins.p115liteassistant.api import Api
-from plugins.p115liteassistant.client import PlaybackCopy, U115AccessLimitError
-from plugins.p115liteassistant.log_utils import safe_error_text
-from plugins.p115liteassistant.strm import build_redirect_signature
+from app.plugins.p115liteassistant import P115LiteAssistant
+from app.plugins.p115liteassistant.api import Api
+from app.plugins.p115liteassistant.client import PlaybackCopy, U115AccessLimitError
+from app.plugins.p115liteassistant.log_utils import safe_error_text
+from app.plugins.p115liteassistant.strm import build_redirect_signature
 
 
 VALID_PICKCODE = id_to_pickcode(1)
@@ -391,7 +391,7 @@ class ApiReliabilityTest(unittest.TestCase):
         self.signed_redirect(self.api, self.request("Player-A"))
 
         with patch.object(self.client, "get_download_url", side_effect=RuntimeError("downurl failed")), patch(
-            "plugins.p115liteassistant.api.retry_call", side_effect=lambda operation, **_kwargs: operation()
+            "app.plugins.p115liteassistant.api.retry_call", side_effect=lambda operation, **_kwargs: operation()
         ), patch.object(self.api, "_schedule_playback_copy_cleanup") as cleanup:
             response = self.signed_redirect(self.api, self.request("Player-B"))
 
@@ -416,7 +416,7 @@ class ApiReliabilityTest(unittest.TestCase):
     def test_strm_execution_writes_start_and_summary_logs(self):
         self.store.config.update({"strm_incremental": True, "strm_mappings": []})
 
-        with patch("plugins.p115liteassistant.api.logger") as task_logger:
+        with patch("app.plugins.p115liteassistant.api.logger") as task_logger:
             result = self.api.run_strm("http://moviepilot:3000")
 
         self.assertEqual(result, [])
@@ -439,8 +439,8 @@ class ApiReliabilityTest(unittest.TestCase):
             "errors_detail": [{"path": "/source/fail.mkv", "target": "/target/fail.mkv", "message": "失败"}],
         }
 
-        with patch("plugins.p115liteassistant.api.DirectoryUploader") as uploader, patch(
-            "plugins.p115liteassistant.api.logger"
+        with patch("app.plugins.p115liteassistant.api.DirectoryUploader") as uploader, patch(
+            "app.plugins.p115liteassistant.api.logger"
         ) as task_logger:
             uploader.return_value.run.return_value = upload_result
             result = self.api.run_upload(incremental=True)
@@ -450,7 +450,7 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertTrue(any("【目录上传】执行完成" in call.args[0] for call in task_logger.warning.call_args_list))
 
     def test_checkin_execution_writes_result_log(self):
-        with patch("plugins.p115liteassistant.api.logger") as task_logger:
+        with patch("app.plugins.p115liteassistant.api.logger") as task_logger:
             result = self.api.run_checkin()
 
         self.assertTrue(result["success"])
@@ -460,8 +460,8 @@ class ApiReliabilityTest(unittest.TestCase):
 
     def test_redirect_failure_writes_redacted_plugin_log(self):
         with patch.object(self.client, "get_download_url", side_effect=RuntimeError("apikey=secret")), patch(
-            "plugins.p115liteassistant.api.retry_call", side_effect=lambda operation, **_kwargs: operation()
-        ), patch("plugins.p115liteassistant.api.logger") as task_logger:
+            "app.plugins.p115liteassistant.api.retry_call", side_effect=lambda operation, **_kwargs: operation()
+        ), patch("app.plugins.p115liteassistant.api.logger") as task_logger:
             response = self.signed_redirect(self.api, self.request())
 
         self.assertEqual(response.status_code, 502)
@@ -485,8 +485,8 @@ class ApiReliabilityTest(unittest.TestCase):
             {"enabled": True, "source_cid": "first", "target_dir": "/first"},
             {"enabled": True, "source_cid": "second", "target_dir": "/second"},
         ]
-        with patch("plugins.p115liteassistant.api.StrmGenerator") as generator, patch(
-            "plugins.p115liteassistant.api.logger"
+        with patch("app.plugins.p115liteassistant.api.StrmGenerator") as generator, patch(
+            "app.plugins.p115liteassistant.api.logger"
         ) as task_logger:
             generator.return_value.run_mapping.side_effect = U115AccessLimitError(
                 "已达到当前访问上限"
@@ -501,8 +501,8 @@ class ApiReliabilityTest(unittest.TestCase):
         )
 
     def test_task_start_failure_releases_running_state(self):
-        with patch("plugins.p115liteassistant.api.threading.Thread.start", side_effect=RuntimeError("start failed")), patch(
-            "plugins.p115liteassistant.api.logger"
+        with patch("app.plugins.p115liteassistant.api.threading.Thread.start", side_effect=RuntimeError("start failed")), patch(
+            "app.plugins.p115liteassistant.api.logger"
         ) as task_logger:
             result = self.api._start("strm", lambda: None, "STRM 同步已开始")
 

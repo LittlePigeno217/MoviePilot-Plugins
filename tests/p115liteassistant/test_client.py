@@ -11,14 +11,14 @@ from unittest.mock import Mock, patch
 
 import httpx
 
-from plugins.p115liteassistant.client import (
+from app.plugins.p115liteassistant.client import (
     PlaybackCopy,
     U115AccessLimitError,
     U115ApiError,
     U115AuthError,
     U115Client,
 )
-from plugins.p115liteassistant.resilience import retry_call
+from app.plugins.p115liteassistant.resilience import retry_call
 
 
 class FakeResponse:
@@ -1019,10 +1019,10 @@ class U115ClientTest(unittest.TestCase):
             return b"encrypted-request"
 
         with patch(
-            "plugins.p115liteassistant.client.rsa_encrypt",
+            "app.plugins.p115liteassistant.client.rsa_encrypt",
             side_effect=encrypt,
         ), patch(
-            "plugins.p115liteassistant.client.rsa_decrypt",
+            "app.plugins.p115liteassistant.client.rsa_decrypt",
             return_value=b'{"url":"https://download.example/cookie-file"}',
         ):
             url = client.get_download_url(
@@ -1231,12 +1231,12 @@ class U115ClientTest(unittest.TestCase):
         client = U115Client(tokens={"access_token": "token"}, session=session)
 
         with TemporaryDirectory() as directory, patch(
-            "plugins.p115liteassistant.client.time.monotonic", return_value=100.0
+            "app.plugins.p115liteassistant.client.time.monotonic", return_value=100.0
         ), patch(
-            "plugins.p115liteassistant.client.time.sleep",
+            "app.plugins.p115liteassistant.client.time.sleep",
             side_effect=lambda delay: sleep_delays.append(delay),
         ), patch(
-            "plugins.p115liteassistant.client.httpx.stream",
+            "app.plugins.p115liteassistant.client.httpx.stream",
             side_effect=lambda *_args, **_kwargs: DownloadResponse(),
         ), ThreadPoolExecutor(max_workers=2) as executor:
             outputs = [Path(directory) / f"{pickcode}.mkv" for pickcode in ("one", "two")]
@@ -1895,7 +1895,7 @@ class U115ClientTest(unittest.TestCase):
         client = U115Client(session=session)
         client.read_retry_attempts = 3
 
-        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+        with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
             with self.assertRaises(U115AccessLimitError):
                 client._request_url(
                     "GET",
@@ -1927,7 +1927,7 @@ class U115ClientTest(unittest.TestCase):
         client = U115Client(session=session)
         client.http_rate_limit_attempts = 3
 
-        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+        with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
             payload = client._request_url(
                 "POST",
                 "https://example.invalid/rate-limit",
@@ -1954,7 +1954,7 @@ class U115ClientTest(unittest.TestCase):
         session = TemporaryFailureSession()
         client = U115Client(session=session)
 
-        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+        with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
             payload = client._request_url(
                 "GET",
                 "https://example.invalid/temporary",
@@ -1988,7 +1988,7 @@ class U115ClientTest(unittest.TestCase):
 
         session = AccessLimitSession()
         client = U115Client(tokens={"access_token": "token"}, session=session)
-        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+        with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
             self.assertEqual(client.get_dir_list("0"), [])
 
         self.assertEqual(session.attempts, 3)
@@ -2011,7 +2011,7 @@ class U115ClientTest(unittest.TestCase):
         session = AccessLimitSession()
         client = U115Client(tokens={"access_token": "token"}, session=session)
         client.open_access_limit_attempts = 3
-        with patch("plugins.p115liteassistant.client.time.sleep") as sleeper:
+        with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
             with self.assertRaisesRegex(U115AccessLimitError, "尝试 3 次"):
                 client.get_dir_list("0")
 
@@ -2086,7 +2086,7 @@ class U115ClientTest(unittest.TestCase):
             cookie="UID=1_R2_0; CID=2",
             session=FailedStatusSession(),
         )
-        with patch("plugins.p115liteassistant.client.time.sleep"):
+        with patch("app.plugins.p115liteassistant.client.time.sleep"):
             with self.assertRaisesRegex(U115ApiError, "查询 115 签到状态失败.*服务器开小差"):
                 client.checkin()
 
@@ -2157,7 +2157,7 @@ class U115ClientTest(unittest.TestCase):
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = CheckinSession()
-        with patch("plugins.p115liteassistant.client.time.time", return_value=1_700_000_000):
+        with patch("app.plugins.p115liteassistant.client.time.time", return_value=1_700_000_000):
             result = U115Client(cookie="UID=1_R2_0; CID=2", session=session).checkin(
                 retry_delay=0
             )

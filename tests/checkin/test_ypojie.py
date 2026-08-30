@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def load_checkin_module():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     module_path = root / "plugins" / "checkin" / "__init__.py"
 
     app_module = types.ModuleType("app")

@@ -878,8 +878,7 @@ class Checkin(_PluginBase):
         return []
 
     def get_render_mode(self) -> Tuple[str, Optional[str]]:
-        # 目录带版本号，升级后浏览器不会命中旧的 remoteEntry / style 缓存
-        return "vue", "dist/assets-v163"
+        return "vue", "dist/assets"
 
     def get_form(self) -> Tuple[Optional[List[dict]], Dict[str, Any]]:
         return None, self._get_config()

@@ -123,11 +123,6 @@ celerybeat.pid
 .venv
 env/
 venv/
-src/
-!plugins/p115liteassistant/src/
-!plugins/p115liteassistant/src/**
-!plugins/checkin/src/
-!plugins/checkin/src/**
 ENV/
 env.bak/
 venv.bak/

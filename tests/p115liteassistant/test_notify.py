@@ -1,6 +1,6 @@
 import unittest
 
-from plugins.p115liteassistant.notify import (
+from app.plugins.p115liteassistant.notify import (
     CHANNELS,
     DEFAULT_NOTIFY_TYPE,
     Notifier,

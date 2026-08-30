@@ -9,14 +9,12 @@ v2-vue-plugin/
 ├── __init__.py
 ├── package.json
 ├── vite.config.js
-├── build-zip.js
 ├── index.html
 ├── README.md
 └── src/
     ├── App.vue
     ├── main.js
-    ├── utils/
-    │   └── plugin.js
+    ├── plugin.js
     └── components/
         ├── Config.vue
         └── Page.vue
@@ -24,7 +22,7 @@ v2-vue-plugin/
 
 ## 使用方式
 
-1. 复制整个目录到 `plugins.v2/<你的插件目录名>/`
+1. 复制整个目录到 `plugins/<你的插件目录名>/`
 2. 修改 `__init__.py` 中的：
    - 类名
    - `plugin_name`
@@ -36,7 +34,7 @@ v2-vue-plugin/
    - `plugin_config_prefix`
 3. 修改 `src/utils/plugin.js` 中的 `PLUGIN_ID`，保持与后端类名一致
 4. 修改 `vite.config.js` 中的联邦名称
-5. 在仓库根目录 `package.v2.json` 中新增插件元数据
+5. 在仓库根目录 `package.json` 中新增插件元数据（含 `v2: true`、`v3: true`）
 6. 安装依赖并构建：
    - `yarn`
    - `yarn build`

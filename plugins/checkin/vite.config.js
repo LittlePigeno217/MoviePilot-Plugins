@@ -33,8 +33,6 @@ export default defineConfig({
   ],
   build: {
     target: 'esnext',
-    // 版本化目录，避开浏览器对旧 remoteEntry / style 的缓存
-    assetsDir: 'assets-v163',
     minify: false,
     cssCodeSplit: false,
   },

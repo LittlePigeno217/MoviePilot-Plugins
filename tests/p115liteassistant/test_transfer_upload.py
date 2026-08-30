@@ -5,7 +5,7 @@ from app.core.event import Event
 from app.schemas.types import EventType
 
 try:
-    from plugins.p115liteassistant import P115LiteAssistant
+    from app.plugins.p115liteassistant import P115LiteAssistant
 except ModuleNotFoundError:
     from app.plugins.p115liteassistant import P115LiteAssistant
 

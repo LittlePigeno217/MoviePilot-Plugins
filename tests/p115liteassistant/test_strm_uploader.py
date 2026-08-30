@@ -7,16 +7,16 @@ from unittest.mock import patch
 
 from p115pickcode import id_to_pickcode
 
-from plugins.p115liteassistant.api import Api
-from plugins.p115liteassistant.client import (
+from app.plugins.p115liteassistant.api import Api
+from app.plugins.p115liteassistant.client import (
     U115AccessLimitError,
     U115AuthError,
     U115Client,
     UploadResult,
 )
-from plugins.p115liteassistant.records import IncrementalRecordStore
-from plugins.p115liteassistant.resilience import retry_call as real_retry_call
-from plugins.p115liteassistant.strm import (
+from app.plugins.p115liteassistant.records import IncrementalRecordStore
+from app.plugins.p115liteassistant.resilience import retry_call as real_retry_call
+from app.plugins.p115liteassistant.strm import (
     StrmGenerator,
     build_redirect_signature,
     build_strm_content,
@@ -24,7 +24,7 @@ from plugins.p115liteassistant.strm import (
     normalize_pickcode,
     write_uploaded_strm,
 )
-from plugins.p115liteassistant.uploader import DirectoryUploader
+from app.plugins.p115liteassistant.uploader import DirectoryUploader
 
 
 VALID_PICKCODE = id_to_pickcode(1)
@@ -364,7 +364,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             store = FakeStore()
             generator = StrmGenerator(FakeStrmClient(), store, "http://mp:3000", incremental=True)
 
-            with patch("plugins.p115liteassistant.strm.logger") as strm_logger:
+            with patch("app.plugins.p115liteassistant.strm.logger") as strm_logger:
                 result = generator.run_mapping(
                     {"id": "movies", "source_cid": "115-root", "source_path": "/Movies", "target_dir": str(target)}
                 )
@@ -439,7 +439,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                     with self._state_lock:
                         self.active_writes -= 1
 
-        with TemporaryDirectory() as directory, patch("plugins.p115liteassistant.strm.logger"):
+        with TemporaryDirectory() as directory, patch("app.plugins.p115liteassistant.strm.logger"):
             generator = TrackingGenerator(ManyStrmClient(), FakeStore(), "http://mp:3000", False)
             result = generator.run_mapping(
                 {"id": "many", "source_cid": "115-root", "target_dir": directory}
@@ -543,7 +543,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             )
 
             with patch(
-                "plugins.p115liteassistant.strm.retry_call",
+                "app.plugins.p115liteassistant.strm.retry_call",
                 side_effect=lambda operation, **kwargs: real_retry_call(
                     operation,
                     sleeper=lambda _seconds: None,
@@ -760,7 +760,7 @@ class StrmAndUploaderTest(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             store = FakeStore()
-            with patch("plugins.p115liteassistant.strm.logger") as strm_logger:
+            with patch("app.plugins.p115liteassistant.strm.logger") as strm_logger:
                 result = StrmGenerator(
                     SameStemMediaClient(),
                     store,
@@ -924,7 +924,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             ).run_mapping(mapping)
             self.assertEqual(first["added"], 2)
 
-            with patch("plugins.p115liteassistant.strm.logger") as strm_logger:
+            with patch("app.plugins.p115liteassistant.strm.logger") as strm_logger:
                 second = StrmGenerator(
                     SameStemMediaClient(),
                     store,
@@ -1294,7 +1294,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "upload_sidecar_extensions": ".nfo",
             }
 
-            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+            with patch("app.plugins.p115liteassistant.uploader.logger") as upload_logger:
                 first = DirectoryUploader(client, store, config).run(incremental=True)
             second = DirectoryUploader(client, store, config).run(incremental=True)
 
@@ -1461,7 +1461,7 @@ class StrmAndUploaderTest(unittest.TestCase):
 
     def test_directory_uploader_rechecks_uploaded_item_before_generating_strm(self):
         with TemporaryDirectory() as directory, patch(
-            "plugins.p115liteassistant.uploader.sleep"
+            "app.plugins.p115liteassistant.uploader.sleep"
         ) as sleeper:
             source = Path(directory) / "source"
             output = Path(directory) / "output"
@@ -1504,7 +1504,7 @@ class StrmAndUploaderTest(unittest.TestCase):
         client = ExpiredCookieClient()
         uploader = DirectoryUploader(client, FakeStore(), {})
 
-        with patch("plugins.p115liteassistant.uploader.sleep") as sleeper, self.assertRaisesRegex(
+        with patch("app.plugins.p115liteassistant.uploader.sleep") as sleeper, self.assertRaisesRegex(
             U115AuthError,
             "Cookie 已失效",
         ):
@@ -1580,7 +1580,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             store.upload_records.mark_uploaded(movie, "/Cloud/Film.mkv")
             client = LegacyRecordClient()
 
-            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+            with patch("app.plugins.p115liteassistant.uploader.logger") as upload_logger:
                 result = DirectoryUploader(
                     client,
                     store,
@@ -1831,7 +1831,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                 return None
 
         with TemporaryDirectory() as directory, patch(
-            "plugins.p115liteassistant.uploader.sleep"
+            "app.plugins.p115liteassistant.uploader.sleep"
         ):
             source = Path(directory) / "source"
             output = Path(directory) / "output"
@@ -2002,7 +2002,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "upload_media_extensions": ".mkv",
             }
 
-            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+            with patch("app.plugins.p115liteassistant.uploader.logger") as upload_logger:
                 result = DirectoryUploader(
                     AccessLimitedUploadClient(),
                     FakeStore(),
@@ -2105,7 +2105,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "upload_sidecar_extensions": ".nfo",
             }
 
-            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+            with patch("app.plugins.p115liteassistant.uploader.logger") as upload_logger:
                 DirectoryUploader(FakeUploadClient(), FakeStore(), config).run(incremental=True)
 
             media_logs = [
@@ -2142,7 +2142,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                 raise RuntimeError("temporary lookup failure")
 
         with TemporaryDirectory() as directory, patch(
-            "plugins.p115liteassistant.uploader.sleep"
+            "app.plugins.p115liteassistant.uploader.sleep"
         ):
             source = Path(directory) / "Movies"
             output = Path(directory) / "strm"
@@ -2200,7 +2200,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "upload_sidecar_extensions": ".nfo",
             }
 
-            with patch("plugins.p115liteassistant.uploader.logger") as upload_logger:
+            with patch("app.plugins.p115liteassistant.uploader.logger") as upload_logger:
                 result = DirectoryUploader(FailingSidecarUploadClient(), FakeStore(), config).run(incremental=True)
 
             self.assertEqual(result["deleted"], 0)

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "build:web": "vite build",
-    "build": "npm run build:web && node build-zip.js"
+    "build": "vite build",
+    "build:web": "npm run build"
   },
   "dependencies": {
     "vue": "^3.3.4",
@@ -16,7 +16,6 @@
   "devDependencies": {
     "@originjs/vite-plugin-federation": "^1.3.3",
     "@vitejs/plugin-vue": "^4.2.3",
-    "archiver": "^7.0.1",
     "sass": "^1.66.1",
     "vite": "^4.4.9"
   }
