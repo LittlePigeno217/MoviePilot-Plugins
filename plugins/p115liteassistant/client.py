@@ -10,7 +10,7 @@ from collections import deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional
 
 import httpx
 from p115cipher import rsa_decrypt, rsa_encrypt
@@ -87,6 +87,7 @@ class U115Client:
     directory_request_interval = 1 / 3
     directory_scan_workers = 6
     directory_scan_prefetch = 12
+    delete_batch_size = 200
     playback_copy_discovery_delays = (0.0, 0.5, 1.0, 2.0)
     playback_copy_directory = "多端播放"
     qrcode_client_types = {
@@ -653,12 +654,16 @@ class U115Client:
         if not self._is_response_success(payload):
             code = str(payload.get("code") or payload.get("errno") or "")
             message = str(payload.get("message") or payload.get("error") or payload)
-            if code in {"10014", "20018", "404"} or any(
+            if code in {"10014", "20018", "404", "430004"} or any(
                 marker in message for marker in ("不存在", "未找到", "找不到")
             ):
                 return None
             raise U115ApiError(message)
         data = payload.get("data")
+        if not data:
+            # 成功响应但没有数据：115 对不存在的路径就是这么回的，等同「查不到」，
+            # 不能当成接口异常抛出去 —— 调用方需要能区分「没有」和「出错了」。
+            return None
         if not isinstance(data, dict):
             raise U115ApiError("115 文件信息响应无效")
         file_id = self._item_id(data)
@@ -1169,22 +1174,65 @@ class U115Client:
             raise U115ApiError("115 多端播放副本信息不完整")
         return PlaybackCopy(file_id=copied_file_id, pickcode=copied_pickcode)
 
-    def delete_file(self, file_id: str, mode: str = "") -> None:
-        mode = self._playback_auth_mode(mode)
-        if mode == "cookie":
-            self._request_url(
-                "POST",
-                self.web_delete_url,
-                data={"fid": int(file_id)},
-                headers={"User-Agent": self.ios_user_agent},
-            )
+    @staticmethod
+    def _normalize_delete_ids(file_id: str | int | Iterable[str | int]) -> list[int]:
+        """把单个 ID 或一批 ID 归一成 int 列表，去重且保持传入顺序。"""
+        if isinstance(file_id, (str, int)):
+            raw: list[Any] = [file_id]
         else:
-            self._request(
-                "POST",
-                "/open/ufile/delete",
-                data={"file_ids": int(file_id)},
-                headers={"User-Agent": self.ios_user_agent},
-            )
+            raw = list(file_id or ())
+        normalized: list[int] = []
+        seen: set[int] = set()
+        for value in raw:
+            text = str(value or "").strip()
+            if not text:
+                continue
+            try:
+                numeric = int(text)
+            except (TypeError, ValueError) as err:
+                raise ValueError(f"无效的 115 文件 ID: {text}") from err
+            if numeric <= 0:
+                # 0 是 115 根目录，任何调用点传到这里都是 bug，宁可整批失败也不能删
+                raise ValueError(f"拒绝删除非法的 115 文件 ID: {text}")
+            if numeric in seen:
+                continue
+            seen.add(numeric)
+            normalized.append(numeric)
+        return normalized
+
+    def delete_file(self, file_id: str | int | Iterable[str | int], mode: str = "") -> None:
+        """把 115 上的文件或目录删进回收站（可在 115 侧人工还原）。
+
+        支持一次提交多个 ID：反向删除按云端父目录成组处理，批量提交能把「删一个
+        文件打一次 HTTP」压到目录数量级。传单个 ID 时行为与旧版一致。
+        """
+        file_ids = self._normalize_delete_ids(file_id)
+        if not file_ids:
+            return
+        mode = self._playback_auth_mode(mode)
+        for offset in range(0, len(file_ids), max(1, int(self.delete_batch_size))):
+            batch = file_ids[offset : offset + max(1, int(self.delete_batch_size))]
+            if mode == "cookie":
+                # 115 web 版删除只认带下标的数组参数：写成 ``fid`` 会被当作缺少参数，
+                # 接口直接返回失败；目录里还有内容时也要 ``ignore_warn`` 才不会被
+                # 「目录非空」的警告挡下来。
+                data: Dict[str, Any] = {
+                    f"fid[{index}]": value for index, value in enumerate(batch)
+                }
+                data["ignore_warn"] = 1
+                self._request_url(
+                    "POST",
+                    self.web_delete_url,
+                    data=data,
+                    headers={"User-Agent": self.ios_user_agent},
+                )
+            else:
+                self._request(
+                    "POST",
+                    "/open/ufile/delete",
+                    data={"file_ids": ",".join(str(value) for value in batch)},
+                    headers={"User-Agent": self.ios_user_agent},
+                )
 
     def checkin(self, attempts: int = 3, retry_delay: float = 3.0) -> Dict[str, Any]:
         self._ensure_cookie_auth()
@@ -1759,9 +1807,17 @@ class U115Client:
 
     @staticmethod
     def _is_directory(item: Dict[str, Any]) -> bool:
-        return str(item.get("fc", item.get("file_category", "1"))) == "0" or (
-            item.get("cid") is not None and item.get("fid") is None
-        )
+        """判断列表项是文件还是目录。
+
+        ``fc`` / ``file_category`` 是 115 明确给出的类别（``"0"`` 目录、``"1"`` 文件），
+        给了就以它为准；两个字段都缺时才退回「有 cid 无 fid」的形状推断。原先把形状
+        推断和显式类别用 ``or`` 并列，`fc="1"` 但恰好没带 ``fid`` 的文件会被判成目录，
+        而 :meth:`_item_id` 对目录是允许取 ``cid`` 的 —— 那就又绕回「拿父目录当自己」。
+        """
+        category = item.get("fc", item.get("file_category"))
+        if category not in (None, ""):
+            return str(category) == "0"
+        return item.get("cid") is not None and item.get("fid") is None
 
     @staticmethod
     def _item_name(item: Dict[str, Any]) -> str:
@@ -1775,13 +1831,30 @@ class U115Client:
 
     @staticmethod
     def _item_id(item: Dict[str, Any]) -> str:
-        return str(
-            item.get("cid")
-            or item.get("file_id")
-            or item.get("fid")
-            or item.get("category_id")
-            or ""
-        )
+        """取列表项自身的 ID。
+
+        115 的列表接口里文件和目录的自身 ID 不在同一个字段：目录的 ``cid`` 是自己、
+        ``pid`` 是父目录；**文件的 ``fid`` 才是自己，``cid`` 指的是父目录**。所以文件
+        必须先取 ``fid`` —— 先取 ``cid`` 会把父目录 ID 当成文件 ID 存进 STRM 记录，
+        之后按它删除就会连整个目录（含目录里其他媒体）一起删掉。
+        """
+        if U115Client._is_directory(item):
+            # 目录沿用旧的取值顺序与「非空即取」语义："0" 是 115 根目录的合法 ID
+            return str(
+                item.get("cid")
+                or item.get("file_id")
+                or item.get("fid")
+                or item.get("category_id")
+                or ""
+            )
+        # 文件**绝不回退到 cid / category_id**：那是父目录。取不到就返回空串，
+        # 让调用方按「溯源信息缺失」处理，而不是拿着父目录 ID 去删东西。
+        for key in ("fid", "file_id", "fileid"):
+            value = item.get(key)
+            if value in (None, "", 0, "0"):
+                continue
+            return str(value)
+        return ""
 
     @staticmethod
     def _item_mtime(item: Dict[str, Any]) -> int:

@@ -1306,7 +1306,7 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(list_request[2]["params"]["asc"], 0)
         self.assertEqual(list_request[2]["params"]["custom_order"], 2)
         delete_request = next(item for item in session.requests if item[1].endswith("/open/ufile/delete"))
-        self.assertEqual(delete_request[2]["data"], {"file_ids": 456})
+        self.assertEqual(delete_request[2]["data"], {"file_ids": "456"})
         self.assertEqual(
             delete_request[2]["headers"],
             {"User-Agent": client.ios_user_agent, "Authorization": "Bearer token"},
@@ -1367,7 +1367,9 @@ class U115ClientTest(unittest.TestCase):
         self.assertEqual(list_request[2]["params"]["asc"], 0)
         self.assertEqual(list_request[2]["headers"]["Authorization"], "Bearer open-token")
         delete_request = next(item for item in session.requests if item[1].endswith("/rb/delete"))
-        self.assertEqual(delete_request[2]["data"], {"fid": 456})
+        self.assertEqual(
+            delete_request[2]["data"], {"fid[0]": 456, "ignore_warn": 1}
+        )
 
     def test_playback_copy_serializes_copy_and_latest_lookup_across_files(self):
         class ConcurrentPlaybackSession(FakeSession):
@@ -2244,3 +2246,205 @@ class U115ClientTest(unittest.TestCase):
             client.checkin(retry_delay=0)
 
         self.assertEqual(session.post_attempts, 3)
+
+
+class ItemIdTest(unittest.TestCase):
+    """115 列表项的自身 ID 提取：文件取 fid，目录取 cid。"""
+
+    def test_item_id_prefers_fid_for_files(self):
+        """文件的 cid 指父目录，先取 cid 会把父目录 ID 当成文件 ID。"""
+        item = {"fc": "1", "fid": "8001", "cid": "7000", "fn": "Film.mkv"}
+        self.assertEqual(U115Client._item_id(item), "8001")
+
+    def test_item_id_prefers_cid_for_directories(self):
+        """目录的 cid 就是自己，pid 才是父目录。"""
+        item = {"fc": "0", "cid": "7000", "pid": "6000", "fn": "Movies"}
+        self.assertEqual(U115Client._item_id(item), "7000")
+
+    def test_item_id_skips_zero_and_empty_values(self):
+        """占位的 0 / 空串不能被当成有效 ID。"""
+        item = {"fc": "1", "fid": "0", "file_id": "", "fileid": "8002", "cid": "7000"}
+        self.assertEqual(U115Client._item_id(item), "8002")
+
+    def test_item_id_never_falls_back_to_cid_for_files(self):
+        """文件取不到自身 ID 时返回空串，绝不退回父目录的 cid。"""
+        self.assertEqual(U115Client._item_id({"fc": "1", "cid": "7000", "fn": "Film.mkv"}), "")
+
+    def test_item_id_keeps_root_id_for_directories(self):
+        """"0" 是 115 根目录的合法 ID，目录侧不能把它当空值跳过。"""
+        self.assertEqual(U115Client._item_id({"fc": "0", "cid": "0", "fn": "Root"}), "0")
+
+    def test_item_id_without_category_falls_back_to_shape(self):
+        """缺 fc 字段时按「有 cid 无 fid」判目录，文件仍走 fid。"""
+        self.assertEqual(U115Client._item_id({"fid": "8003", "cid": "7000"}), "8003")
+        self.assertEqual(U115Client._item_id({"cid": "7000"}), "7000")
+
+
+class IterFilesFileIdTest(unittest.TestCase):
+    """目录遍历产出的 fileid 必须是文件自己的 ID，不能等于父目录 ID。"""
+
+    def test_iter_files_records_own_file_id(self):
+        class ListSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/files"):
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "state": True,
+                            "count": 1,
+                            "data": [
+                                {
+                                    "fc": "1",
+                                    "fid": "8001",
+                                    "cid": "7000",
+                                    "fn": "Film.mkv",
+                                    "pc": "pickcode",
+                                    "fs": "10",
+                                }
+                            ],
+                        }
+                    )
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        client = U115Client(tokens={"access_token": "token"}, session=ListSession())
+        client.directory_request_interval = 0
+
+        items = list(client.iter_files("7000"))
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["fileid"], "8001")
+        self.assertEqual(items[0]["parent_id"], "7000")
+        self.assertNotEqual(items[0]["fileid"], items[0]["parent_id"])
+
+
+class DeleteFileTest(unittest.TestCase):
+    """删除接口：cookie 模式的数组参数、批量提交与空输入。"""
+
+    @staticmethod
+    def _open_client():
+        class DeleteSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/delete"):
+                    return FakeResponse({"code": 0, "state": True})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = DeleteSession()
+        return U115Client(tokens={"access_token": "token"}, session=session), session
+
+    @staticmethod
+    def _cookie_client():
+        class DeleteSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/rb/delete"):
+                    return FakeResponse({"state": True})
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        session = DeleteSession()
+        return U115Client(cookie="UID=1_R2_0; CID=2", session=session), session
+
+    def test_cookie_delete_uses_indexed_fid_and_ignore_warn(self):
+        """115 web 版删除只认 fid[n]；目录非空还要 ignore_warn 才不会被拦。"""
+        client, session = self._cookie_client()
+
+        client.delete_file("456")
+
+        request = next(item for item in session.requests if item[1].endswith("/rb/delete"))
+        self.assertEqual(request[2]["data"], {"fid[0]": 456, "ignore_warn": 1})
+
+    def test_cookie_delete_batches_multiple_ids_in_one_request(self):
+        client, session = self._cookie_client()
+
+        client.delete_file(["456", "789"])
+
+        requests = [item for item in session.requests if item[1].endswith("/rb/delete")]
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(
+            requests[0][2]["data"],
+            {"fid[0]": 456, "fid[1]": 789, "ignore_warn": 1},
+        )
+
+    def test_open_delete_joins_ids_with_comma(self):
+        client, session = self._open_client()
+
+        client.delete_file(["456", "789"])
+
+        requests = [item for item in session.requests if item[1].endswith("/open/ufile/delete")]
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0][2]["data"], {"file_ids": "456,789"})
+
+    def test_delete_splits_into_batches_over_limit(self):
+        client, session = self._open_client()
+        client.delete_batch_size = 2
+
+        client.delete_file(["1", "2", "3"])
+
+        requests = [item for item in session.requests if item[1].endswith("/open/ufile/delete")]
+        self.assertEqual([item[2]["data"] for item in requests], [{"file_ids": "1,2"}, {"file_ids": "3"}])
+
+    def test_delete_deduplicates_ids_and_keeps_order(self):
+        client, session = self._open_client()
+
+        client.delete_file(["9", "8", "9"])
+
+        request = next(item for item in session.requests if item[1].endswith("/open/ufile/delete"))
+        self.assertEqual(request[2]["data"], {"file_ids": "9,8"})
+
+    def test_delete_with_no_usable_id_sends_nothing(self):
+        client, session = self._open_client()
+
+        client.delete_file([])
+        client.delete_file(["", None])
+
+        self.assertEqual(session.requests, [])
+
+    def test_delete_rejects_non_numeric_id(self):
+        client, _session = self._open_client()
+
+        with self.assertRaisesRegex(ValueError, "无效的 115 文件 ID"):
+            client.delete_file("abc")
+
+    def test_delete_refuses_root_id(self):
+        """0 是 115 根目录，任何调用点传到这里都必须整批失败。"""
+        client, session = self._open_client()
+
+        with self.assertRaisesRegex(ValueError, "拒绝删除非法的 115 文件 ID"):
+            client.delete_file(["456", "0"])
+        self.assertEqual(session.requests, [])
+
+
+class OpenItemLookupTest(unittest.TestCase):
+    """按路径 / ID 查询条目：查不到必须回 None，不能当接口异常抛出去。"""
+
+    @staticmethod
+    def _client(payload):
+        class LookupSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/folder/get_info"):
+                    return FakeResponse(payload)
+                raise AssertionError(f"unexpected request: {method} {url}")
+
+        return U115Client(tokens={"access_token": "token"}, session=LookupSession())
+
+    def test_success_with_empty_data_means_not_found(self):
+        """115 对不存在的路径回的是 state=true + 空 data。"""
+        client = self._client({"state": True, "code": 0, "data": []})
+
+        self.assertIsNone(client.get_item("/不存在/的/路径"))
+
+    def test_deleted_file_id_error_code_means_not_found(self):
+        """按已删除的 ID 查会回 430004。"""
+        client = self._client(
+            {"state": False, "code": 430004, "message": "文件（夹）不存在或已删除。"}
+        )
+
+        self.assertIsNone(client.get_item_by_id("3509489954000471428"))
+
+    def test_other_errors_still_raise(self):
+        client = self._client({"state": False, "code": 500, "message": "服务器开小差了"})
+
+        with self.assertRaisesRegex(U115ApiError, "服务器开小差了"):
+            client.get_item("/任意/路径")
