@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from apscheduler.triggers.cron import CronTrigger
 from app.core.config import settings
 from app.log import logger
 from fastapi import Request
@@ -33,6 +34,7 @@ from .notify import (
     normalize_notify_type,
 )
 from .rate_limiter import RateLimiter
+from .reverse_delete import RECENT_DELETE_TTL, ReverseDeleter
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
 from .strm import (
@@ -52,9 +54,18 @@ def _error(message: str, **fields: Any) -> Dict[str, Any]:
     return {"success": False, "message": message, "data": {}, **fields}
 
 
+def _cron_error(text: str) -> str:
+    """校验五位 cron 表达式，合法返回空串，非法返回给用户看的原因。"""
+    try:
+        CronTrigger.from_crontab(str(text or "").strip())
+    except Exception as err:  # noqa: BLE001
+        return str(err) or "表达式无法解析"
+    return ""
+
+
 class Api:
-    _TASK_LABELS = {"strm": "STRM同步", "upload": "目录上传"}
-    _CLOUD_TASK_KINDS = frozenset({"strm", "upload"})
+    _TASK_LABELS = {"strm": "STRM同步", "upload": "目录上传", "sweep": "STRM反向删除"}
+    _CLOUD_TASK_KINDS = frozenset({"strm", "upload", "sweep"})
     _DOWNLOAD_URL_CACHE_SAFETY_SECONDS = 300
     _PLAYBACK_COPY_CLEANUP_GRACE_SECONDS = 60
     _PLAYBACK_COPY_CLEANUP_FALLBACK_SECONDS = 300
@@ -70,13 +81,22 @@ class Api:
         on_config_saved: Callable[[], None] | None = None,
         life_monitor_status: Callable[[], bool] | None = None,
         notifier: Notifier | None = None,
+        strm_watch_status: Callable[[], bool] | None = None,
     ):
         self._client_provider = client_provider
         self._store = store
         self._on_config_saved = on_config_saved
         self._life_monitor_status = life_monitor_status
+        self._strm_watch_status = strm_watch_status
         self._notifier = notifier or Notifier(store.get_config)
         self._running: set[str] = set()
+        # 反向删除的待处理范围记在编排层：抢不到 115 数据任务锁的删除事件不会丢，
+        # 锁释放时由 _drain_pending_sweep 接着跑完。None 语义的「全量」单独用布尔表示，
+        # 因为空列表表示「没有待处理路径」，绝不能被当成「清理所有记录」。
+        self._pending_sweep_paths: set[str] = set()
+        self._pending_sweep_all = False
+        # 反向删除刚清掉的 pickcode，正向同步据此跳过重建（115 列表接口有延迟）
+        self._recent_deletes: TtlCache[str, bool] = TtlCache(RECENT_DELETE_TTL, maxsize=4096)
         self._lock = threading.Lock()
         self._cloud_task_lock = threading.Lock()
         self._checkin_lock = threading.Lock()
@@ -124,6 +144,11 @@ class Api:
                 except ValueError as err:
                     return _error(str(err))
             updates["moviepilot_address"] = moviepilot_address
+        if "strm_delete_sweep_cron" in updates:
+            cron_text = str(updates.get("strm_delete_sweep_cron") or "").strip()
+            if cron_text and (error := _cron_error(cron_text)):
+                return _error(f"反向删除巡检周期无效：{error}")
+            updates["strm_delete_sweep_cron"] = cron_text
         # 消息类型只接受白名单里的枚举名，界面传了别的就退回 Plugin
         for meta in NOTIFY_CHANNELS.values():
             type_key = meta["type_key"]
@@ -187,6 +212,11 @@ class Api:
     @property
     def cloud_task_lock(self) -> threading.Lock:
         return self._cloud_task_lock
+
+    @property
+    def recent_deletes(self) -> TtlCache:
+        """反向删除刚清掉的条目，正向同步与生活监控共用这一份。"""
+        return self._recent_deletes
 
     def qrcode(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
         try:
@@ -311,6 +341,22 @@ class Api:
                 "life_monitor_running": bool(
                     self._life_monitor_status and self._life_monitor_status()
                 ),
+                "strm_delete_enabled": bool(config.get("strm_delete_cloud_on_missing")),
+                "strm_delete_watch_running": bool(
+                    self._strm_watch_status and self._strm_watch_status()
+                ),
+                "pending_sweep": self._pending_sweep_text(),
+                "pending_deletes": [
+                    {
+                        "id": str(batch.get("id") or ""),
+                        "mapping": str(batch.get("mapping") or "-"),
+                        "count": int(batch.get("count") or 0),
+                        "updated_at": str(batch.get("updated_at") or ""),
+                        "items_truncated": bool(batch.get("items_truncated")),
+                    }
+                    for batch in self._store.get_strm_delete_pending().values()
+                    if isinstance(batch, dict)
+                ],
                 "running": running,
                 "history": self._store.get_history(),
                 "recent_uploads": self._store.get_recent_uploaded_media(
@@ -399,6 +445,7 @@ class Api:
             incremental,
             download_sidecars=bool(config.get("strm_download_sidecars", False)),
             sidecar_extensions=str(config.get("upload_sidecar_extensions") or ""),
+            recent_deletes=self._recent_deletes,
         )
         entries = []
         totals = {
@@ -409,8 +456,6 @@ class Api:
             "skipped": 0,
             "conflicts": 0,
             "errors": 0,
-            "cloud_deleted": 0,
-            "cloud_dirs_deleted": 0,
             "duration_ms": 0,
         }
         for mapping in mappings:
@@ -474,8 +519,6 @@ class Api:
                 f"附属文件 {int(entry.get('sidecars') or 0)}，"
                 f"跳过 {int(entry.get('skipped') or 0)}，失败 {int(entry.get('errors') or 0)}，"
                 f"冲突候选 {int(entry.get('conflicts') or 0)}，"
-                f"云端删除 {int(entry.get('cloud_deleted') or 0)}，"
-                f"云端目录删除 {int(entry.get('cloud_dirs_deleted') or 0)}，"
                 f"耗时 {int(entry.get('duration_ms') or 0)}ms"
             )
             log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
@@ -489,13 +532,319 @@ class Api:
             f"新增 {totals['added']}，更新 {totals['updated']}，清理 {totals['removed']}，"
             f"附属文件 {totals['sidecars']}，"
             f"跳过 {totals['skipped']}，冲突候选 {totals['conflicts']}，"
-            f"云端删除 {totals['cloud_deleted']}，云端目录删除 {totals['cloud_dirs_deleted']}，"
             f"失败 {totals['errors']}，耗时 {totals['duration_ms']}ms"
         )
         log_total = logger.warning if totals["errors"] else logger.info
         log_total(f"【STRM同步】执行完成，{total_summary}")
         self._notify_strm(entries, totals, incremental)
         return entries
+
+    # ---- 反向删除：本地 STRM 被删除后清理 115 云端 ----
+
+    def _sweep_start_error(self) -> str:
+        config = self._store.get_config()
+        if not config.get("enabled"):
+            return "插件未启用"
+        if not config.get("strm_delete_cloud_on_missing"):
+            return "未开启「本地 STRM 被删除时同步删除 115 对应文件」"
+        mappings = [
+            mapping
+            for mapping in config.get("strm_mappings") or []
+            if isinstance(mapping, dict) and mapping.get("enabled", True)
+        ]
+        if not mappings:
+            return "没有启用的 STRM 通道"
+        for mapping in mappings:
+            if not str(mapping.get("target_dir") or "").strip():
+                return "STRM 输出目录不能为空"
+        return ""
+
+    def trigger_strm_sweep(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """手动触发反向删除：抢不到 115 数据任务锁时直接拒绝并说明原因。"""
+        paths = (payload or {}).get("paths") if isinstance(payload, dict) else None
+        return self._enqueue_strm_sweep(paths, auto=False)
+
+    def queue_strm_sweep(self, paths: Any = None) -> Dict[str, Any]:
+        """自动触发（定时巡检、本地删除监听）：抢不到锁不算失败，排队等补跑。"""
+        return self._enqueue_strm_sweep(paths, auto=True)
+
+    def run_scheduled_strm_sweep(self) -> Dict[str, Any]:
+        """定时巡检入口 —— 兜住实时监听漏掉的删除（容器重启、事件丢失、网络挂载等）。"""
+        return self.queue_strm_sweep()
+
+    def _enqueue_strm_sweep(self, paths: Any = None, auto: bool = False) -> Dict[str, Any]:
+        """反向删除的唯一入口：先把范围记进编排层，再尝试起任务。"""
+        if error := self._sweep_start_error():
+            return _error(error)
+        queued = self._queue_sweep_scope(paths)
+        result = self._start("sweep", self._sweep_worker, "STRM 反向删除已开始")
+        if result.get("success") or not auto:
+            return result
+        logger.info(
+            f"【STRM反向删除】{queued}已排队，等当前 115 任务结束后自动补跑"
+        )
+        return _ok(data={"queued": queued}, message="已排队，等当前任务结束后自动补跑")
+
+    def _queue_sweep_scope(self, paths: Any = None) -> str:
+        """登记待巡检范围。``paths`` 为 None 表示全量巡检。返回排队情况的文字描述。"""
+        with self._lock:
+            if paths is None:
+                self._pending_sweep_all = True
+            else:
+                for item in paths:
+                    value = str(item or "").strip()
+                    if value:
+                        self._pending_sweep_paths.add(value)
+            if self._pending_sweep_all:
+                return "全部记录"
+            return f"{len(self._pending_sweep_paths)} 个路径"
+
+    def _take_sweep_scope(self) -> tuple[list[str] | None, bool]:
+        """取走待巡检范围，返回 ``(范围, 是否有内容)``；范围为 None 表示全量。
+
+        空列表不等于全量 —— 那会把「没有待处理路径」误判成「清理所有记录」。
+        """
+        with self._lock:
+            full = self._pending_sweep_all
+            paths = sorted(self._pending_sweep_paths)
+            self._pending_sweep_all = False
+            self._pending_sweep_paths = set()
+        if full:
+            return None, True
+        return paths, bool(paths)
+
+    def _pending_sweep_text(self) -> str:
+        """运行台用：有没有一批删除在等当前任务结束。没有就返回空串。"""
+        with self._lock:
+            if self._pending_sweep_all:
+                return "全部记录"
+            count = len(self._pending_sweep_paths)
+        return f"{count} 个路径" if count else ""
+
+    def _sweep_worker(self) -> list[Dict[str, Any]]:
+        scope, has_scope = self._take_sweep_scope()
+        if not has_scope:
+            logger.debug("【STRM反向删除】没有待处理的目标，本次跳过")
+            return []
+        return self.run_strm_sweep(scope)
+
+    def _drain_pending_sweep(self) -> None:
+        """115 数据任务释放锁之后补跑排队中的反向删除；没有排队就什么都不做。"""
+        with self._lock:
+            if not (self._pending_sweep_paths or self._pending_sweep_all):
+                return
+            if "sweep" in self._running:
+                return
+        if self._sweep_start_error():
+            return
+        logger.debug("【STRM反向删除】上一个 115 任务已结束，补跑排队中的反向删除")
+        self._start("sweep", self._sweep_worker, "STRM 反向删除已开始")
+
+    _SWEEP_COUNT_KEYS = (
+        "cloud_deleted",
+        "scrapes_deleted",
+        "cloud_dirs_deleted",
+        "already_gone",
+        "unidentified",
+        "records_dropped",
+        "errors",
+        "pending",
+    )
+
+    @classmethod
+    def _sweep_entry_is_noteworthy(cls, entry: Dict[str, Any]) -> bool:
+        """这条巡检结果值不值得占一格执行记录。
+
+        巡检每两小时跑一次，绝大多数轮次什么都没发生；照常写记录会把只有 50 条的
+        历史刷空。只有真动过东西、或者护栏拦下了一次（那正是用户最需要看到的）才留。
+        """
+        if any(int(entry.get(key) or 0) for key in cls._SWEEP_COUNT_KEYS):
+            return True
+        return bool(str(entry.get("reason") or "").strip())
+
+    def run_strm_sweep(
+        self,
+        paths: list[str] | None = None,
+        *,
+        bypass_confirm: bool = False,
+        mapping_id: str = "",
+    ) -> list[Dict[str, Any]]:
+        config = self._store.get_config()
+        mappings = [
+            mapping
+            for mapping in config.get("strm_mappings") or []
+            if isinstance(mapping, dict) and mapping.get("enabled", True)
+        ]
+        if mapping_id:
+            mappings = [
+                mapping
+                for mapping in mappings
+                if ReverseDeleter.mapping_prefixes(mapping)[0] == mapping_id
+            ]
+        if not mappings:
+            logger.warning("【STRM反向删除】没有匹配的 STRM 通道，任务结束")
+            return []
+        deleter = ReverseDeleter(self._client_provider, self._store, self._recent_deletes)
+        scope_text = "全部记录" if paths is None else f"{len(paths)} 个路径"
+        logger.info(
+            f"【STRM反向删除】开始执行，范围：{scope_text}，有效通道：{len(mappings)}"
+        )
+        entries: list[Dict[str, Any]] = []
+        totals: Dict[str, int] = {key: 0 for key in self._SWEEP_COUNT_KEYS}
+        totals["duration_ms"] = 0
+        for mapping in mappings:
+            label = ReverseDeleter.mapping_label(mapping)
+            started = monotonic()
+            stop = False
+            try:
+                entry = deleter.sweep(mapping, paths, bypass_confirm=bypass_confirm)
+            except (U115AccessLimitError, U115AuthError) as err:
+                stop = True
+                logger.error(
+                    f"【STRM反向删除】115 访问受限或授权失效，停止后续通道：{label}，"
+                    f"原因：{safe_error_text(err)}"
+                )
+                entry = {
+                    "kind": "strm_sweep",
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "mapping": label,
+                    "errors": 1,
+                    "message": str(err),
+                }
+            except Exception as err:  # noqa: BLE001
+                logger.error(
+                    f"【STRM反向删除】通道处理失败：{label}，原因：{safe_error_text(err)}"
+                )
+                entry = {
+                    "kind": "strm_sweep",
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "mapping": label,
+                    "errors": 1,
+                    "message": str(err),
+                }
+            entry["duration_ms"] = int(entry.get("duration_ms") or (monotonic() - started) * 1000)
+            if self._sweep_entry_is_noteworthy(entry):
+                self._store.append_history(entry)
+            entries.append(entry)
+            for key in totals:
+                totals[key] += int(entry.get(key) or 0)
+            if stop:
+                break
+        summary = (
+            f"云端删除 {totals['cloud_deleted']}，刮削 {totals['scrapes_deleted']}，"
+            f"空目录 {totals['cloud_dirs_deleted']}，待确认 {totals['pending']}，"
+            f"云端已无 {totals['already_gone']}，溯源缺失 {totals['unidentified']}，"
+            f"失败 {totals['errors']}，耗时 {totals['duration_ms']}ms"
+        )
+        log_total = logger.warning if totals["errors"] else logger.info
+        log_total(f"【STRM反向删除】执行完成，{summary}")
+        self._notify_strm_sweep(entries, totals)
+        return entries
+
+    def _notify_strm_sweep(
+        self,
+        entries: list[Dict[str, Any]],
+        totals: Dict[str, int],
+    ) -> None:
+        """反向删除通知复用 STRM 通道 —— 删除是破坏性动作，只要动过就报一声。"""
+        if not any(self._sweep_entry_is_noteworthy(entry) for entry in entries):
+            return
+        if not self._notifier.is_enabled("strm"):
+            return
+        if totals.get("errors"):
+            headline = "❌ 有失败"
+        elif totals.get("pending"):
+            headline = "⏸ 待确认"
+        else:
+            headline = "✅ 已清理"
+        lines = [
+            f"  {headline}  │  {len(entries)} 通道  │  {self._duration_text(totals.get('duration_ms'))}",
+            "",
+            f"  云端删除 {totals.get('cloud_deleted', 0)}  ·  刮削 {totals.get('scrapes_deleted', 0)}"
+            f"  ·  空目录 {totals.get('cloud_dirs_deleted', 0)}",
+        ]
+        if totals.get("pending"):
+            lines.append(f"  待人工确认 {totals['pending']} 个，请到插件运行台处理")
+        if totals.get("unidentified"):
+            lines.append(
+                f"  {totals['unidentified']} 条记录缺少 115 溯源信息，跑一次全量 STRM 同步即可补齐"
+            )
+        for entry in entries:
+            reason = str(entry.get("reason") or "").strip()
+            if reason:
+                lines.append(f"  📁 {entry.get('mapping') or '-'}  ·  {reason}")
+        self._notifier.notify("strm", headline, lines)
+
+    def strm_delete_pending(self) -> Dict[str, Any]:
+        """待确认删除批次列表。明细可能上千条，这里只回摘要 + 少量样本路径。"""
+        batches = self._store.get_strm_delete_pending()
+        ordered = sorted(
+            (batch for batch in batches.values() if isinstance(batch, dict)),
+            key=lambda batch: str(batch.get("updated_at") or batch.get("created_at") or ""),
+            reverse=True,
+        )
+        summary = [
+            {
+                "id": str(batch.get("id") or ""),
+                "mapping": str(batch.get("mapping") or "-"),
+                "count": int(batch.get("count") or 0),
+                "created_at": str(batch.get("created_at") or ""),
+                "updated_at": str(batch.get("updated_at") or ""),
+                "reason": str(batch.get("reason") or ""),
+                "items_truncated": bool(batch.get("items_truncated")),
+                "samples": [
+                    str(item.get("path") or "")
+                    for item in (batch.get("items") or [])[:20]
+                    if isinstance(item, dict)
+                ],
+            }
+            for batch in ordered
+        ]
+        return _ok({"batches": summary})
+
+    def confirm_strm_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """确认执行一个待删批次。护栏照跑、本地存在性重新核对，只跳过规模闸门。"""
+        batch_id = str((payload or {}).get("batch_id") or "").strip()
+        if not batch_id:
+            return _error("缺少批次 ID")
+        if error := self._sweep_start_error():
+            return _error(error)
+        batch = self._store.pop_strm_delete_batch(batch_id)
+        if batch is None:
+            return _error("批次不存在或已处理")
+        paths = [
+            str(item.get("path") or "")
+            for item in (batch.get("items") or [])
+            if isinstance(item, dict) and item.get("path")
+        ]
+        mapping_id = str(batch.get("mapping_id") or "")
+        if not paths:
+            return _error("批次没有可执行的明细，请等下一轮巡检重新统计")
+        result = self._start(
+            "sweep",
+            lambda: self.run_strm_sweep(paths, bypass_confirm=True, mapping_id=mapping_id),
+            f"已确认，开始清理 {len(paths)} 个媒体对应的 115 文件",
+        )
+        if not result.get("success"):
+            # 起不来就把批次放回去 —— 用户点了一次不能就这么丢了
+            batches = self._store.get_strm_delete_pending()
+            batches[batch_id] = batch
+            self._store.save_strm_delete_pending(batches)
+        return result
+
+    def dismiss_strm_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """驳回一个待删批次：只丢批次，115 云端一个文件都不动。"""
+        batch_id = str((payload or {}).get("batch_id") or "").strip()
+        if not batch_id:
+            return _error("缺少批次 ID")
+        batch = self._store.pop_strm_delete_batch(batch_id)
+        if batch is None:
+            return _error("批次不存在或已处理")
+        logger.info(
+            f"【STRM反向删除】用户驳回待确认批次 {batch_id}"
+            f"（{int(batch.get('count') or 0)} 个），115 云端文件保持不动"
+        )
+        return _ok(message="已忽略该批次，115 云端文件保持不动")
 
     def _notify_strm(
         self,
@@ -553,15 +902,6 @@ class Api:
                     {"tag": "markdown", "content": label, "margin": "0px", "text_align": "center"},
                 ],
             })
-        if totals.get("cloud_deleted") or totals.get("cloud_dirs_deleted"):
-            sub_cols.append({
-                "tag": "column", "width": "weighted", "weight": 1,
-                "elements": [
-                    {"tag": "markdown", "content": f"**{int(totals.get('cloud_deleted', 0))}**",
-                     "margin": "0px", "text_align": "center"},
-                    {"tag": "markdown", "content": "云端删除", "margin": "0px", "text_align": "center"},
-                ],
-            })
         elements.append({"tag": "column_set", "flex_mode": "none", "columns": sub_cols,
                          "margin": "8px 16px 0px 16px"})
 
@@ -573,7 +913,7 @@ class Api:
                 detail = f"❌ 失败 {int(entry.get('errors') or 0)}"
             else:
                 parts = []
-                for k, sym in [("added", "+"), ("updated", "~"), ("removed", "✕"), ("cloud_deleted", "☁")]:
+                for k, sym in [("added", "+"), ("updated", "~"), ("removed", "✕")]:
                     v = int(entry.get(k) or 0)
                     if v:
                         parts.append(f"{sym}{v}")
@@ -1641,6 +1981,12 @@ class Api:
                     self._running.discard(kind)
                 if cloud_lock_acquired:
                     self._cloud_task_lock.release()
+                # 锁已释放，这时候才轮得到排队中的反向删除。放在 finally 里是因为
+                # 任务异常终止同样要让排队的删除跑起来，不然事件就永远压在队列里。
+                try:
+                    self._drain_pending_sweep()
+                except Exception as err:  # noqa: BLE001
+                    logger.error(f"【STRM反向删除】补跑排队任务失败：{safe_error_text(err)}")
 
         thread = threading.Thread(target=run, name=f"p115liteassistant-{kind}", daemon=True)
         try:

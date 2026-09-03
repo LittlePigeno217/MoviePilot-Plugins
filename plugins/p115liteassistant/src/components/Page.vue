@@ -24,9 +24,20 @@ const history = computed(() => status.value.history || [])
 // 执行记录：只显示最近 6 条（卡片式，节约空间）
 const visibleHistory = computed(() => history.value.slice(0, 6))
 const running = computed(() => status.value.running || [])
-const workingNow = computed(() => running.value.some(kind => kind === 'strm' || kind === 'upload'))
+// strm / upload / sweep 共用同一把 115 数据任务锁，任何一个在跑其它都起不来
+const workingNow = computed(() =>
+  running.value.some(kind => kind === 'strm' || kind === 'upload' || kind === 'sweep'),
+)
 
-const kindNames = { strm: '生成 STRM', upload: '上传', checkin: '签到' }
+// 反向删除：先看有没有实时监听，没有就看开关，关着就直说
+const sweepValue = computed(() => {
+  if (!status.value.strm_delete_enabled) return '未启用'
+  return status.value.strm_delete_watch_running ? '监听中' : '仅巡检'
+})
+
+const pendingDeletes = computed(() => status.value.pending_deletes || [])
+
+const kindNames = { strm: '生成 STRM', upload: '上传', checkin: '签到', strm_sweep: '清理云端' }
 
 // 服务条：每一项都是“现在能不能干活”的答案，不是装饰性的计数
 const services = computed(() => [
@@ -58,12 +69,20 @@ const services = computed(() => [
     ok: Boolean(status.value.life_monitor_running),
     hint: '',
   },
+  {
+    key: 'sweep',
+    label: '云端清理',
+    value: sweepValue.value,
+    ok: Boolean(status.value.strm_delete_enabled),
+    hint: status.value.pending_sweep ? `${status.value.pending_sweep}排队中` : '',
+  },
 ])
 
 const actions = [
   { key: 'strm', label: '生成 STRM', icon: 'mdi-file-link-outline', path: '/strm/sync', payload: {} },
   { key: 'full', label: '全量上传', icon: 'mdi-tray-arrow-up', path: '/upload', payload: { incremental: false } },
   { key: 'inc', label: '增量上传', icon: 'mdi-tray-plus', path: '/upload', payload: { incremental: true } },
+  { key: 'sweep', label: '清理云端', icon: 'mdi-cloud-off-outline', path: '/strm/sweep', payload: {} },
   { key: 'checkin', label: '立即签到', icon: 'mdi-calendar-check-outline', path: '/checkin', payload: {} },
 ]
 
@@ -91,6 +110,26 @@ async function run(action) {
   }
 }
 
+const deciding = ref('')
+
+// 待确认删除：确认就真删，驳回只丢清单。两个动作都要防连点。
+async function decidePending(batch, approve) {
+  if (deciding.value) return
+  deciding.value = batch.id
+  try {
+    const path = approve ? '/strm/sweep/confirm' : '/strm/sweep/dismiss'
+    const result = await pluginPost(props.api, path, { batch_id: batch.id })
+    if (result.success) notice.success(result.message || (approve ? '已开始清理云端' : '已忽略这批'))
+    else notice.error(result.message || '操作未生效')
+    await refresh()
+    emit('action')
+  } catch (error) {
+    notice.error(error?.message || '操作失败')
+  } finally {
+    deciding.value = ''
+  }
+}
+
 function seconds(ms) {
   const value = Number(ms)
   if (!Number.isFinite(value) || value <= 0) return ''
@@ -107,6 +146,11 @@ function tally(entry) {
   if (entry.kind === 'upload') {
     const parts = pick([['上传', 'uploaded'], ['秒传', 'instant'], ['STRM', 'strm_generated'], ['跳过', 'skipped'], ['删除', 'deleted'], ['延后', 'deferred'], ['失败', 'errors']])
     return parts.length ? parts : ['没有变化']
+  }
+  if (entry.kind === 'strm_sweep') {
+    const parts = pick([['云端删除', 'cloud_deleted'], ['刮削', 'scrapes_deleted'], ['空目录', 'cloud_dirs_deleted'], ['待确认', 'pending'], ['云端已无', 'already_gone'], ['溯源缺失', 'unidentified'], ['失败', 'errors']])
+    if (parts.length) return parts
+    return [entry.reason || '没有变化']
   }
   if (entry.kind === 'checkin') {
     const parts = []
@@ -171,6 +215,46 @@ onMounted(refresh)
             >
               {{ action.label }}
             </v-btn>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="pendingDeletes.length" class="p115-panel p115-panel--alert">
+        <div class="p115-panel__head">
+          <div>
+            <h3 class="p115-section-title">待确认删除</h3>
+            <p class="p115-hint p115-hint--warn">
+              这几批待删数量超过了阈值，确认后才会真的删 115 上的文件（进回收站，可人工还原）。
+            </p>
+          </div>
+        </div>
+        <div class="p115-panel__body">
+          <div v-for="batch in pendingDeletes" :key="batch.id" class="pend">
+            <div class="pend__text">
+              <span class="pend__mapping">{{ batch.mapping }}</span>
+              <span class="pend__count p115-mono">{{ batch.count }} 个媒体</span>
+              <span v-if="batch.updated_at" class="pend__when p115-mono">{{ batch.updated_at }}</span>
+            </div>
+            <div class="pend__acts">
+              <v-btn
+                variant="text"
+                size="small"
+                :disabled="Boolean(deciding)"
+                @click="decidePending(batch, false)"
+              >
+                忽略
+              </v-btn>
+              <v-btn
+                variant="outlined"
+                size="small"
+                color="warning"
+                :loading="deciding === batch.id"
+                :disabled="Boolean(deciding) || workingNow"
+                @click="decidePending(batch, true)"
+              >
+                确认删除
+              </v-btn>
+            </div>
           </div>
         </div>
       </div>
@@ -397,6 +481,53 @@ onMounted(refresh)
 .card__tag--instant {
   border-color: var(--p115-accent);
   color: var(--p115-accent);
+}
+
+// ── 待确认删除（破坏性操作，视觉上要跳出来）─────────────────────
+.p115-panel--alert {
+  border-color: rgb(var(--v-theme-warning, 245 124 0) / 0.5);
+}
+
+.pend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+
+.pend + .pend {
+  border-top: 1px solid var(--p115-hairline);
+}
+
+.pend__text {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.pend__mapping {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pend__count {
+  font-size: 12px;
+  color: rgb(var(--v-theme-warning, 245 124 0));
+}
+
+.pend__when {
+  font-size: 11px;
+  color: var(--p115-muted);
+}
+
+.pend__acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 // ── 执行记录（卡片式，简约）───────────────────────────────────

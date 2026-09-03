@@ -12,6 +12,7 @@ from app.log import logger
 
 from .client import U115ApiError, U115AuthError, U115Client
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, parse_extensions
+from .resilience import TtlCache
 from .strm import (
     STRM_URL_FORMAT_VERSION,
     build_strm_content,
@@ -88,9 +89,12 @@ class LifeMonitor:
         store,
         cloud_task_lock: Optional[Lock] = None,
         moviepilot_url_provider: Optional[Callable[[], str]] = None,
+        recent_deletes: Optional[TtlCache] = None,
     ):
         self._client_provider = client_provider
         self._store = store
+        #: 反向删除刚清掉的条目 ID，与 ReverseDeleter 共享同一个实例
+        self._recent_deletes = recent_deletes
         self._cloud_task_lock = cloud_task_lock or Lock()
         self._moviepilot_url_provider = moviepilot_url_provider or (lambda: "")
         self._stop_event = Event()
@@ -1267,13 +1271,29 @@ class LifeMonitor:
             if record_path and any(self._path_matches(path, record_path) for path in paths):
                 keys.add(key)
         if not keys:
-            logger.warning(f"【115生活监控】无法定位删除事件对应 STRM，保留本地文件：{event}")
+            if self._deleted_by_plugin(item_id):
+                # 反向删除刚清掉的东西：记录早就被那一轮 pop 掉了，这条回环事件不算异常
+                logger.debug(
+                    f"【115生活监控】删除事件来自本插件的反向删除，忽略：{name or item_id}"
+                )
+                return
+            logger.warning(
+                "【115生活监控】无法定位删除事件对应 STRM，保留本地文件："
+                f"{name or '-'}（ID {item_id or '-'}，父目录 {parent_id or '-'}，"
+                f"类型 {'目录' if str(event.get('file_category') or '') == '0' else '文件'}）"
+            )
             return
         for key in keys:
             self._remove_record(key, records)
         self._store.save_strm_records(records)
         for path in paths:
             self._forget_paths(path)
+
+    def _deleted_by_plugin(self, item_id: str) -> bool:
+        """这条删除事件是不是本插件的反向删除刚做的。"""
+        if self._recent_deletes is None or not item_id:
+            return False
+        return bool(self._recent_deletes.get(f"id:{item_id}"))
 
     def _remove_records_under(
         self,

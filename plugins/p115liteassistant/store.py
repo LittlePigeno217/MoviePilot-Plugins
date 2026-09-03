@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from base64 import urlsafe_b64encode
 from copy import deepcopy
+from datetime import datetime, timedelta
 from hashlib import pbkdf2_hmac
 from secrets import token_hex
 from threading import RLock
@@ -22,6 +23,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "strm_incremental": True,
     "strm_download_sidecars": False,
     "strm_delete_cloud_on_missing": False,
+    # 反向删除的两个触发器：定时巡检（cron，留空即关闭）与本地目录实时监听。
+    # 实时监听只是加速手段，网络挂载上收不到 inotify 事件，兜底靠巡检。
+    "strm_delete_sweep_cron": "37 */2 * * *",
+    "strm_delete_watch": False,
+    # 单次待删媒体数超过它就先进待确认队列；0 表示永不拦人。
+    "strm_delete_confirm_threshold": 20,
     "strm_notify": False,
     "strm_notify_type": RESOURCE_NOTIFY_TYPE,
     "strm_mappings": [],
@@ -34,7 +41,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "upload_media_extensions": ".mp4,.mkv,.ts,.iso,.rmvb,.avi,.mov,.mpeg,.mpg,.wmv,.3gp,.asf,.m4v,.flv,.m2ts,.tp,.f4v",
     "upload_sidecar_extensions": ".nfo,.jpg,.jpeg,.png,.webp,.srt,.ass,.ssa,.sup",
     "checkin_enabled": False,
-    "checkin_cron": "15 8 * * *",
     "checkin_time_range": "06:00-09:00",
     "checkin_notify": False,
     "checkin_notify_type": DEFAULT_NOTIFY_TYPE,
@@ -55,6 +61,7 @@ class Store:
     _LIFE_CURSOR_KEY = "p115liteassistant_life_cursor"
     _LIFE_API_STATE_KEY = "p115liteassistant_life_api_state"
     _LIFE_PATHS_KEY = "p115liteassistant_life_paths"
+    _STRM_DELETE_PENDING_KEY = "p115liteassistant_strm_delete_pending"
 
     # 落盘前加密的字段。密钥由 302 取链用的随机 secret 派生，二者同生共死：
     # 插件数据被清空时，密文和密钥一起消失，不会留下解不开的残留。
@@ -145,6 +152,46 @@ class Store:
 
     def save_strm_records(self, records: Dict[str, Dict[str, Any]]) -> None:
         self._plugin.save_data(self._STRM_RECORDS_KEY, deepcopy(records))
+
+    def get_strm_delete_pending(self) -> Dict[str, Dict[str, Any]]:
+        """读取反向删除的待确认批次，顺手清掉过期的。
+
+        过期批次留着只会让运行台上挂一串早已不成立的待删清单 —— 缺失集合是会变的，
+        用户可能早就把文件放回去了，宁可让下一轮巡检重新算一遍。
+        """
+        from .reverse_delete import STRM_DELETE_PENDING_TTL_DAYS
+
+        batches = self._plugin.get_data(self._STRM_DELETE_PENDING_KEY) or {}
+        if not isinstance(batches, dict):
+            return {}
+        deadline = datetime.now() - timedelta(days=STRM_DELETE_PENDING_TTL_DAYS)
+        alive: Dict[str, Dict[str, Any]] = {}
+        for key, batch in batches.items():
+            if not isinstance(batch, dict):
+                continue
+            stamp = str(batch.get("updated_at") or batch.get("created_at") or "")
+            try:
+                if stamp and datetime.fromisoformat(stamp) < deadline:
+                    continue
+            except ValueError:
+                pass
+            alive[str(key)] = deepcopy(batch)
+        if len(alive) != len(batches):
+            self._plugin.save_data(self._STRM_DELETE_PENDING_KEY, deepcopy(alive))
+        return alive
+
+    def save_strm_delete_pending(self, batches: Dict[str, Dict[str, Any]]) -> None:
+        self._plugin.save_data(self._STRM_DELETE_PENDING_KEY, deepcopy(batches))
+
+    def pop_strm_delete_batch(self, batch_id: str) -> Dict[str, Any] | None:
+        """取出并移除一个待确认批次；不存在返回 None。"""
+        with self._config_lock:
+            batches = self.get_strm_delete_pending()
+            batch = batches.pop(str(batch_id or ""), None)
+            if batch is None:
+                return None
+            self.save_strm_delete_pending(batches)
+            return batch
 
     def get_life_cursor(self) -> Dict[str, Any]:
         state = self._plugin.get_data(self._LIFE_CURSOR_KEY) or {}

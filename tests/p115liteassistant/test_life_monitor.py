@@ -9,6 +9,7 @@ import httpx
 from p115pickcode import id_to_pickcode
 
 from app.plugins.p115liteassistant.life_monitor import LifeEventRetryError, LifeMonitor
+from app.plugins.p115liteassistant.resilience import TtlCache
 from app.plugins.p115liteassistant.strm import build_strm_content
 
 
@@ -757,3 +758,51 @@ class LifeMonitorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReverseDeleteEchoTest(unittest.TestCase):
+    """反向删除会让 115 回一条 type 22 事件，那条回环不该被当成异常。"""
+
+    def _monitor(self, target, recent=None):
+        return LifeMonitor(
+            lambda: FakeClient(),
+            FakeStore(target),
+            moviepilot_url_provider=lambda: "http://moviepilot:3000",
+            recent_deletes=recent,
+        )
+
+    def test_own_reverse_delete_is_recognised(self):
+        recent = TtlCache(600.0)
+        recent.set("id:8001", True)
+        with TemporaryDirectory() as directory:
+            monitor = self._monitor(directory, recent)
+
+            self.assertTrue(monitor._deleted_by_plugin("8001"))
+            self.assertFalse(monitor._deleted_by_plugin("9999"))
+
+    def test_without_shared_cache_nothing_is_recognised(self):
+        with TemporaryDirectory() as directory:
+            monitor = self._monitor(directory)
+
+            self.assertFalse(monitor._deleted_by_plugin("8001"))
+
+    def test_echo_event_is_silent_while_unknown_event_still_warns(self):
+        recent = TtlCache(600.0)
+        recent.set("id:8001", True)
+        with TemporaryDirectory() as directory:
+            monitor = self._monitor(directory, recent)
+            echo = {"file_id": "8001", "file_name": "Film.mkv", "parent_id": "7100", "file_category": 1}
+            unknown = {"file_id": "9999", "file_name": "Other.mkv", "parent_id": "7100", "file_category": 1}
+
+            with patch("app.plugins.p115liteassistant.life_monitor.logger") as log:
+                monitor._handle_delete(echo)
+                self.assertFalse(log.warning.called)
+                self.assertTrue(log.debug.called)
+
+            with patch("app.plugins.p115liteassistant.life_monitor.logger") as log:
+                monitor._handle_delete(unknown)
+                self.assertTrue(log.warning.called)
+                # 未知事件的告警不再整包 dump 原始事件（里面有 pick_code / sha1）
+                message = str(log.warning.call_args[0][0])
+                self.assertIn("Other.mkv", message)
+                self.assertNotIn("pick_code", message)

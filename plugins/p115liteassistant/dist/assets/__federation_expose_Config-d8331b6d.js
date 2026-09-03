@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, p as pluginGet, N as NOTIFY_TYPES, a as pluginPost, n as normalizeConfig, u as useHostNotice, A as AppBar, c as clone, b as newId } from './kit-a6d4b6ea.js';
+import { _ as _export_sfc, p as pluginGet, N as NOTIFY_TYPES, a as pluginPost, n as normalizeConfig, u as useHostNotice, A as AppBar, c as clone, b as newId } from './kit-ab68ed17.js';
 
 const Conduit_vue_vue_type_style_index_0_scoped_1ac6f414_lang = '';
 
@@ -689,7 +689,7 @@ return (_ctx, _cache) => {
 };
 const QrLogin = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-fb3a5ece"]]);
 
-const Config_vue_vue_type_style_index_0_scoped_f009881f_lang = '';
+const Config_vue_vue_type_style_index_0_scoped_7de1fdeb_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,withCtx:_withCtx,createBlock:_createBlock,unref:_unref} = await importShared('vue');
 
@@ -720,25 +720,30 @@ const _hoisted_20 = { class: "p115-panel__body" };
 const _hoisted_21 = { class: "p115-switches" };
 const _hoisted_22 = {
   key: 0,
-  class: "p115-empty"
+  class: "p115-subpanel"
 };
-const _hoisted_23 = { key: 2 };
-const _hoisted_24 = { class: "p115-panel" };
-const _hoisted_25 = { class: "p115-panel__head" };
-const _hoisted_26 = { class: "p115-panel__body" };
-const _hoisted_27 = { class: "p115-switches" };
-const _hoisted_28 = { class: "p115-fields mt-3" };
-const _hoisted_29 = {
+const _hoisted_23 = { class: "p115-fields" };
+const _hoisted_24 = {
   key: 0,
   class: "p115-empty"
 };
-const _hoisted_30 = { key: 3 };
-const _hoisted_31 = { class: "p115-panel" };
-const _hoisted_32 = { class: "p115-panel__head" };
-const _hoisted_33 = { class: "p115-panel__body" };
-const _hoisted_34 = { class: "p115-fields" };
-const _hoisted_35 = { class: "cfg__foot" };
-const _hoisted_36 = { class: "cfg__foot-acts" };
+const _hoisted_25 = { key: 2 };
+const _hoisted_26 = { class: "p115-panel" };
+const _hoisted_27 = { class: "p115-panel__head" };
+const _hoisted_28 = { class: "p115-panel__body" };
+const _hoisted_29 = { class: "p115-switches" };
+const _hoisted_30 = { class: "p115-fields mt-3" };
+const _hoisted_31 = {
+  key: 0,
+  class: "p115-empty"
+};
+const _hoisted_32 = { key: 3 };
+const _hoisted_33 = { class: "p115-panel" };
+const _hoisted_34 = { class: "p115-panel__head" };
+const _hoisted_35 = { class: "p115-panel__body" };
+const _hoisted_36 = { class: "p115-fields" };
+const _hoisted_37 = { class: "cfg__foot" };
+const _hoisted_38 = { class: "cfg__foot-acts" };
 
 const {computed,inject,onMounted,reactive,ref,watch} = await importShared('vue');
 
@@ -918,7 +923,7 @@ return (_ctx, _cache) => {
           onClick: _cache[2] || (_cache[2] = $event => (local.text = ''))
         }, [
           _createTextVNode(_toDisplayString(local.text) + " ", 1),
-          _cache[29] || (_cache[29] = _createElementVNode("span", { class: "cfg__local-dismiss" }, "知道了", -1))
+          _cache[31] || (_cache[31] = _createElementVNode("span", { class: "cfg__local-dismiss" }, "知道了", -1))
         ], 2))
       : _createCommentVNode("", true),
     _createElementVNode("div", _hoisted_2, [
@@ -947,7 +952,7 @@ return (_ctx, _cache) => {
           ? (_openBlock(), _createElementBlock("section", _hoisted_9, [
               _createElementVNode("div", _hoisted_10, [
                 _createElementVNode("div", _hoisted_11, [
-                  _cache[31] || (_cache[31] = _createElementVNode("div", null, [
+                  _cache[33] || (_cache[33] = _createElementVNode("div", null, [
                     _createElementVNode("h3", { class: "p115-section-title" }, "115 授权"),
                     _createElementVNode("p", { class: "p115-hint" }, "扫码后 Cookie 由后端写入，也可以手动粘贴已有的 Cookie。")
                   ], -1)),
@@ -958,7 +963,7 @@ return (_ctx, _cache) => {
                     "prepend-icon": "mdi-qrcode-scan",
                     onClick: _cache[3] || (_cache[3] = $event => (qrOpen.value = true))
                   }, {
-                    default: _withCtx(() => [...(_cache[30] || (_cache[30] = [
+                    default: _withCtx(() => [...(_cache[32] || (_cache[32] = [
                       _createTextVNode(" 扫码登录 ", -1)
                     ]))]),
                     _: 1
@@ -976,11 +981,11 @@ return (_ctx, _cache) => {
                     autocomplete: "off",
                     placeholder: "UID=...; CID=...; SEID=..."
                   }, null, 8, ["modelValue"]),
-                  _cache[32] || (_cache[32] = _createElementVNode("p", { class: "p115-hint" }, "Cookie 只保存在 MoviePilot 本地配置里，界面不会回显明文。", -1))
+                  _cache[34] || (_cache[34] = _createElementVNode("p", { class: "p115-hint" }, "Cookie 只保存在 MoviePilot 本地配置里，界面不会回显明文。", -1))
                 ])
               ]),
               _createElementVNode("div", _hoisted_13, [
-                _cache[34] || (_cache[34] = _createElementVNode("div", { class: "p115-panel__head" }, [
+                _cache[36] || (_cache[36] = _createElementVNode("div", { class: "p115-panel__head" }, [
                   _createElementVNode("div", null, [
                     _createElementVNode("h3", { class: "p115-section-title" }, "播放地址"),
                     _createElementVNode("p", { class: "p115-hint" }, "STRM 里写入的回源地址，播放器要能访问到它。")
@@ -1003,7 +1008,7 @@ return (_ctx, _cache) => {
                           size: "x-small",
                           onClick: useThisSite
                         }, {
-                          default: _withCtx(() => [...(_cache[33] || (_cache[33] = [
+                          default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
                             _createTextVNode("用当前站点", -1)
                           ]))]),
                           _: 1
@@ -1054,7 +1059,7 @@ return (_ctx, _cache) => {
             ? (_openBlock(), _createElementBlock("section", _hoisted_17, [
                 _createElementVNode("div", _hoisted_18, [
                   _createElementVNode("div", _hoisted_19, [
-                    _cache[36] || (_cache[36] = _createElementVNode("div", null, [
+                    _cache[38] || (_cache[38] = _createElementVNode("div", null, [
                       _createElementVNode("h3", { class: "p115-section-title" }, "STRM 通道"),
                       _createElementVNode("p", { class: "p115-hint" }, "每条通道把一个 115 目录的媒体文件生成为本地 STRM。")
                     ], -1)),
@@ -1064,7 +1069,7 @@ return (_ctx, _cache) => {
                       "prepend-icon": "mdi-plus",
                       onClick: addStrm
                     }, {
-                      default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
+                      default: _withCtx(() => [...(_cache[37] || (_cache[37] = [
                         _createTextVNode("加一条通道", -1)
                       ]))]),
                       _: 1
@@ -1097,11 +1102,48 @@ return (_ctx, _cache) => {
                         label: "本地 STRM 被删除时同步删除 115 对应文件"
                       }, null, 8, ["modelValue"])
                     ]),
+                    (config.strm_delete_cloud_on_missing)
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_22, [
+                          _cache[39] || (_cache[39] = _createElementVNode("p", { class: "p115-hint p115-hint--warn" }, " 本地 STRM 不见了就删掉 115 上对应的媒体、同名刮削文件与随之变空的目录（进 115 回收站，可人工还原）。媒体库未挂载、缺失比例过高时会整轮放弃，源目录与一级目录永不删除。 ", -1)),
+                          _cache[40] || (_cache[40] = _createElementVNode("p", { class: "p115-hint" }, " 从旧版本升级后请先跑一次「生成 STRM」补齐溯源信息，否则大部分文件会因为拿不到 115 文件 ID 而跳过。 ", -1)),
+                          _createElementVNode("div", _hoisted_23, [
+                            _createVNode(_component_v_text_field, {
+                              modelValue: config.strm_delete_sweep_cron,
+                              "onUpdate:modelValue": _cache[13] || (_cache[13] = $event => ((config.strm_delete_sweep_cron) = $event)),
+                              label: "巡检周期（cron，留空关闭）",
+                              variant: "outlined",
+                              density: "compact",
+                              "hide-details": "",
+                              placeholder: "37 */2 * * *"
+                            }, null, 8, ["modelValue"]),
+                            _createVNode(_component_v_text_field, {
+                              modelValue: config.strm_delete_confirm_threshold,
+                              "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((config.strm_delete_confirm_threshold) = $event)),
+                              modelModifiers: { number: true },
+                              type: "number",
+                              min: "0",
+                              label: "超过多少个先等人工确认（0 = 不拦）",
+                              variant: "outlined",
+                              density: "compact",
+                              "hide-details": ""
+                            }, null, 8, ["modelValue"])
+                          ]),
+                          _createVNode(_component_v_switch, {
+                            modelValue: config.strm_delete_watch,
+                            "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((config.strm_delete_watch) = $event)),
+                            color: "primary",
+                            density: "compact",
+                            "hide-details": "",
+                            label: "本地目录实时监听（网络挂载可能收不到事件）"
+                          }, null, 8, ["modelValue"]),
+                          _cache[41] || (_cache[41] = _createElementVNode("p", { class: "p115-hint" }, " 实时监听只是加速：删除事件安静 30 秒后才上报。真正兜底的是定时巡检。 ", -1))
+                        ]))
+                      : _createCommentVNode("", true),
                     _createVNode(NotifyRow, {
                       enabled: config.strm_notify,
-                      "onUpdate:enabled": _cache[13] || (_cache[13] = $event => ((config.strm_notify) = $event)),
+                      "onUpdate:enabled": _cache[16] || (_cache[16] = $event => ((config.strm_notify) = $event)),
                       type: config.strm_notify_type,
-                      "onUpdate:type": _cache[14] || (_cache[14] = $event => ((config.strm_notify_type) = $event)),
+                      "onUpdate:type": _cache[17] || (_cache[17] = $event => ((config.strm_notify_type) = $event)),
                       types: config.notify_types,
                       label: "STRM 同步完成后发送通知",
                       hint: "每次同步结束发一条，逐条列出映射的新增、更新与失败数。"
@@ -1120,14 +1162,14 @@ return (_ctx, _cache) => {
                   }, null, 8, ["enabled", "stops", "index", "onUpdate:enabled", "onPick", "onRemove"]))
                 }), 128)),
                 (!config.strm_mappings.length)
-                  ? (_openBlock(), _createElementBlock("p", _hoisted_22, " 还没有 STRM 通道。加一条，选好 115 源目录和本地输出目录就能同步。 "))
+                  ? (_openBlock(), _createElementBlock("p", _hoisted_24, " 还没有 STRM 通道。加一条，选好 115 源目录和本地输出目录就能同步。 "))
                   : _createCommentVNode("", true)
               ]))
             : (section.value === 'upload')
-              ? (_openBlock(), _createElementBlock("section", _hoisted_23, [
-                  _createElementVNode("div", _hoisted_24, [
-                    _createElementVNode("div", _hoisted_25, [
-                      _cache[38] || (_cache[38] = _createElementVNode("div", null, [
+              ? (_openBlock(), _createElementBlock("section", _hoisted_25, [
+                  _createElementVNode("div", _hoisted_26, [
+                    _createElementVNode("div", _hoisted_27, [
+                      _cache[43] || (_cache[43] = _createElementVNode("div", null, [
                         _createElementVNode("h3", { class: "p115-section-title" }, "上传通道"),
                         _createElementVNode("p", { class: "p115-hint" }, "每条通道把一个本地目录的媒体文件上传到 115。")
                       ], -1)),
@@ -1137,17 +1179,17 @@ return (_ctx, _cache) => {
                         "prepend-icon": "mdi-plus",
                         onClick: addUpload
                       }, {
-                        default: _withCtx(() => [...(_cache[37] || (_cache[37] = [
+                        default: _withCtx(() => [...(_cache[42] || (_cache[42] = [
                           _createTextVNode("加一条通道", -1)
                         ]))]),
                         _: 1
                       })
                     ]),
-                    _createElementVNode("div", _hoisted_26, [
-                      _createElementVNode("div", _hoisted_27, [
+                    _createElementVNode("div", _hoisted_28, [
+                      _createElementVNode("div", _hoisted_29, [
                         _createVNode(_component_v_switch, {
                           modelValue: config.upload_include_sidecars,
-                          "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((config.upload_include_sidecars) = $event)),
+                          "onUpdate:modelValue": _cache[18] || (_cache[18] = $event => ((config.upload_include_sidecars) = $event)),
                           color: "primary",
                           density: "compact",
                           "hide-details": "",
@@ -1155,7 +1197,7 @@ return (_ctx, _cache) => {
                         }, null, 8, ["modelValue"]),
                         _createVNode(_component_v_switch, {
                           modelValue: config.upload_generate_strm,
-                          "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((config.upload_generate_strm) = $event)),
+                          "onUpdate:modelValue": _cache[19] || (_cache[19] = $event => ((config.upload_generate_strm) = $event)),
                           color: "primary",
                           density: "compact",
                           "hide-details": "",
@@ -1163,17 +1205,17 @@ return (_ctx, _cache) => {
                         }, null, 8, ["modelValue"]),
                         _createVNode(_component_v_switch, {
                           modelValue: config.upload_delete_source,
-                          "onUpdate:modelValue": _cache[17] || (_cache[17] = $event => ((config.upload_delete_source) = $event)),
+                          "onUpdate:modelValue": _cache[20] || (_cache[20] = $event => ((config.upload_delete_source) = $event)),
                           color: "primary",
                           density: "compact",
                           "hide-details": "",
                           label: "上传成功后删除本地源文件"
                         }, null, 8, ["modelValue"])
                       ]),
-                      _createElementVNode("div", _hoisted_28, [
+                      _createElementVNode("div", _hoisted_30, [
                         _createVNode(_component_v_textarea, {
                           modelValue: config.upload_media_extensions,
-                          "onUpdate:modelValue": _cache[18] || (_cache[18] = $event => ((config.upload_media_extensions) = $event)),
+                          "onUpdate:modelValue": _cache[21] || (_cache[21] = $event => ((config.upload_media_extensions) = $event)),
                           label: "媒体文件后缀",
                           variant: "outlined",
                           density: "compact",
@@ -1183,7 +1225,7 @@ return (_ctx, _cache) => {
                         }, null, 8, ["modelValue"]),
                         _createVNode(_component_v_textarea, {
                           modelValue: config.upload_sidecar_extensions,
-                          "onUpdate:modelValue": _cache[19] || (_cache[19] = $event => ((config.upload_sidecar_extensions) = $event)),
+                          "onUpdate:modelValue": _cache[22] || (_cache[22] = $event => ((config.upload_sidecar_extensions) = $event)),
                           label: "刮削文件后缀",
                           variant: "outlined",
                           density: "compact",
@@ -1192,16 +1234,16 @@ return (_ctx, _cache) => {
                           "hide-details": ""
                         }, null, 8, ["modelValue"])
                       ]),
-                      _cache[39] || (_cache[39] = _createElementVNode("p", { class: "p115-hint" }, [
+                      _cache[44] || (_cache[44] = _createElementVNode("p", { class: "p115-hint" }, [
                         _createTextVNode("用英文逗号分隔，带上点号，例如 "),
                         _createElementVNode("span", { class: "p115-mono" }, ".mp4,.mkv"),
                         _createTextVNode("。")
                       ], -1)),
                       _createVNode(NotifyRow, {
                         enabled: config.upload_notify,
-                        "onUpdate:enabled": _cache[20] || (_cache[20] = $event => ((config.upload_notify) = $event)),
+                        "onUpdate:enabled": _cache[23] || (_cache[23] = $event => ((config.upload_notify) = $event)),
                         type: config.upload_notify_type,
-                        "onUpdate:type": _cache[21] || (_cache[21] = $event => ((config.upload_notify_type) = $event)),
+                        "onUpdate:type": _cache[24] || (_cache[24] = $event => ((config.upload_notify_type) = $event)),
                         types: config.notify_types,
                         label: "上传完成后发送通知",
                         hint: "汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。通知海报自动使用 MoviePilot 内置的 TMDB 配置。"
@@ -1220,39 +1262,30 @@ return (_ctx, _cache) => {
                     }, null, 8, ["enabled", "stops", "index", "onUpdate:enabled", "onPick", "onRemove"]))
                   }), 128)),
                   (!config.upload_mappings.length)
-                    ? (_openBlock(), _createElementBlock("p", _hoisted_29, " 还没有上传通道。加一条，选好本地源目录和 115 目标目录就能上传。 "))
+                    ? (_openBlock(), _createElementBlock("p", _hoisted_31, " 还没有上传通道。加一条，选好本地源目录和 115 目标目录就能上传。 "))
                     : _createCommentVNode("", true)
                 ]))
-              : (_openBlock(), _createElementBlock("section", _hoisted_30, [
-                  _createElementVNode("div", _hoisted_31, [
-                    _createElementVNode("div", _hoisted_32, [
-                      _cache[40] || (_cache[40] = _createElementVNode("div", null, [
+              : (_openBlock(), _createElementBlock("section", _hoisted_32, [
+                  _createElementVNode("div", _hoisted_33, [
+                    _createElementVNode("div", _hoisted_34, [
+                      _cache[45] || (_cache[45] = _createElementVNode("div", null, [
                         _createElementVNode("h3", { class: "p115-section-title" }, "每日签到"),
-                        _createElementVNode("p", { class: "p115-hint" }, "按 cron 触发，在时间窗内随机挑一刻执行，看起来更像人在操作。")
+                        _createElementVNode("p", { class: "p115-hint" }, "每天在时间窗内随机挑一刻执行，看起来更像人在操作。")
                       ], -1)),
                       _createVNode(_component_v_switch, {
                         modelValue: config.checkin_enabled,
-                        "onUpdate:modelValue": _cache[22] || (_cache[22] = $event => ((config.checkin_enabled) = $event)),
+                        "onUpdate:modelValue": _cache[25] || (_cache[25] = $event => ((config.checkin_enabled) = $event)),
                         color: "primary",
                         density: "compact",
                         "hide-details": "",
                         label: config.checkin_enabled ? '已开启' : '已关闭'
                       }, null, 8, ["modelValue", "label"])
                     ]),
-                    _createElementVNode("div", _hoisted_33, [
-                      _createElementVNode("div", _hoisted_34, [
-                        _createVNode(_component_v_text_field, {
-                          modelValue: config.checkin_cron,
-                          "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((config.checkin_cron) = $event)),
-                          label: "cron 表达式",
-                          variant: "outlined",
-                          density: "compact",
-                          "hide-details": "",
-                          placeholder: "15 8 * * *"
-                        }, null, 8, ["modelValue"]),
+                    _createElementVNode("div", _hoisted_35, [
+                      _createElementVNode("div", _hoisted_36, [
                         _createVNode(_component_v_text_field, {
                           modelValue: config.checkin_time_range,
-                          "onUpdate:modelValue": _cache[24] || (_cache[24] = $event => ((config.checkin_time_range) = $event)),
+                          "onUpdate:modelValue": _cache[26] || (_cache[26] = $event => ((config.checkin_time_range) = $event)),
                           label: "随机时间窗",
                           variant: "outlined",
                           density: "compact",
@@ -1260,12 +1293,12 @@ return (_ctx, _cache) => {
                           placeholder: "06:00-09:00"
                         }, null, 8, ["modelValue"])
                       ]),
-                      _cache[41] || (_cache[41] = _createElementVNode("p", { class: "p115-hint" }, "时间窗留空就在 cron 命中的那一刻直接签到。", -1)),
+                      _cache[46] || (_cache[46] = _createElementVNode("p", { class: "p115-hint" }, "留空按 06:00-09:00 处理。", -1)),
                       _createVNode(NotifyRow, {
                         enabled: config.checkin_notify,
-                        "onUpdate:enabled": _cache[25] || (_cache[25] = $event => ((config.checkin_notify) = $event)),
+                        "onUpdate:enabled": _cache[27] || (_cache[27] = $event => ((config.checkin_notify) = $event)),
                         type: config.checkin_notify_type,
-                        "onUpdate:type": _cache[26] || (_cache[26] = $event => ((config.checkin_notify_type) = $event)),
+                        "onUpdate:type": _cache[28] || (_cache[28] = $event => ((config.checkin_notify_type) = $event)),
                         types: config.notify_types,
                         label: "签到后发送通知",
                         hint: "成功带上连续天数和本次积分，失败带上原因。"
@@ -1275,16 +1308,16 @@ return (_ctx, _cache) => {
                 ]))
       ])
     ]),
-    _createElementVNode("footer", _hoisted_35, [
-      _cache[44] || (_cache[44] = _createElementVNode("span", { class: "cfg__foot-note p115-muted" }, "保存后立即生效，无需重启 MoviePilot。", -1)),
-      _createElementVNode("div", _hoisted_36, [
+    _createElementVNode("footer", _hoisted_37, [
+      _cache[49] || (_cache[49] = _createElementVNode("span", { class: "cfg__foot-note p115-muted" }, "保存后立即生效，无需重启 MoviePilot。", -1)),
+      _createElementVNode("div", _hoisted_38, [
         _createVNode(_component_v_btn, {
           variant: "text",
           size: "small",
           disabled: busy.value,
           onClick: reload
         }, {
-          default: _withCtx(() => [...(_cache[42] || (_cache[42] = [
+          default: _withCtx(() => [...(_cache[47] || (_cache[47] = [
             _createTextVNode("放弃改动", -1)
           ]))]),
           _: 1
@@ -1296,7 +1329,7 @@ return (_ctx, _cache) => {
           loading: busy.value || __props.saving,
           onClick: save
         }, {
-          default: _withCtx(() => [...(_cache[43] || (_cache[43] = [
+          default: _withCtx(() => [...(_cache[48] || (_cache[48] = [
             _createTextVNode("保存配置", -1)
           ]))]),
           _: 1
@@ -1305,14 +1338,14 @@ return (_ctx, _cache) => {
     ]),
     _createVNode(QrLogin, {
       modelValue: qrOpen.value,
-      "onUpdate:modelValue": _cache[27] || (_cache[27] = $event => ((qrOpen).value = $event)),
+      "onUpdate:modelValue": _cache[29] || (_cache[29] = $event => ((qrOpen).value = $event)),
       api: __props.api,
       onAuthenticated: reload,
       onError: _unref(notice).error
     }, null, 8, ["modelValue", "api", "onError"]),
     _createVNode(DirPicker, {
       modelValue: pick.open,
-      "onUpdate:modelValue": _cache[28] || (_cache[28] = $event => ((pick.open) = $event)),
+      "onUpdate:modelValue": _cache[30] || (_cache[30] = $event => ((pick.open) = $event)),
       api: __props.api,
       remote: pick.remote,
       title: pick.title,
@@ -1324,6 +1357,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-f009881f"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7de1fdeb"]]);
 
 export { Config as default };

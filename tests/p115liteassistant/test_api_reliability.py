@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import threading
 from time import sleep, time
 import unittest
@@ -566,3 +567,232 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertTrue(result["busy"])
         self.assertGreater(self.store.schedule["next_run_ts"], time())
+
+
+class SweepOrchestrationTest(unittest.TestCase):
+    """反向删除的排队语义：抢不到 115 数据任务锁的事件不能丢。"""
+
+    class SweepStore(FakeStore):
+        def __init__(self, target_dir):
+            super().__init__()
+            self.config.update(
+                {
+                    "strm_delete_cloud_on_missing": True,
+                    "strm_mappings": [
+                        {
+                            "id": "movies",
+                            "enabled": True,
+                            "source_cid": "1",
+                            "target_dir": str(target_dir),
+                        }
+                    ],
+                }
+            )
+            self.pending = {}
+
+        def get_strm_records(self):
+            return {}
+
+        def save_strm_records(self, records):
+            return None
+
+        def get_strm_delete_pending(self):
+            return dict(self.pending)
+
+        def save_strm_delete_pending(self, batches):
+            self.pending = dict(batches)
+
+        def pop_strm_delete_batch(self, batch_id):
+            return self.pending.pop(str(batch_id), None)
+
+    def _api(self, target_dir):
+        return Api(FakeClient, self.SweepStore(target_dir))
+
+    def test_empty_scope_is_not_a_full_sweep(self):
+        """空列表表示「没有待处理路径」，绝不能被当成「清理所有记录」。"""
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+
+            self.assertEqual(api._take_sweep_scope(), ([], False))
+
+    def test_queued_paths_are_taken_once(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+
+            api._queue_sweep_scope(["/media/A.strm", "/media/B.strm", "  "])
+
+            self.assertEqual(
+                api._take_sweep_scope(),
+                (["/media/A.strm", "/media/B.strm"], True),
+            )
+            self.assertEqual(api._take_sweep_scope(), ([], False))
+
+    def test_full_sweep_wins_over_partial_scope(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+
+            api._queue_sweep_scope(["/media/A.strm"])
+            api._queue_sweep_scope(None)
+
+            self.assertEqual(api._take_sweep_scope(), (None, True))
+
+    def test_auto_trigger_queues_when_cloud_lock_is_busy(self):
+        """定时巡检与监听上报抢不到锁不算失败，排队等补跑。"""
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+            api._cloud_task_lock.acquire()
+            try:
+                result = api.queue_strm_sweep(["/media/A.strm"])
+            finally:
+                api._cloud_task_lock.release()
+
+            self.assertTrue(result["success"])
+            self.assertIn("排队", result["message"])
+            self.assertEqual(api._pending_sweep_paths, {"/media/A.strm"})
+
+    def test_manual_trigger_rejects_when_cloud_lock_is_busy(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+            api._cloud_task_lock.acquire()
+            try:
+                result = api.trigger_strm_sweep()
+            finally:
+                api._cloud_task_lock.release()
+
+            self.assertFalse(result["success"])
+            self.assertIn("115 数据任务正在运行", result["message"])
+
+    def test_trigger_rejected_when_switch_is_off(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+            api._store.config["strm_delete_cloud_on_missing"] = False
+
+            result = api.trigger_strm_sweep()
+
+            self.assertFalse(result["success"])
+            self.assertIn("未开启", result["message"])
+
+    def test_confirm_requires_existing_batch(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+
+            self.assertFalse(api.confirm_strm_delete({})["success"])
+            self.assertFalse(api.confirm_strm_delete({"batch_id": "nope"})["success"])
+
+    def test_dismiss_drops_batch_without_touching_cloud(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+            api._store.pending = {
+                "abcd": {"id": "abcd", "mapping_id": "movies", "count": 3, "items": []}
+            }
+
+            result = api.dismiss_strm_delete({"batch_id": "abcd"})
+
+            self.assertTrue(result["success"])
+            self.assertEqual(api._store.pending, {})
+
+    def test_confirm_puts_batch_back_when_task_cannot_start(self):
+        """确认后任务起不来，批次要放回去 —— 用户点一次不能就这么丢了。"""
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+            batch = {
+                "id": "abcd",
+                "mapping_id": "movies",
+                "count": 1,
+                "items": [{"path": str(Path(directory) / "Film.strm")}],
+            }
+            api._store.pending = {"abcd": batch}
+            api._cloud_task_lock.acquire()
+            try:
+                result = api.confirm_strm_delete({"batch_id": "abcd"})
+            finally:
+                api._cloud_task_lock.release()
+
+            self.assertFalse(result["success"])
+            self.assertIn("abcd", api._store.pending)
+
+
+class ServiceRegistrationTest(unittest.TestCase):
+    """定时任务注册：签到与反向删除巡检各自独立开关。"""
+
+    class ServiceStore(FakeStore):
+        def __init__(self, config):
+            super().__init__()
+            self.config.update(config)
+
+    class ApiStub:
+        """get_service / get_api 只需要这些入口存在。"""
+
+        def run_scheduled_checkin(self):
+            return None
+
+        def run_scheduled_strm_sweep(self):
+            return None
+
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+
+    @staticmethod
+    def _plugin(config):
+        plugin = object.__new__(P115LiteAssistant)
+        plugin._store = ServiceRegistrationTest.ServiceStore(config)
+        plugin._api = ServiceRegistrationTest.ApiStub()
+        return plugin
+
+    def _job_ids(self, config):
+        return [item["id"] for item in self._plugin(config).get_service()]
+
+    def test_disabled_plugin_registers_nothing(self):
+        self.assertEqual(self._job_ids({"enabled": False, "checkin_enabled": True}), [])
+
+    def test_checkin_only(self):
+        self.assertEqual(
+            self._job_ids({"checkin_enabled": True, "strm_delete_cloud_on_missing": False}),
+            ["p115liteassistant_checkin"],
+        )
+
+    def test_sweep_registered_when_switch_and_cron_are_set(self):
+        self.assertEqual(
+            self._job_ids(
+                {
+                    "checkin_enabled": False,
+                    "strm_delete_cloud_on_missing": True,
+                    "strm_delete_sweep_cron": "37 */2 * * *",
+                }
+            ),
+            ["p115liteassistant_strm_sweep"],
+        )
+
+    def test_blank_cron_disables_sweep_job(self):
+        self.assertEqual(
+            self._job_ids(
+                {
+                    "checkin_enabled": False,
+                    "strm_delete_cloud_on_missing": True,
+                    "strm_delete_sweep_cron": "   ",
+                }
+            ),
+            [],
+        )
+
+    def test_invalid_cron_does_not_break_checkin_registration(self):
+        """巡检 cron 写坏了不能把签到任务一起带走。"""
+        self.assertEqual(
+            self._job_ids(
+                {
+                    "checkin_enabled": True,
+                    "strm_delete_cloud_on_missing": True,
+                    "strm_delete_sweep_cron": "not a cron",
+                }
+            ),
+            ["p115liteassistant_checkin"],
+        )
+
+    def test_sweep_endpoints_are_registered(self):
+        plugin = self._plugin({})
+        paths = {(item["path"], tuple(item["methods"])) for item in plugin.get_api()}
+
+        self.assertIn(("/strm/sweep", ("POST",)), paths)
+        self.assertIn(("/strm/sweep/pending", ("GET",)), paths)
+        self.assertIn(("/strm/sweep/confirm", ("POST",)), paths)
+        self.assertIn(("/strm/sweep/dismiss", ("POST",)), paths)

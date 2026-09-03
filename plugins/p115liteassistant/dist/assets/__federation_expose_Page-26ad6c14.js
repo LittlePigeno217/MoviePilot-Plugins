@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
-import { _ as _export_sfc, u as useHostNotice, A as AppBar, p as pluginGet, a as pluginPost } from './kit-a6d4b6ea.js';
+import { _ as _export_sfc, u as useHostNotice, A as AppBar, p as pluginGet, a as pluginPost } from './kit-ab68ed17.js';
 
-const Page_vue_vue_type_style_index_0_scoped_ec5bbb35_lang = '';
+const Page_vue_vue_type_style_index_0_scoped_596ae2a3_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,withCtx:_withCtx} = await importShared('vue');
 
@@ -20,38 +20,51 @@ const _hoisted_8 = { class: "p115-panel__head" };
 const _hoisted_9 = { class: "p115-hint" };
 const _hoisted_10 = { class: "p115-panel__body" };
 const _hoisted_11 = { class: "run__acts" };
-const _hoisted_12 = { class: "p115-panel" };
-const _hoisted_13 = { class: "p115-panel__head" };
-const _hoisted_14 = { class: "p115-hint" };
-const _hoisted_15 = { class: "p115-panel__body" };
-const _hoisted_16 = {
+const _hoisted_12 = {
+  key: 0,
+  class: "p115-panel p115-panel--alert"
+};
+const _hoisted_13 = { class: "p115-panel__body" };
+const _hoisted_14 = { class: "pend__text" };
+const _hoisted_15 = { class: "pend__mapping" };
+const _hoisted_16 = { class: "pend__count p115-mono" };
+const _hoisted_17 = {
+  key: 0,
+  class: "pend__when p115-mono"
+};
+const _hoisted_18 = { class: "pend__acts" };
+const _hoisted_19 = { class: "p115-panel" };
+const _hoisted_20 = { class: "p115-panel__head" };
+const _hoisted_21 = { class: "p115-hint" };
+const _hoisted_22 = { class: "p115-panel__body" };
+const _hoisted_23 = {
   key: 0,
   class: "card-grid"
 };
-const _hoisted_17 = ["title"];
-const _hoisted_18 = { class: "card__meta" };
-const _hoisted_19 = { class: "card__when p115-mono" };
-const _hoisted_20 = {
+const _hoisted_24 = ["title"];
+const _hoisted_25 = { class: "card__meta" };
+const _hoisted_26 = { class: "card__when p115-mono" };
+const _hoisted_27 = {
   key: 1,
   class: "p115-empty"
 };
-const _hoisted_21 = { class: "p115-panel" };
-const _hoisted_22 = { class: "p115-panel__head" };
-const _hoisted_23 = { class: "p115-hint" };
-const _hoisted_24 = { class: "p115-panel__body" };
-const _hoisted_25 = {
+const _hoisted_28 = { class: "p115-panel" };
+const _hoisted_29 = { class: "p115-panel__head" };
+const _hoisted_30 = { class: "p115-hint" };
+const _hoisted_31 = { class: "p115-panel__body" };
+const _hoisted_32 = {
   key: 0,
   class: "log-grid"
 };
-const _hoisted_26 = { class: "log-card__top" };
-const _hoisted_27 = { class: "log-card__kind" };
-const _hoisted_28 = {
+const _hoisted_33 = { class: "log-card__top" };
+const _hoisted_34 = { class: "log-card__kind" };
+const _hoisted_35 = {
   key: 0,
   class: "log-card__cost p115-mono"
 };
-const _hoisted_29 = { class: "log-card__when p115-mono" };
-const _hoisted_30 = { class: "log-card__tally" };
-const _hoisted_31 = {
+const _hoisted_36 = { class: "log-card__when p115-mono" };
+const _hoisted_37 = { class: "log-card__tally" };
+const _hoisted_38 = {
   key: 1,
   class: "p115-empty"
 };
@@ -85,9 +98,20 @@ const history = computed(() => status.value.history || []);
 // 执行记录：只显示最近 6 条（卡片式，节约空间）
 const visibleHistory = computed(() => history.value.slice(0, 6));
 const running = computed(() => status.value.running || []);
-const workingNow = computed(() => running.value.some(kind => kind === 'strm' || kind === 'upload'));
+// strm / upload / sweep 共用同一把 115 数据任务锁，任何一个在跑其它都起不来
+const workingNow = computed(() =>
+  running.value.some(kind => kind === 'strm' || kind === 'upload' || kind === 'sweep'),
+);
 
-const kindNames = { strm: '生成 STRM', upload: '上传', checkin: '签到' };
+// 反向删除：先看有没有实时监听，没有就看开关，关着就直说
+const sweepValue = computed(() => {
+  if (!status.value.strm_delete_enabled) return '未启用'
+  return status.value.strm_delete_watch_running ? '监听中' : '仅巡检'
+});
+
+const pendingDeletes = computed(() => status.value.pending_deletes || []);
+
+const kindNames = { strm: '生成 STRM', upload: '上传', checkin: '签到', strm_sweep: '清理云端' };
 
 // 服务条：每一项都是“现在能不能干活”的答案，不是装饰性的计数
 const services = computed(() => [
@@ -119,12 +143,20 @@ const services = computed(() => [
     ok: Boolean(status.value.life_monitor_running),
     hint: '',
   },
+  {
+    key: 'sweep',
+    label: '云端清理',
+    value: sweepValue.value,
+    ok: Boolean(status.value.strm_delete_enabled),
+    hint: status.value.pending_sweep ? `${status.value.pending_sweep}排队中` : '',
+  },
 ]);
 
 const actions = [
   { key: 'strm', label: '生成 STRM', icon: 'mdi-file-link-outline', path: '/strm/sync', payload: {} },
   { key: 'full', label: '全量上传', icon: 'mdi-tray-arrow-up', path: '/upload', payload: { incremental: false } },
   { key: 'inc', label: '增量上传', icon: 'mdi-tray-plus', path: '/upload', payload: { incremental: true } },
+  { key: 'sweep', label: '清理云端', icon: 'mdi-cloud-off-outline', path: '/strm/sweep', payload: {} },
   { key: 'checkin', label: '立即签到', icon: 'mdi-calendar-check-outline', path: '/checkin', payload: {} },
 ];
 
@@ -152,6 +184,26 @@ async function run(action) {
   }
 }
 
+const deciding = ref('');
+
+// 待确认删除：确认就真删，驳回只丢清单。两个动作都要防连点。
+async function decidePending(batch, approve) {
+  if (deciding.value) return
+  deciding.value = batch.id;
+  try {
+    const path = approve ? '/strm/sweep/confirm' : '/strm/sweep/dismiss';
+    const result = await pluginPost(props.api, path, { batch_id: batch.id });
+    if (result.success) notice.success(result.message || (approve ? '已开始清理云端' : '已忽略这批'));
+    else notice.error(result.message || '操作未生效');
+    await refresh();
+    emit('action');
+  } catch (error) {
+    notice.error(error?.message || '操作失败');
+  } finally {
+    deciding.value = '';
+  }
+}
+
 function seconds(ms) {
   const value = Number(ms);
   if (!Number.isFinite(value) || value <= 0) return ''
@@ -168,6 +220,11 @@ function tally(entry) {
   if (entry.kind === 'upload') {
     const parts = pick([['上传', 'uploaded'], ['秒传', 'instant'], ['STRM', 'strm_generated'], ['跳过', 'skipped'], ['删除', 'deleted'], ['延后', 'deferred'], ['失败', 'errors']]);
     return parts.length ? parts : ['没有变化']
+  }
+  if (entry.kind === 'strm_sweep') {
+    const parts = pick([['云端删除', 'cloud_deleted'], ['刮削', 'scrapes_deleted'], ['空目录', 'cloud_dirs_deleted'], ['待确认', 'pending'], ['云端已无', 'already_gone'], ['溯源缺失', 'unidentified'], ['失败', 'errors']]);
+    if (parts.length) return parts
+    return [entry.reason || '没有变化']
   }
   if (entry.kind === 'checkin') {
     const parts = [];
@@ -249,16 +306,68 @@ return (_ctx, _cache) => {
           ])
         ])
       ]),
-      _createElementVNode("div", _hoisted_12, [
-        _createElementVNode("div", _hoisted_13, [
+      (pendingDeletes.value.length)
+        ? (_openBlock(), _createElementBlock("div", _hoisted_12, [
+            _cache[7] || (_cache[7] = _createElementVNode("div", { class: "p115-panel__head" }, [
+              _createElementVNode("div", null, [
+                _createElementVNode("h3", { class: "p115-section-title" }, "待确认删除"),
+                _createElementVNode("p", { class: "p115-hint p115-hint--warn" }, " 这几批待删数量超过了阈值，确认后才会真的删 115 上的文件（进回收站，可人工还原）。 ")
+              ])
+            ], -1)),
+            _createElementVNode("div", _hoisted_13, [
+              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(pendingDeletes.value, (batch) => {
+                return (_openBlock(), _createElementBlock("div", {
+                  key: batch.id,
+                  class: "pend"
+                }, [
+                  _createElementVNode("div", _hoisted_14, [
+                    _createElementVNode("span", _hoisted_15, _toDisplayString(batch.mapping), 1),
+                    _createElementVNode("span", _hoisted_16, _toDisplayString(batch.count) + " 个媒体", 1),
+                    (batch.updated_at)
+                      ? (_openBlock(), _createElementBlock("span", _hoisted_17, _toDisplayString(batch.updated_at), 1))
+                      : _createCommentVNode("", true)
+                  ]),
+                  _createElementVNode("div", _hoisted_18, [
+                    _createVNode(_component_v_btn, {
+                      variant: "text",
+                      size: "small",
+                      disabled: Boolean(deciding.value),
+                      onClick: $event => (decidePending(batch, false))
+                    }, {
+                      default: _withCtx(() => [...(_cache[5] || (_cache[5] = [
+                        _createTextVNode(" 忽略 ", -1)
+                      ]))]),
+                      _: 1
+                    }, 8, ["disabled", "onClick"]),
+                    _createVNode(_component_v_btn, {
+                      variant: "outlined",
+                      size: "small",
+                      color: "warning",
+                      loading: deciding.value === batch.id,
+                      disabled: Boolean(deciding.value) || workingNow.value,
+                      onClick: $event => (decidePending(batch, true))
+                    }, {
+                      default: _withCtx(() => [...(_cache[6] || (_cache[6] = [
+                        _createTextVNode(" 确认删除 ", -1)
+                      ]))]),
+                      _: 1
+                    }, 8, ["loading", "disabled", "onClick"])
+                  ])
+                ]))
+              }), 128))
+            ])
+          ]))
+        : _createCommentVNode("", true),
+      _createElementVNode("div", _hoisted_19, [
+        _createElementVNode("div", _hoisted_20, [
           _createElementVNode("div", null, [
-            _cache[5] || (_cache[5] = _createElementVNode("h3", { class: "p115-section-title" }, "最近上传", -1)),
-            _createElementVNode("p", _hoisted_14, "最新 " + _toDisplayString(visibleUploads.value.length) + " 部，标了「秒传」的没有实际耗流量。", 1)
+            _cache[8] || (_cache[8] = _createElementVNode("h3", { class: "p115-section-title" }, "最近上传", -1)),
+            _createElementVNode("p", _hoisted_21, "最新 " + _toDisplayString(visibleUploads.value.length) + " 部，标了「秒传」的没有实际耗流量。", 1)
           ])
         ]),
-        _createElementVNode("div", _hoisted_15, [
+        _createElementVNode("div", _hoisted_22, [
           (visibleUploads.value.length)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_16, [
+            ? (_openBlock(), _createElementBlock("div", _hoisted_23, [
                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleUploads.value, (item) => {
                   return (_openBlock(), _createElementBlock("div", {
                     key: `${item.path}-${item.uploaded_at}`,
@@ -267,9 +376,9 @@ return (_ctx, _cache) => {
                     _createElementVNode("span", {
                       class: "card__name",
                       title: item.name
-                    }, _toDisplayString(item.name), 9, _hoisted_17),
-                    _createElementVNode("span", _hoisted_18, [
-                      _createElementVNode("span", _hoisted_19, _toDisplayString(item.uploaded_at), 1),
+                    }, _toDisplayString(item.name), 9, _hoisted_24),
+                    _createElementVNode("span", _hoisted_25, [
+                      _createElementVNode("span", _hoisted_26, _toDisplayString(item.uploaded_at), 1),
                       _createElementVNode("span", {
                         class: _normalizeClass(["card__tag", { 'card__tag--instant': item.method === 'instant' }])
                       }, _toDisplayString(item.method === 'instant' ? '秒传' : '上传'), 3)
@@ -277,32 +386,32 @@ return (_ctx, _cache) => {
                   ]))
                 }), 128))
               ]))
-            : (_openBlock(), _createElementBlock("p", _hoisted_20, "还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。"))
+            : (_openBlock(), _createElementBlock("p", _hoisted_27, "还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。"))
         ])
       ]),
-      _createElementVNode("div", _hoisted_21, [
-        _createElementVNode("div", _hoisted_22, [
+      _createElementVNode("div", _hoisted_28, [
+        _createElementVNode("div", _hoisted_29, [
           _createElementVNode("div", null, [
-            _cache[6] || (_cache[6] = _createElementVNode("h3", { class: "p115-section-title" }, "执行记录", -1)),
-            _createElementVNode("p", _hoisted_23, "最近 " + _toDisplayString(visibleHistory.value.length) + " 条，最新的在最上面。", 1)
+            _cache[9] || (_cache[9] = _createElementVNode("h3", { class: "p115-section-title" }, "执行记录", -1)),
+            _createElementVNode("p", _hoisted_30, "最近 " + _toDisplayString(visibleHistory.value.length) + " 条，最新的在最上面。", 1)
           ])
         ]),
-        _createElementVNode("div", _hoisted_24, [
+        _createElementVNode("div", _hoisted_31, [
           (visibleHistory.value.length)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_25, [
+            ? (_openBlock(), _createElementBlock("div", _hoisted_32, [
                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleHistory.value, (entry, index) => {
                   return (_openBlock(), _createElementBlock("div", {
                     key: `${entry.kind}-${entry.time}-${index}`,
                     class: "log-card"
                   }, [
-                    _createElementVNode("div", _hoisted_26, [
-                      _createElementVNode("span", _hoisted_27, _toDisplayString(kindNames[entry.kind] || entry.kind), 1),
+                    _createElementVNode("div", _hoisted_33, [
+                      _createElementVNode("span", _hoisted_34, _toDisplayString(kindNames[entry.kind] || entry.kind), 1),
                       (seconds(entry.duration_ms))
-                        ? (_openBlock(), _createElementBlock("span", _hoisted_28, _toDisplayString(seconds(entry.duration_ms)), 1))
+                        ? (_openBlock(), _createElementBlock("span", _hoisted_35, _toDisplayString(seconds(entry.duration_ms)), 1))
                         : _createCommentVNode("", true)
                     ]),
-                    _createElementVNode("div", _hoisted_29, _toDisplayString(entry.time || ''), 1),
-                    _createElementVNode("div", _hoisted_30, [
+                    _createElementVNode("div", _hoisted_36, _toDisplayString(entry.time || ''), 1),
+                    _createElementVNode("div", _hoisted_37, [
                       (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(tally(entry), (text) => {
                         return (_openBlock(), _createElementBlock("span", {
                           key: text,
@@ -313,7 +422,7 @@ return (_ctx, _cache) => {
                   ]))
                 }), 128))
               ]))
-            : (_openBlock(), _createElementBlock("p", _hoisted_31, "还没有执行记录。跑一次任务后这里会记下每次的结果。"))
+            : (_openBlock(), _createElementBlock("p", _hoisted_38, "还没有执行记录。跑一次任务后这里会记下每次的结果。"))
         ])
       ])
     ])
@@ -322,6 +431,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-ec5bbb35"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-596ae2a3"]]);
 
 export { Page as default };

@@ -304,6 +304,45 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                   label="本地 STRM 被删除时同步删除 115 对应文件"
                 />
               </div>
+              <div v-if="config.strm_delete_cloud_on_missing" class="p115-subpanel">
+                <p class="p115-hint p115-hint--warn">
+                  本地 STRM 不见了就删掉 115 上对应的媒体、同名刮削文件与随之变空的目录（进 115
+                  回收站，可人工还原）。媒体库未挂载、缺失比例过高时会整轮放弃，源目录与一级目录永不删除。
+                </p>
+                <p class="p115-hint">
+                  从旧版本升级后请先跑一次「生成 STRM」补齐溯源信息，否则大部分文件会因为拿不到
+                  115 文件 ID 而跳过。
+                </p>
+                <div class="p115-fields">
+                  <v-text-field
+                    v-model="config.strm_delete_sweep_cron"
+                    label="巡检周期（cron，留空关闭）"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    placeholder="37 */2 * * *"
+                  />
+                  <v-text-field
+                    v-model.number="config.strm_delete_confirm_threshold"
+                    type="number"
+                    min="0"
+                    label="超过多少个先等人工确认（0 = 不拦）"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </div>
+                <v-switch
+                  v-model="config.strm_delete_watch"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  label="本地目录实时监听（网络挂载可能收不到事件）"
+                />
+                <p class="p115-hint">
+                  实时监听只是加速：删除事件安静 30 秒后才上报。真正兜底的是定时巡检。
+                </p>
+              </div>
               <NotifyRow
                 v-model:enabled="config.strm_notify"
                 v-model:type="config.strm_notify_type"
@@ -411,7 +450,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
             <div class="p115-panel__head">
               <div>
                 <h3 class="p115-section-title">每日签到</h3>
-                <p class="p115-hint">按 cron 触发，在时间窗内随机挑一刻执行，看起来更像人在操作。</p>
+                <p class="p115-hint">每天在时间窗内随机挑一刻执行，看起来更像人在操作。</p>
               </div>
               <v-switch
                 v-model="config.checkin_enabled"
@@ -424,14 +463,6 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
             <div class="p115-panel__body">
               <div class="p115-fields">
                 <v-text-field
-                  v-model="config.checkin_cron"
-                  label="cron 表达式"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                  placeholder="15 8 * * *"
-                />
-                <v-text-field
                   v-model="config.checkin_time_range"
                   label="随机时间窗"
                   variant="outlined"
@@ -440,7 +471,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                   placeholder="06:00-09:00"
                 />
               </div>
-              <p class="p115-hint">时间窗留空就在 cron 命中的那一刻直接签到。</p>
+              <p class="p115-hint">留空按 06:00-09:00 处理。</p>
               <NotifyRow
                 v-model:enabled="config.checkin_notify"
                 v-model:type="config.checkin_notify_type"

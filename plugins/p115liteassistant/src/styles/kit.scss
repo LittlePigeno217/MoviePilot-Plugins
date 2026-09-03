@@ -121,6 +121,20 @@
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+// 开关打开后才展开的从属设置：左侧一条细线表示归属关系
+.p115-subpanel {
+  margin: 10px 0 0;
+  padding: 12px 0 2px 14px;
+  border-left: 2px solid var(--p115-hairline);
+  display: grid;
+  gap: 12px;
+}
+
+// 破坏性操作的提示，比普通 hint 更醒目一档
+.p115-hint--warn {
+  color: rgb(var(--v-theme-warning, 245 124 0));
+}
+
 // ── 空态 ────────────────────────────────────────────────────────────
 .p115-empty {
   border: 1px dashed var(--p115-hairline);
