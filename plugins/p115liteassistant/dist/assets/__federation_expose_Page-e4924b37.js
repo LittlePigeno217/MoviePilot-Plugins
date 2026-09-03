@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-054b33c3.js';
 import { _ as _export_sfc, u as useHostNotice, A as AppBar, p as pluginGet, a as pluginPost } from './kit-ab68ed17.js';
 
-const Page_vue_vue_type_style_index_0_scoped_596ae2a3_lang = '';
+const Page_vue_vue_type_style_index_0_scoped_1d776b68_lang = '';
 
 const {createVNode:_createVNode,toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,normalizeClass:_normalizeClass,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,withCtx:_withCtx} = await importShared('vue');
 
@@ -24,47 +24,75 @@ const _hoisted_12 = {
   key: 0,
   class: "p115-panel p115-panel--alert"
 };
-const _hoisted_13 = { class: "p115-panel__body" };
-const _hoisted_14 = { class: "pend__text" };
-const _hoisted_15 = { class: "pend__mapping" };
-const _hoisted_16 = { class: "pend__count p115-mono" };
-const _hoisted_17 = {
+const _hoisted_13 = { class: "p115-panel__head" };
+const _hoisted_14 = { class: "p115-hint p115-hint--warn" };
+const _hoisted_15 = {
+  key: 0,
+  class: "pend__acts"
+};
+const _hoisted_16 = { class: "p115-panel__body" };
+const _hoisted_17 = { class: "pend" };
+const _hoisted_18 = { class: "pend__text" };
+const _hoisted_19 = { class: "pend__mapping" };
+const _hoisted_20 = { class: "pend__count p115-mono" };
+const _hoisted_21 = {
   key: 0,
   class: "pend__when p115-mono"
 };
-const _hoisted_18 = { class: "pend__acts" };
-const _hoisted_19 = { class: "p115-panel" };
-const _hoisted_20 = { class: "p115-panel__head" };
-const _hoisted_21 = { class: "p115-hint" };
-const _hoisted_22 = { class: "p115-panel__body" };
-const _hoisted_23 = {
+const _hoisted_22 = {
+  key: 1,
+  class: "pend__when"
+};
+const _hoisted_23 = { class: "pend__acts" };
+const _hoisted_24 = {
+  key: 0,
+  class: "pend-list"
+};
+const _hoisted_25 = {
+  key: 0,
+  class: "p115-hint"
+};
+const _hoisted_26 = {
+  key: 0,
+  class: "p115-hint"
+};
+const _hoisted_27 = {
+  key: 1,
+  class: "pend-list__more"
+};
+const _hoisted_28 = { class: "p115-hint" };
+const _hoisted_29 = { class: "p115-panel" };
+const _hoisted_30 = { class: "p115-panel__head" };
+const _hoisted_31 = { class: "p115-hint" };
+const _hoisted_32 = { class: "p115-panel__body" };
+const _hoisted_33 = {
   key: 0,
   class: "card-grid"
 };
-const _hoisted_24 = ["title"];
-const _hoisted_25 = { class: "card__meta" };
-const _hoisted_26 = { class: "card__when p115-mono" };
-const _hoisted_27 = {
+const _hoisted_34 = ["title"];
+const _hoisted_35 = { class: "card__meta" };
+const _hoisted_36 = { class: "card__when p115-mono" };
+const _hoisted_37 = {
   key: 1,
   class: "p115-empty"
 };
-const _hoisted_28 = { class: "p115-panel" };
-const _hoisted_29 = { class: "p115-panel__head" };
-const _hoisted_30 = { class: "p115-hint" };
-const _hoisted_31 = { class: "p115-panel__body" };
-const _hoisted_32 = {
+const _hoisted_38 = { class: "p115-panel" };
+const _hoisted_39 = { class: "p115-panel__head" };
+const _hoisted_40 = { class: "p115-hint" };
+const _hoisted_41 = { class: "p115-panel__body" };
+const _hoisted_42 = {
   key: 0,
   class: "log-grid"
 };
-const _hoisted_33 = { class: "log-card__top" };
-const _hoisted_34 = { class: "log-card__kind" };
-const _hoisted_35 = {
+const _hoisted_43 = { class: "log-card__top" };
+const _hoisted_44 = { class: "log-card__kind" };
+const _hoisted_45 = {
   key: 0,
   class: "log-card__cost p115-mono"
 };
-const _hoisted_36 = { class: "log-card__when p115-mono" };
-const _hoisted_37 = { class: "log-card__tally" };
-const _hoisted_38 = {
+const _hoisted_46 = { class: "log-card__when p115-mono" };
+const _hoisted_47 = { class: "log-card__tally" };
+const _hoisted_48 = {
   key: 1,
   class: "p115-empty"
 };
@@ -185,16 +213,20 @@ async function run(action) {
 }
 
 const deciding = ref('');
+const expanded = ref('');
+const detail = reactive({ id: '', total: 0, items: [], loading: false });
 
 // 待确认删除：确认就真删，驳回只丢清单。两个动作都要防连点。
-async function decidePending(batch, approve) {
-  if (deciding.value) return
-  deciding.value = batch.id;
+async function decidePending(batchIds, approve) {
+  const ids = [].concat(batchIds);
+  if (deciding.value || !ids.length) return
+  deciding.value = ids.length > 1 ? 'all' : ids[0];
   try {
     const path = approve ? '/strm/sweep/confirm' : '/strm/sweep/dismiss';
-    const result = await pluginPost(props.api, path, { batch_id: batch.id });
-    if (result.success) notice.success(result.message || (approve ? '已开始清理云端' : '已忽略这批'));
+    const result = await pluginPost(props.api, path, { batch_ids: ids });
+    if (result.success) notice.success(result.message || (approve ? '已开始清理云端' : '已忽略'));
     else notice.error(result.message || '操作未生效');
+    if (ids.includes(expanded.value)) expanded.value = '';
     await refresh();
     emit('action');
   } catch (error) {
@@ -203,6 +235,38 @@ async function decidePending(batch, approve) {
     deciding.value = '';
   }
 }
+
+// 删除前先看清单：整批的完整路径按页取，几百上千条也不至于一次灌进页面
+async function loadDetail(batchId, append = false) {
+  detail.loading = true;
+  try {
+    const offset = append ? detail.items.length : 0;
+    const data = await pluginGet(props.api, '/strm/sweep/pending', { batch_id: batchId, offset, limit: 200 });
+    const page = data?.data || data;
+    detail.id = batchId;
+    detail.total = Number(page?.total || 0);
+    detail.items = append ? detail.items.concat(page?.items || []) : (page?.items || []);
+  } catch (error) {
+    notice.error(error?.message || '清单读取失败');
+    detail.items = [];
+  } finally {
+    detail.loading = false;
+  }
+}
+
+async function toggleDetail(batch) {
+  if (expanded.value === batch.id) {
+    expanded.value = '';
+    return
+  }
+  expanded.value = batch.id;
+  await loadDetail(batch.id);
+}
+
+const pendingTotal = computed(() =>
+  pendingDeletes.value.reduce((sum, batch) => sum + Number(batch.count || 0), 0),
+);
+const pendingIds = computed(() => pendingDeletes.value.map(batch => batch.id));
 
 function seconds(ms) {
   const value = Number(ms);
@@ -260,7 +324,7 @@ return (_ctx, _cache) => {
           onClick: _cache[2] || (_cache[2] = $event => (local.text = ''))
         }, [
           _createTextVNode(_toDisplayString(local.text) + " ", 1),
-          _cache[3] || (_cache[3] = _createElementVNode("span", { class: "run__local-dismiss" }, "知道了", -1))
+          _cache[5] || (_cache[5] = _createElementVNode("span", { class: "run__local-dismiss" }, "知道了", -1))
         ], 2))
       : _createCommentVNode("", true),
     _createElementVNode("div", _hoisted_2, [
@@ -281,7 +345,7 @@ return (_ctx, _cache) => {
       _createElementVNode("div", _hoisted_7, [
         _createElementVNode("div", _hoisted_8, [
           _createElementVNode("div", null, [
-            _cache[4] || (_cache[4] = _createElementVNode("h3", { class: "p115-section-title" }, "手动跑一次", -1)),
+            _cache[6] || (_cache[6] = _createElementVNode("h3", { class: "p115-section-title" }, "手动跑一次", -1)),
             _createElementVNode("p", _hoisted_9, _toDisplayString(workingNow.value ? `正在跑：${running.value.map(kind => kindNames[kind] || kind).join('、')}` : '当前空闲，按需触发。'), 1)
           ])
         ]),
@@ -308,66 +372,143 @@ return (_ctx, _cache) => {
       ]),
       (pendingDeletes.value.length)
         ? (_openBlock(), _createElementBlock("div", _hoisted_12, [
-            _cache[7] || (_cache[7] = _createElementVNode("div", { class: "p115-panel__head" }, [
-              _createElementVNode("div", null, [
-                _createElementVNode("h3", { class: "p115-section-title" }, "待确认删除"),
-                _createElementVNode("p", { class: "p115-hint p115-hint--warn" }, " 这几批待删数量超过了阈值，确认后才会真的删 115 上的文件（进回收站，可人工还原）。 ")
-              ])
-            ], -1)),
             _createElementVNode("div", _hoisted_13, [
-              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(pendingDeletes.value, (batch) => {
-                return (_openBlock(), _createElementBlock("div", {
-                  key: batch.id,
-                  class: "pend"
-                }, [
-                  _createElementVNode("div", _hoisted_14, [
-                    _createElementVNode("span", _hoisted_15, _toDisplayString(batch.mapping), 1),
-                    _createElementVNode("span", _hoisted_16, _toDisplayString(batch.count) + " 个媒体", 1),
-                    (batch.updated_at)
-                      ? (_openBlock(), _createElementBlock("span", _hoisted_17, _toDisplayString(batch.updated_at), 1))
-                      : _createCommentVNode("", true)
-                  ]),
-                  _createElementVNode("div", _hoisted_18, [
+              _createElementVNode("div", null, [
+                _cache[7] || (_cache[7] = _createElementVNode("h3", { class: "p115-section-title" }, "待确认删除", -1)),
+                _createElementVNode("p", _hoisted_14, _toDisplayString(pendingDeletes.value.length) + " 批 · 共 " + _toDisplayString(pendingTotal.value) + " 个媒体。每批都要单独过一眼， 确认后才会真的删 115 上的文件（进回收站，可人工还原）。 ", 1)
+              ]),
+              (pendingDeletes.value.length > 1)
+                ? (_openBlock(), _createElementBlock("div", _hoisted_15, [
                     _createVNode(_component_v_btn, {
                       variant: "text",
                       size: "small",
                       disabled: Boolean(deciding.value),
-                      onClick: $event => (decidePending(batch, false))
+                      onClick: _cache[3] || (_cache[3] = $event => (decidePending(pendingIds.value, false)))
                     }, {
-                      default: _withCtx(() => [...(_cache[5] || (_cache[5] = [
-                        _createTextVNode(" 忽略 ", -1)
+                      default: _withCtx(() => [...(_cache[8] || (_cache[8] = [
+                        _createTextVNode(" 全部忽略 ", -1)
                       ]))]),
                       _: 1
-                    }, 8, ["disabled", "onClick"]),
+                    }, 8, ["disabled"]),
                     _createVNode(_component_v_btn, {
                       variant: "outlined",
                       size: "small",
                       color: "warning",
-                      loading: deciding.value === batch.id,
+                      loading: deciding.value === 'all',
                       disabled: Boolean(deciding.value) || workingNow.value,
-                      onClick: $event => (decidePending(batch, true))
+                      onClick: _cache[4] || (_cache[4] = $event => (decidePending(pendingIds.value, true)))
                     }, {
-                      default: _withCtx(() => [...(_cache[6] || (_cache[6] = [
-                        _createTextVNode(" 确认删除 ", -1)
+                      default: _withCtx(() => [...(_cache[9] || (_cache[9] = [
+                        _createTextVNode(" 全部确认 ", -1)
                       ]))]),
                       _: 1
-                    }, 8, ["loading", "disabled", "onClick"])
-                  ])
+                    }, 8, ["loading", "disabled"])
+                  ]))
+                : _createCommentVNode("", true)
+            ]),
+            _createElementVNode("div", _hoisted_16, [
+              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(pendingDeletes.value, (batch) => {
+                return (_openBlock(), _createElementBlock("div", {
+                  key: batch.id,
+                  class: "pend-row"
+                }, [
+                  _createElementVNode("div", _hoisted_17, [
+                    _createElementVNode("div", _hoisted_18, [
+                      _createElementVNode("span", _hoisted_19, _toDisplayString(batch.mapping), 1),
+                      _createElementVNode("span", _hoisted_20, _toDisplayString(batch.count) + " 个媒体", 1),
+                      (batch.created_at)
+                        ? (_openBlock(), _createElementBlock("span", _hoisted_21, _toDisplayString(batch.created_at), 1))
+                        : _createCommentVNode("", true),
+                      (batch.items_truncated)
+                        ? (_openBlock(), _createElementBlock("span", _hoisted_22, "（清单已截断）"))
+                        : _createCommentVNode("", true)
+                    ]),
+                    _createElementVNode("div", _hoisted_23, [
+                      _createVNode(_component_v_btn, {
+                        variant: "text",
+                        size: "small",
+                        "append-icon": expanded.value === batch.id ? 'mdi-chevron-up' : 'mdi-chevron-down',
+                        onClick: $event => (toggleDetail(batch))
+                      }, {
+                        default: _withCtx(() => [...(_cache[10] || (_cache[10] = [
+                          _createTextVNode(" 查看清单 ", -1)
+                        ]))]),
+                        _: 1
+                      }, 8, ["append-icon", "onClick"]),
+                      _createVNode(_component_v_btn, {
+                        variant: "text",
+                        size: "small",
+                        disabled: Boolean(deciding.value),
+                        onClick: $event => (decidePending(batch.id, false))
+                      }, {
+                        default: _withCtx(() => [...(_cache[11] || (_cache[11] = [
+                          _createTextVNode(" 忽略 ", -1)
+                        ]))]),
+                        _: 1
+                      }, 8, ["disabled", "onClick"]),
+                      _createVNode(_component_v_btn, {
+                        variant: "outlined",
+                        size: "small",
+                        color: "warning",
+                        loading: deciding.value === batch.id,
+                        disabled: Boolean(deciding.value) || workingNow.value,
+                        onClick: $event => (decidePending(batch.id, true))
+                      }, {
+                        default: _withCtx(() => [...(_cache[12] || (_cache[12] = [
+                          _createTextVNode(" 确认删除 ", -1)
+                        ]))]),
+                        _: 1
+                      }, 8, ["loading", "disabled", "onClick"])
+                    ])
+                  ]),
+                  (expanded.value === batch.id)
+                    ? (_openBlock(), _createElementBlock("div", _hoisted_24, [
+                        (detail.loading && !detail.items.length)
+                          ? (_openBlock(), _createElementBlock("p", _hoisted_25, "读取清单中…"))
+                          : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
+                              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(detail.items, (item) => {
+                                return (_openBlock(), _createElementBlock("div", {
+                                  key: item.path,
+                                  class: "pend-list__row p115-mono"
+                                }, _toDisplayString(item.cloud_path || item.path), 1))
+                              }), 128)),
+                              (!detail.items.length)
+                                ? (_openBlock(), _createElementBlock("p", _hoisted_26, "清单为空。"))
+                                : _createCommentVNode("", true),
+                              (detail.items.length < detail.total)
+                                ? (_openBlock(), _createElementBlock("div", _hoisted_27, [
+                                    _createElementVNode("span", _hoisted_28, "已显示 " + _toDisplayString(detail.items.length) + " / " + _toDisplayString(detail.total), 1),
+                                    _createVNode(_component_v_btn, {
+                                      variant: "text",
+                                      size: "small",
+                                      loading: detail.loading,
+                                      onClick: $event => (loadDetail(batch.id, true))
+                                    }, {
+                                      default: _withCtx(() => [...(_cache[13] || (_cache[13] = [
+                                        _createTextVNode(" 加载更多 ", -1)
+                                      ]))]),
+                                      _: 1
+                                    }, 8, ["loading", "onClick"])
+                                  ]))
+                                : _createCommentVNode("", true)
+                            ], 64))
+                      ]))
+                    : _createCommentVNode("", true)
                 ]))
               }), 128))
             ])
           ]))
         : _createCommentVNode("", true),
-      _createElementVNode("div", _hoisted_19, [
-        _createElementVNode("div", _hoisted_20, [
+      _createElementVNode("div", _hoisted_29, [
+        _createElementVNode("div", _hoisted_30, [
           _createElementVNode("div", null, [
-            _cache[8] || (_cache[8] = _createElementVNode("h3", { class: "p115-section-title" }, "最近上传", -1)),
-            _createElementVNode("p", _hoisted_21, "最新 " + _toDisplayString(visibleUploads.value.length) + " 部，标了「秒传」的没有实际耗流量。", 1)
+            _cache[14] || (_cache[14] = _createElementVNode("h3", { class: "p115-section-title" }, "最近上传", -1)),
+            _createElementVNode("p", _hoisted_31, "最新 " + _toDisplayString(visibleUploads.value.length) + " 部，标了「秒传」的没有实际耗流量。", 1)
           ])
         ]),
-        _createElementVNode("div", _hoisted_22, [
+        _createElementVNode("div", _hoisted_32, [
           (visibleUploads.value.length)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_23, [
+            ? (_openBlock(), _createElementBlock("div", _hoisted_33, [
                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleUploads.value, (item) => {
                   return (_openBlock(), _createElementBlock("div", {
                     key: `${item.path}-${item.uploaded_at}`,
@@ -376,9 +517,9 @@ return (_ctx, _cache) => {
                     _createElementVNode("span", {
                       class: "card__name",
                       title: item.name
-                    }, _toDisplayString(item.name), 9, _hoisted_24),
-                    _createElementVNode("span", _hoisted_25, [
-                      _createElementVNode("span", _hoisted_26, _toDisplayString(item.uploaded_at), 1),
+                    }, _toDisplayString(item.name), 9, _hoisted_34),
+                    _createElementVNode("span", _hoisted_35, [
+                      _createElementVNode("span", _hoisted_36, _toDisplayString(item.uploaded_at), 1),
                       _createElementVNode("span", {
                         class: _normalizeClass(["card__tag", { 'card__tag--instant': item.method === 'instant' }])
                       }, _toDisplayString(item.method === 'instant' ? '秒传' : '上传'), 3)
@@ -386,32 +527,32 @@ return (_ctx, _cache) => {
                   ]))
                 }), 128))
               ]))
-            : (_openBlock(), _createElementBlock("p", _hoisted_27, "还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。"))
+            : (_openBlock(), _createElementBlock("p", _hoisted_37, "还没有上传记录。配好上传通道后跑一次全量上传就会出现在这里。"))
         ])
       ]),
-      _createElementVNode("div", _hoisted_28, [
-        _createElementVNode("div", _hoisted_29, [
+      _createElementVNode("div", _hoisted_38, [
+        _createElementVNode("div", _hoisted_39, [
           _createElementVNode("div", null, [
-            _cache[9] || (_cache[9] = _createElementVNode("h3", { class: "p115-section-title" }, "执行记录", -1)),
-            _createElementVNode("p", _hoisted_30, "最近 " + _toDisplayString(visibleHistory.value.length) + " 条，最新的在最上面。", 1)
+            _cache[15] || (_cache[15] = _createElementVNode("h3", { class: "p115-section-title" }, "执行记录", -1)),
+            _createElementVNode("p", _hoisted_40, "最近 " + _toDisplayString(visibleHistory.value.length) + " 条，最新的在最上面。", 1)
           ])
         ]),
-        _createElementVNode("div", _hoisted_31, [
+        _createElementVNode("div", _hoisted_41, [
           (visibleHistory.value.length)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_32, [
+            ? (_openBlock(), _createElementBlock("div", _hoisted_42, [
                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleHistory.value, (entry, index) => {
                   return (_openBlock(), _createElementBlock("div", {
                     key: `${entry.kind}-${entry.time}-${index}`,
                     class: "log-card"
                   }, [
-                    _createElementVNode("div", _hoisted_33, [
-                      _createElementVNode("span", _hoisted_34, _toDisplayString(kindNames[entry.kind] || entry.kind), 1),
+                    _createElementVNode("div", _hoisted_43, [
+                      _createElementVNode("span", _hoisted_44, _toDisplayString(kindNames[entry.kind] || entry.kind), 1),
                       (seconds(entry.duration_ms))
-                        ? (_openBlock(), _createElementBlock("span", _hoisted_35, _toDisplayString(seconds(entry.duration_ms)), 1))
+                        ? (_openBlock(), _createElementBlock("span", _hoisted_45, _toDisplayString(seconds(entry.duration_ms)), 1))
                         : _createCommentVNode("", true)
                     ]),
-                    _createElementVNode("div", _hoisted_36, _toDisplayString(entry.time || ''), 1),
-                    _createElementVNode("div", _hoisted_37, [
+                    _createElementVNode("div", _hoisted_46, _toDisplayString(entry.time || ''), 1),
+                    _createElementVNode("div", _hoisted_47, [
                       (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(tally(entry), (text) => {
                         return (_openBlock(), _createElementBlock("span", {
                           key: text,
@@ -422,7 +563,7 @@ return (_ctx, _cache) => {
                   ]))
                 }), 128))
               ]))
-            : (_openBlock(), _createElementBlock("p", _hoisted_38, "还没有执行记录。跑一次任务后这里会记下每次的结果。"))
+            : (_openBlock(), _createElementBlock("p", _hoisted_48, "还没有执行记录。跑一次任务后这里会记下每次的结果。"))
         ])
       ])
     ])
@@ -431,6 +572,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-596ae2a3"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1d776b68"]]);
 
 export { Page as default };

@@ -111,16 +111,20 @@ async function run(action) {
 }
 
 const deciding = ref('')
+const expanded = ref('')
+const detail = reactive({ id: '', total: 0, items: [], loading: false })
 
 // 待确认删除：确认就真删，驳回只丢清单。两个动作都要防连点。
-async function decidePending(batch, approve) {
-  if (deciding.value) return
-  deciding.value = batch.id
+async function decidePending(batchIds, approve) {
+  const ids = [].concat(batchIds)
+  if (deciding.value || !ids.length) return
+  deciding.value = ids.length > 1 ? 'all' : ids[0]
   try {
     const path = approve ? '/strm/sweep/confirm' : '/strm/sweep/dismiss'
-    const result = await pluginPost(props.api, path, { batch_id: batch.id })
-    if (result.success) notice.success(result.message || (approve ? '已开始清理云端' : '已忽略这批'))
+    const result = await pluginPost(props.api, path, { batch_ids: ids })
+    if (result.success) notice.success(result.message || (approve ? '已开始清理云端' : '已忽略'))
     else notice.error(result.message || '操作未生效')
+    if (ids.includes(expanded.value)) expanded.value = ''
     await refresh()
     emit('action')
   } catch (error) {
@@ -129,6 +133,38 @@ async function decidePending(batch, approve) {
     deciding.value = ''
   }
 }
+
+// 删除前先看清单：整批的完整路径按页取，几百上千条也不至于一次灌进页面
+async function loadDetail(batchId, append = false) {
+  detail.loading = true
+  try {
+    const offset = append ? detail.items.length : 0
+    const data = await pluginGet(props.api, '/strm/sweep/pending', { batch_id: batchId, offset, limit: 200 })
+    const page = data?.data || data
+    detail.id = batchId
+    detail.total = Number(page?.total || 0)
+    detail.items = append ? detail.items.concat(page?.items || []) : (page?.items || [])
+  } catch (error) {
+    notice.error(error?.message || '清单读取失败')
+    detail.items = []
+  } finally {
+    detail.loading = false
+  }
+}
+
+async function toggleDetail(batch) {
+  if (expanded.value === batch.id) {
+    expanded.value = ''
+    return
+  }
+  expanded.value = batch.id
+  await loadDetail(batch.id)
+}
+
+const pendingTotal = computed(() =>
+  pendingDeletes.value.reduce((sum, batch) => sum + Number(batch.count || 0), 0),
+)
+const pendingIds = computed(() => pendingDeletes.value.map(batch => batch.id))
 
 function seconds(ms) {
   const value = Number(ms)
@@ -224,36 +260,73 @@ onMounted(refresh)
           <div>
             <h3 class="p115-section-title">待确认删除</h3>
             <p class="p115-hint p115-hint--warn">
-              这几批待删数量超过了阈值，确认后才会真的删 115 上的文件（进回收站，可人工还原）。
+              {{ pendingDeletes.length }} 批 · 共 {{ pendingTotal }} 个媒体。每批都要单独过一眼，
+              确认后才会真的删 115 上的文件（进回收站，可人工还原）。
             </p>
+          </div>
+          <div v-if="pendingDeletes.length > 1" class="pend__acts">
+            <v-btn variant="text" size="small" :disabled="Boolean(deciding)" @click="decidePending(pendingIds, false)">
+              全部忽略
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              size="small"
+              color="warning"
+              :loading="deciding === 'all'"
+              :disabled="Boolean(deciding) || workingNow"
+              @click="decidePending(pendingIds, true)"
+            >
+              全部确认
+            </v-btn>
           </div>
         </div>
         <div class="p115-panel__body">
-          <div v-for="batch in pendingDeletes" :key="batch.id" class="pend">
-            <div class="pend__text">
-              <span class="pend__mapping">{{ batch.mapping }}</span>
-              <span class="pend__count p115-mono">{{ batch.count }} 个媒体</span>
-              <span v-if="batch.updated_at" class="pend__when p115-mono">{{ batch.updated_at }}</span>
+          <div v-for="batch in pendingDeletes" :key="batch.id" class="pend-row">
+            <div class="pend">
+              <div class="pend__text">
+                <span class="pend__mapping">{{ batch.mapping }}</span>
+                <span class="pend__count p115-mono">{{ batch.count }} 个媒体</span>
+                <span v-if="batch.created_at" class="pend__when p115-mono">{{ batch.created_at }}</span>
+                <span v-if="batch.items_truncated" class="pend__when">（清单已截断）</span>
+              </div>
+              <div class="pend__acts">
+                <v-btn
+                  variant="text"
+                  size="small"
+                  :append-icon="expanded === batch.id ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleDetail(batch)"
+                >
+                  查看清单
+                </v-btn>
+                <v-btn variant="text" size="small" :disabled="Boolean(deciding)" @click="decidePending(batch.id, false)">
+                  忽略
+                </v-btn>
+                <v-btn
+                  variant="outlined"
+                  size="small"
+                  color="warning"
+                  :loading="deciding === batch.id"
+                  :disabled="Boolean(deciding) || workingNow"
+                  @click="decidePending(batch.id, true)"
+                >
+                  确认删除
+                </v-btn>
+              </div>
             </div>
-            <div class="pend__acts">
-              <v-btn
-                variant="text"
-                size="small"
-                :disabled="Boolean(deciding)"
-                @click="decidePending(batch, false)"
-              >
-                忽略
-              </v-btn>
-              <v-btn
-                variant="outlined"
-                size="small"
-                color="warning"
-                :loading="deciding === batch.id"
-                :disabled="Boolean(deciding) || workingNow"
-                @click="decidePending(batch, true)"
-              >
-                确认删除
-              </v-btn>
+            <div v-if="expanded === batch.id" class="pend-list">
+              <p v-if="detail.loading && !detail.items.length" class="p115-hint">读取清单中…</p>
+              <template v-else>
+                <div v-for="item in detail.items" :key="item.path" class="pend-list__row p115-mono">
+                  {{ item.cloud_path || item.path }}
+                </div>
+                <p v-if="!detail.items.length" class="p115-hint">清单为空。</p>
+                <div v-if="detail.items.length < detail.total" class="pend-list__more">
+                  <span class="p115-hint">已显示 {{ detail.items.length }} / {{ detail.total }}</span>
+                  <v-btn variant="text" size="small" :loading="detail.loading" @click="loadDetail(batch.id, true)">
+                    加载更多
+                  </v-btn>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -497,8 +570,33 @@ onMounted(refresh)
   padding: 10px 0;
 }
 
-.pend + .pend {
+.pend-row + .pend-row {
   border-top: 1px solid var(--p115-hairline);
+}
+
+// 完整清单：等宽、可滚，几百条也不至于把页面撑爆
+.pend-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--p115-radius);
+  background: var(--p115-well);
+}
+
+.pend-list__row {
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--p115-muted);
+  word-break: break-all;
+}
+
+.pend-list__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .pend__text {

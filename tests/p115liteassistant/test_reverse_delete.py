@@ -14,6 +14,7 @@ from app.plugins.p115liteassistant.reverse_delete import (
     ACTION_PENDING,
     ACTION_SKIPPED,
     DEFAULT_CONFIRM_THRESHOLD,
+    STRM_DELETE_PENDING_MAX_BATCHES,
     ReverseDeleter,
     associated_media_name,
     is_protected_cloud_dir,
@@ -641,17 +642,38 @@ class ConfirmQueueTest(unittest.TestCase):
             self.assertEqual(client.deleted, [])
             self.assertEqual(len(store.strm_records), 5)
 
-    def test_successful_sweep_clears_stale_pending_batch(self):
+    def test_small_delete_never_touches_pending_batches(self):
+        """小批次的直接删除既不作废别人的批次，也不许碰批次里的文件。"""
         with TemporaryDirectory() as directory:
-            records, listing = self._many(directory, 2)
+            records, listing = self._many(directory, 3)
+            held_key = "movies:Film/Gone02.mkv"
+            held = records[held_key]
             store = FakeStore({"strm_delete_confirm_threshold": 5}, records=records)
-            store.pending = {"deadbeef": {"id": "deadbeef", "mapping_id": "movies", "count": 9, "items": []}}
+            store.pending = {
+                "deadbeef": {
+                    "id": "deadbeef", "mapping_id": "movies", "count": 1,
+                    "created_at": "2026-09-01T00:00:00",
+                    # 队列里存的是 decide() 归一化后的路径（与生产一致）
+                    "items": [{"record_key": held_key,
+                               "path": str(Path(held["path"]).resolve()),
+                               "cloud_path": held["cloud_path"], "file_id": held["file_id"],
+                               "parent_id": held["parent_id"], "name": held["name"]}],
+                }
+            }
             client = FakeClient(listings={MEDIA_DIR_ID: listing})
 
             entry = self._deleter(store, client).sweep(mapping_for(directory))
 
             self.assertEqual(entry["action"], ACTION_DELETE)
-            self.assertEqual(store.pending, {})
+            # 只删了不在队列里的那两个
+            self.assertEqual(entry["cloud_deleted"], 2)
+            self.assertEqual(entry["queued"], 1)
+            self.assertNotIn(held["file_id"], client.deleted)
+            self.assertEqual(sorted(client.deleted), ["8100", "8101"])
+            # 批次原样留着，队列里的记录也不许被清
+            self.assertIn("deadbeef", store.pending)
+            self.assertEqual(store.pending["deadbeef"]["count"], 1)
+            self.assertIn(held_key, store.strm_records)
 
     def test_switch_off_does_nothing(self):
         with TemporaryDirectory() as directory:
@@ -918,3 +940,153 @@ class StaleListingCascadeTest(unittest.TestCase):
             self.assertEqual(entry["cloud_dirs_deleted"], 1)
             self.assertNotIn("7200", client.deleted)
             self.assertNotIn("8500", client.deleted)
+
+
+class IndependentBatchTest(unittest.TestCase):
+    """B 方案：每次超阈值的新发现独立成一张批次，互不覆盖。"""
+
+    @staticmethod
+    def _deleter(store, client):
+        return ReverseDeleter(lambda: client, store, sleeper=lambda _s: None)
+
+    def _fixture(self, directory, missing, present=6):
+        """造 missing 个缺失 + present 个还在的，缺失比例压在熔断线以下。"""
+        anchor_strm(directory)
+        records, listing = {}, []
+        for index in range(missing):
+            key, record = media_record(directory, f"Gone{index:02d}", f"81{index:02d}")
+            records[key] = record
+            listing.append(cloud_file(f"81{index:02d}", f"Gone{index:02d}.mkv"))
+        for index in range(present):
+            key, record = media_record(directory, f"Keep{index}", f"82{index}", exists=True)
+            records[key] = record
+            listing.append(cloud_file(f"82{index}", f"Keep{index}.mkv"))
+        return records, listing
+
+    def _restore(self, directory, stem):
+        out = Path(directory) / "Film" / f"{stem}.strm"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("restored\n", encoding="utf-8")
+
+    def _drop_local(self, directory, stem):
+        (Path(directory) / "Film" / f"{stem}.strm").unlink(missing_ok=True)
+
+    def test_second_discovery_creates_a_separate_batch(self):
+        with TemporaryDirectory() as directory:
+            records, listing = self._fixture(directory, 4)
+            store = FakeStore({"strm_delete_confirm_threshold": 3}, records=records)
+            client = FakeClient(listings={MEDIA_DIR_ID: listing})
+            deleter = self._deleter(store, client)
+            mapping = mapping_for(directory)
+
+            first = deleter.sweep(mapping)
+            self.assertEqual(first["action"], ACTION_PENDING)
+            self.assertEqual(first["pending"], 4)
+            self.assertEqual(len(store.pending), 1)
+
+            # 又删了两个本地 STRM：原来那 4 个还在等确认，这 2 个要单独成一张
+            for index in (0, 1):
+                key, record = media_record(directory, f"New{index}", f"83{index}")
+                store.strm_records[key] = record
+                client.listings[MEDIA_DIR_ID].append(cloud_file(f"83{index}", f"New{index}.mkv"))
+
+            second = deleter.sweep(mapping)
+
+            self.assertEqual(second["action"], ACTION_PENDING)
+            self.assertEqual(second["pending"], 2)      # 只装新增的
+            self.assertEqual(second["queued"], 4)       # 老的 4 个仍在队列里
+            self.assertEqual(len(store.pending), 2)
+            counts = sorted(b["count"] for b in store.pending.values())
+            self.assertEqual(counts, [2, 4])
+            self.assertEqual(client.deleted, [])
+            # 两张卡片覆盖的路径不重叠
+            covered = [
+                item["path"] for b in store.pending.values() for item in b["items"]
+            ]
+            self.assertEqual(len(covered), len(set(covered)))
+
+    def test_same_discovery_twice_does_not_pile_up(self):
+        """同一批文件反复被巡检发现，不该不停生成内容重复的卡片。"""
+        with TemporaryDirectory() as directory:
+            records, listing = self._fixture(directory, 4)
+            store = FakeStore({"strm_delete_confirm_threshold": 3}, records=records)
+            client = FakeClient(listings={MEDIA_DIR_ID: listing})
+            deleter = self._deleter(store, client)
+            mapping = mapping_for(directory)
+
+            deleter.sweep(mapping)
+            batch_id = next(iter(store.pending))
+            again = deleter.sweep(mapping)
+
+            self.assertEqual(again["action"], ACTION_SKIPPED)
+            self.assertEqual(again["queued"], 4)
+            self.assertIn("等人工处理", again["reason"])
+            self.assertEqual(list(store.pending), [batch_id])
+            self.assertEqual(client.deleted, [])
+
+    def test_restored_files_are_pruned_from_the_batch(self):
+        """用户把文件放回去了，队列里对应的条目要自动剔掉。"""
+        with TemporaryDirectory() as directory:
+            records, listing = self._fixture(directory, 4)
+            store = FakeStore({"strm_delete_confirm_threshold": 3}, records=records)
+            client = FakeClient(listings={MEDIA_DIR_ID: listing})
+            deleter = self._deleter(store, client)
+            mapping = mapping_for(directory)
+
+            deleter.sweep(mapping)
+            self.assertEqual(next(iter(store.pending.values()))["count"], 4)
+
+            for stem in ("Gone00", "Gone01", "Gone02"):
+                self._restore(directory, stem)
+            deleter.sweep(mapping)
+
+            batch = next(iter(store.pending.values()))
+            self.assertEqual(batch["count"], 1)
+            self.assertEqual(client.deleted, [])
+
+    def test_batch_is_revoked_when_every_item_is_restored(self):
+        with TemporaryDirectory() as directory:
+            records, listing = self._fixture(directory, 4)
+            store = FakeStore({"strm_delete_confirm_threshold": 3}, records=records)
+            client = FakeClient(listings={MEDIA_DIR_ID: listing})
+            deleter = self._deleter(store, client)
+            mapping = mapping_for(directory)
+
+            deleter.sweep(mapping)
+            for index in range(4):
+                self._restore(directory, f"Gone{index:02d}")
+            deleter.sweep(mapping)
+
+            self.assertEqual(store.pending, {})
+            self.assertEqual(client.deleted, [])
+
+    def test_batches_merge_into_oldest_once_capped(self):
+        """批次攒到上限还没人处理，新增的并进最旧那张，不丢也不无限涨。"""
+        with TemporaryDirectory() as directory:
+            records, listing = self._fixture(directory, 2, present=30)
+            store = FakeStore({"strm_delete_confirm_threshold": 1}, records=records)
+            client = FakeClient(listings={MEDIA_DIR_ID: listing})
+            deleter = self._deleter(store, client)
+            mapping = mapping_for(directory)
+
+            deleter.sweep(mapping)                      # 第 1 张：2 个
+            oldest_id = next(iter(store.pending))
+            oldest_created = store.pending[oldest_id]["created_at"]
+
+            # 再制造 MAX_BATCHES 轮新增，最后一轮必须并入最旧那张
+            for round_index in range(STRM_DELETE_PENDING_MAX_BATCHES):
+                key, record = media_record(directory, f"Extra{round_index:02d}", f"84{round_index:02d}")
+                store.strm_records[key] = record
+                client.listings[MEDIA_DIR_ID].append(
+                    cloud_file(f"84{round_index:02d}", f"Extra{round_index:02d}.mkv")
+                )
+                deleter.sweep(mapping)
+
+            self.assertEqual(len(store.pending), STRM_DELETE_PENDING_MAX_BATCHES)
+            merged = store.pending[oldest_id]
+            self.assertEqual(merged["created_at"], oldest_created)
+            self.assertGreater(merged["count"], 2)
+            # 一个文件都没丢：队列覆盖的路径数 = 全部缺失数
+            covered = {item["path"] for b in store.pending.values() for item in b["items"]}
+            self.assertEqual(len(covered), 2 + STRM_DELETE_PENDING_MAX_BATCHES)
+            self.assertEqual(client.deleted, [])

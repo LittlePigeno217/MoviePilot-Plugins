@@ -51,6 +51,9 @@ DEFAULT_CONFIRM_THRESHOLD = 20
 #: 待确认批次的保留天数与单批明细上限。
 STRM_DELETE_PENDING_TTL_DAYS = 7
 STRM_DELETE_PENDING_MAX_ITEMS = 2000
+#: 待确认批次的数量上限。每次超阈值的新发现都独立成一张，方便逐批审查；
+#: 攒到这个数还没人处理，新发现就并进最旧的那一张，免得队列无上限增长。
+STRM_DELETE_PENDING_MAX_BATCHES = 20
 #: 刚删过的 pickcode 记多久：115 列表接口有延迟，紧接着的正向同步可能还看得到
 #: 已删的文件，照着它重建就等于把用户删掉的 STRM 又写回去。
 RECENT_DELETE_TTL = 600.0
@@ -200,6 +203,7 @@ class SweepDecision(NamedTuple):
         parent_id, name}``；``file_id`` 在判定阶段可能为空，由执行阶段反查。
     :param total_records: 本映射的媒体记录总数。
     :param missing_total: **全集**缺失数 —— 熔断依据，不受 ``only_paths`` 收窄影响。
+    :param queued_total: 本轮缺失里已经挂在待确认队列上的个数，它们只能经确认删除。
     """
 
     action: str
@@ -207,6 +211,7 @@ class SweepDecision(NamedTuple):
     targets: tuple[Dict[str, Any], ...] = ()
     total_records: int = 0
     missing_total: int = 0
+    queued_total: int = 0
 
 
 class ReverseDeleter:
@@ -409,22 +414,52 @@ class ReverseDeleter:
                     ACTION_SKIPPED, "", total_records=total, missing_total=missing_total
                 )
 
-        # 闸门 6：分级确认。小批量直接删，超阈值先拦人。
-        threshold = normalize_confirm_threshold(config.get("strm_delete_confirm_threshold"))
-        if not bypass_confirm and threshold and len(missing) > threshold:
+        # 确认执行的那一轮只认传进来的路径：批次早在 confirm 时取走了，不必再看队列
+        if bypass_confirm:
             return SweepDecision(
-                ACTION_PENDING,
-                f"本轮待删 {len(missing)} 个媒体，超过确认阈值 {threshold}，已转入待确认队列",
+                ACTION_DELETE,
+                "",
                 targets=tuple(missing),
                 total_records=total,
                 missing_total=missing_total,
             )
+
+        # 闸门 6：已经挂在待确认队列上的，本轮一律不碰 —— 它们只能经人工确认删除。
+        # 不做这一步的话，阈值只看「本轮范围内有几个」，队列里的文件被单独上报一次就
+        # 会绕过确认被直接删掉。
+        covered = self.pending_paths(mapping)
+        queued = [target for target in missing if str(target.get("path")) in covered]
+        fresh = [target for target in missing if str(target.get("path")) not in covered]
+        if not fresh:
+            return SweepDecision(
+                ACTION_SKIPPED,
+                f"{len(queued)} 个待删媒体已在待确认队列里，等人工处理",
+                total_records=total,
+                missing_total=missing_total,
+                queued_total=len(queued),
+            )
+
+        # 闸门 7：分级确认。判定用「当前待删总量」而不是本轮新增量 —— 队列里已经积了
+        # 一堆没处理，新冒出来的那几个也该继续走审查，而不是因为「这次只有 3 个」就直接删。
+        threshold = normalize_confirm_threshold(config.get("strm_delete_confirm_threshold"))
+        if threshold and len(missing) > threshold:
+            detail = f"（其中 {len(queued)} 个已在队列里）" if queued else ""
+            return SweepDecision(
+                ACTION_PENDING,
+                f"待删媒体 {len(missing)} 个{detail}，超过确认阈值 {threshold}，"
+                f"新增 {len(fresh)} 个已转入待确认队列",
+                targets=tuple(fresh),
+                total_records=total,
+                missing_total=missing_total,
+                queued_total=len(queued),
+            )
         return SweepDecision(
             ACTION_DELETE,
             "",
-            targets=tuple(missing),
+            targets=tuple(fresh),
             total_records=total,
             missing_total=missing_total,
+            queued_total=len(queued),
         )
 
     # ---- 执行阶段：这里才碰 115 ----
@@ -961,54 +996,129 @@ class ReverseDeleter:
     def mapping_label(mapping: Dict[str, Any]) -> str:
         return str(mapping.get("source_path") or mapping.get("source_cid") or "-")
 
-    def _enqueue_pending(self, mapping: Dict[str, Any], decision: SweepDecision) -> str:
-        """把超量的待删清单写进待确认队列，返回批次 ID。
+    def _mapping_batches(
+        self,
+        mapping: Dict[str, Any],
+        batches: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> list[Dict[str, Any]]:
+        """本映射的待确认批次，按首次发现时间从旧到新。"""
+        mapping_id, _media_prefix, _sidecar_prefix = self.mapping_prefixes(mapping)
+        source = batches if batches is not None else self._store.get_strm_delete_pending()
+        mine = [
+            batch
+            for batch in source.values()
+            if isinstance(batch, dict) and str(batch.get("mapping_id")) == mapping_id
+        ]
+        mine.sort(key=lambda batch: str(batch.get("created_at") or ""))
+        return mine
 
-        同一个映射只保留一个批次，新的整体替换旧的 —— 待删集合是「当前缺失快照」，
-        重算比追加更准（用户可能又把文件放回去了）。``created_at`` 与批次 ID 都保留，
-        运行台上已经渲染出来的确认按钮不会失效。
+    def pending_paths(self, mapping: Dict[str, Any]) -> set[str]:
+        """本映射所有待确认批次覆盖的本地路径。这些路径只能经人工确认删除。"""
+        covered: set[str] = set()
+        for batch in self._mapping_batches(mapping):
+            for item in batch.get("items") or []:
+                if isinstance(item, dict) and item.get("path"):
+                    covered.add(str(item["path"]))
+        return covered
+
+    def _enqueue_pending(self, mapping: Dict[str, Any], decision: SweepDecision) -> str:
+        """把本轮**新增**的待删清单单独存成一张批次，返回批次 ID。
+
+        每次超阈值的新发现都是独立一张，方便逐批审查、逐批决定留删；已经挂在别的批次上的
+        路径不会再进来（:meth:`decide` 已经把它们剔掉了），所以同一个文件不会同时出现在
+        两张卡片上。批次攒到 :data:`STRM_DELETE_PENDING_MAX_BATCHES` 还没人处理，新增的
+        就并进最旧的那一张 —— 宁可让最旧那张变长，也不丢东西、不让队列无上限增长。
         """
         mapping_id, _media_prefix, _sidecar_prefix = self.mapping_prefixes(mapping)
         batches = self._store.get_strm_delete_pending()
-        existing = next(
-            (
-                batch
-                for batch in batches.values()
-                if isinstance(batch, dict) and str(batch.get("mapping_id")) == mapping_id
-            ),
-            None,
-        )
+        mine = self._mapping_batches(mapping, batches)
         now = datetime.now().isoformat(timespec="seconds")
-        batch_id = str((existing or {}).get("id") or "") or token_hex(8)
-        items = list(decision.targets[:STRM_DELETE_PENDING_MAX_ITEMS])
-        batch = {
+        incoming = list(decision.targets)
+
+        if len(mine) >= STRM_DELETE_PENDING_MAX_BATCHES:
+            oldest = mine[0]
+            batch_id = str(oldest.get("id") or "") or token_hex(8)
+            known = {
+                str(item.get("path"))
+                for item in (oldest.get("items") or [])
+                if isinstance(item, dict)
+            }
+            merged = list(oldest.get("items") or []) + [
+                item for item in incoming if str(item.get("path")) not in known
+            ]
+            created_at = str(oldest.get("created_at") or now)
+            logger.warning(
+                f"{LOG_TAG}待确认批次已达上限 {STRM_DELETE_PENDING_MAX_BATCHES} 张，"
+                f"本轮新增 {len(incoming)} 个并入最旧的批次 {batch_id}"
+            )
+        else:
+            batch_id = token_hex(8)
+            merged = incoming
+            created_at = now
+
+        items = merged[:STRM_DELETE_PENDING_MAX_ITEMS]
+        batches[batch_id] = {
             "id": batch_id,
             "mapping_id": mapping_id,
             "mapping": self.mapping_label(mapping),
-            "created_at": str((existing or {}).get("created_at") or now),
+            "created_at": created_at,
             "updated_at": now,
             "reason": decision.reason,
-            "count": len(decision.targets),
-            "items_truncated": len(decision.targets) > len(items),
+            "count": len(merged),
+            "items_truncated": len(merged) > len(items),
             "items": items,
         }
-        if existing:
-            batches.pop(str(existing.get("id") or ""), None)
-        batches[batch_id] = batch
         self._store.save_strm_delete_pending(batches)
         return batch_id
 
-    def _clear_pending(self, mapping: Dict[str, Any]) -> None:
-        """本映射已经按正常流程处理完，清掉它遗留的待确认批次。"""
-        mapping_id, _media_prefix, _sidecar_prefix = self.mapping_prefixes(mapping)
+    def _prune_pending(
+        self,
+        mapping: Dict[str, Any],
+        records: Dict[str, Any],
+    ) -> int:
+        """剔掉待确认批次里已经不成立的条目，剔空的批次整张删掉。
+
+        「不成立」有两种：本地 STRM 又被放回来了（用户改主意），或者对应记录已经不在了
+        （云端文件早就没了、或者被别的流程清理过）。只在全量轮次做 —— 范围收窄的轮次看不到
+        全局，没资格判定别的批次里的条目是死是活。
+        """
         batches = self._store.get_strm_delete_pending()
-        remaining = {
-            key: batch
-            for key, batch in batches.items()
-            if not (isinstance(batch, dict) and str(batch.get("mapping_id")) == mapping_id)
-        }
-        if len(remaining) != len(batches):
-            self._store.save_strm_delete_pending(remaining)
+        mine = self._mapping_batches(mapping, batches)
+        if not mine:
+            return 0
+        dropped = 0
+        for batch in mine:
+            kept = []
+            for item in batch.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                record_key = str(item.get("record_key") or "")
+                path = str(item.get("path") or "")
+                if record_key and record_key not in records:
+                    dropped += 1
+                    continue
+                try:
+                    if path and Path(path).exists():
+                        dropped += 1
+                        continue
+                except OSError:
+                    pass
+                kept.append(item)
+            batch_id = str(batch.get("id") or "")
+            if not kept:
+                batches.pop(batch_id, None)
+                logger.info(f"{LOG_TAG}待确认批次 {batch_id} 的条目已全部失效，撤销该批次")
+                continue
+            if len(kept) != len(batch.get("items") or []):
+                batch["items"] = kept
+                batch["count"] = len(kept)
+                batch["items_truncated"] = False
+                batch["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                batches[batch_id] = batch
+        if dropped:
+            logger.info(f"{LOG_TAG}待确认队列里 {dropped} 个条目已不成立（本地已恢复或记录已清），已剔除")
+            self._store.save_strm_delete_pending(batches)
+        return dropped
 
     def sweep(
         self,
@@ -1036,6 +1146,9 @@ class ReverseDeleter:
         label = self.mapping_label(mapping)
         records = self._store.get_strm_records()
         before = self._records_signature(records)
+        if only_paths is None and not bypass_confirm:
+            # 只有全量轮次看得到全局，才有资格判定别的批次里的条目是死是活
+            self._prune_pending(mapping, records)
         decision = self.decide(mapping, records, only_paths, bypass_confirm=bypass_confirm)
 
         pending_count = 0
@@ -1044,7 +1157,10 @@ class ReverseDeleter:
             pending_count = len(decision.targets)
             logger.warning(f"{LOG_TAG}{label}：{decision.reason}（批次 {batch_id}）")
         elif decision.action == ACTION_SKIPPED:
-            if decision.reason:
+            if decision.queued_total:
+                # 全都在等确认，不是异常
+                logger.info(f"{LOG_TAG}{label}：{decision.reason}")
+            elif decision.reason:
                 logger.error(f"{LOG_TAG}{label}：{decision.reason}")
         else:
             logger.info(f"{LOG_TAG}{label}：{len(decision.targets)} 个本地 STRM 已删除，开始清理云端")
@@ -1056,7 +1172,6 @@ class ReverseDeleter:
                 if self._records_signature(records) != before:
                     self._store.save_strm_records(records)
                     before = self._records_signature(records)
-            self._clear_pending(mapping)
 
         if self._records_signature(records) != before:
             self._store.save_strm_records(records)
@@ -1073,6 +1188,7 @@ class ReverseDeleter:
             "action": decision.action,
             "reason": decision.reason,
             "pending": pending_count,
+            "queued": decision.queued_total,
             **counts,
             "duration_ms": int((monotonic() - started) * 1000),
         }

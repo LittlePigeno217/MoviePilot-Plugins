@@ -649,6 +649,7 @@ class Api:
         "records_dropped",
         "errors",
         "pending",
+        "queued",
     )
 
     @classmethod
@@ -732,9 +733,10 @@ class Api:
                 break
         summary = (
             f"云端删除 {totals['cloud_deleted']}，刮削 {totals['scrapes_deleted']}，"
-            f"空目录 {totals['cloud_dirs_deleted']}，待确认 {totals['pending']}，"
-            f"云端已无 {totals['already_gone']}，溯源缺失 {totals['unidentified']}，"
-            f"失败 {totals['errors']}，耗时 {totals['duration_ms']}ms"
+            f"空目录 {totals['cloud_dirs_deleted']}，新入队 {totals['pending']}，"
+            f"队列中等待 {totals['queued']}，云端已无 {totals['already_gone']}，"
+            f"溯源缺失 {totals['unidentified']}，失败 {totals['errors']}，"
+            f"耗时 {totals['duration_ms']}ms"
         )
         log_total = logger.warning if totals["errors"] else logger.info
         log_total(f"【STRM反向删除】执行完成，{summary}")
@@ -775,12 +777,53 @@ class Api:
                 lines.append(f"  📁 {entry.get('mapping') or '-'}  ·  {reason}")
         self._notifier.notify("strm", headline, lines)
 
-    def strm_delete_pending(self) -> Dict[str, Any]:
-        """待确认删除批次列表。明细可能上千条，这里只回摘要 + 少量样本路径。"""
+    _PENDING_PAGE_LIMIT = 200
+
+    def strm_delete_pending(
+        self,
+        batch_id: str = "",
+        offset: int = 0,
+        limit: int = 0,
+    ) -> Dict[str, Any]:
+        """待确认删除批次。
+
+        不带 ``batch_id`` 时返回各批次摘要 + 少量样本路径，够运行台画卡片；带 ``batch_id``
+        时返回**那一批的完整清单**（分页），删除前该看的就是这个。
+        """
         batches = self._store.get_strm_delete_pending()
+        if batch_id:
+            batch = batches.get(str(batch_id))
+            if not isinstance(batch, dict):
+                return _error("批次不存在或已处理")
+            items = [item for item in (batch.get("items") or []) if isinstance(item, dict)]
+            page_limit = max(1, int(limit or self._PENDING_PAGE_LIMIT))
+            page_offset = max(0, int(offset or 0))
+            window = items[page_offset : page_offset + page_limit]
+            return _ok(
+                {
+                    "id": str(batch.get("id") or ""),
+                    "mapping": str(batch.get("mapping") or "-"),
+                    "count": int(batch.get("count") or 0),
+                    "created_at": str(batch.get("created_at") or ""),
+                    "updated_at": str(batch.get("updated_at") or ""),
+                    "reason": str(batch.get("reason") or ""),
+                    "items_truncated": bool(batch.get("items_truncated")),
+                    "offset": page_offset,
+                    "limit": page_limit,
+                    "total": len(items),
+                    "items": [
+                        {
+                            "path": str(item.get("path") or ""),
+                            "cloud_path": str(item.get("cloud_path") or ""),
+                            "name": str(item.get("name") or ""),
+                        }
+                        for item in window
+                    ],
+                }
+            )
         ordered = sorted(
             (batch for batch in batches.values() if isinstance(batch, dict)),
-            key=lambda batch: str(batch.get("updated_at") or batch.get("created_at") or ""),
+            key=lambda batch: str(batch.get("created_at") or ""),
             reverse=True,
         )
         summary = [
@@ -802,49 +845,85 @@ class Api:
         ]
         return _ok({"batches": summary})
 
+    @staticmethod
+    def _requested_batch_ids(payload: Dict[str, Any] | None) -> list[str]:
+        """取要处理的批次 ID：单个 ``batch_id`` 或一组 ``batch_ids``（运行台的全部确认/驳回）。"""
+        payload = payload or {}
+        raw = payload.get("batch_ids")
+        if raw is None:
+            raw = [payload.get("batch_id")]
+        elif isinstance(raw, str):
+            raw = [raw]
+        result: list[str] = []
+        for value in raw or []:
+            text = str(value or "").strip()
+            if text and text not in result:
+                result.append(text)
+        return result
+
     def confirm_strm_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """确认执行一个待删批次。护栏照跑、本地存在性重新核对，只跳过规模闸门。"""
-        batch_id = str((payload or {}).get("batch_id") or "").strip()
-        if not batch_id:
+        """确认执行待删批次。护栏照跑、本地存在性重新核对，只跳过规模闸门。"""
+        batch_ids = self._requested_batch_ids(payload)
+        if not batch_ids:
             return _error("缺少批次 ID")
         if error := self._sweep_start_error():
             return _error(error)
-        batch = self._store.pop_strm_delete_batch(batch_id)
-        if batch is None:
+        taken: list[Dict[str, Any]] = []
+        for batch_id in batch_ids:
+            batch = self._store.pop_strm_delete_batch(batch_id)
+            if isinstance(batch, dict):
+                taken.append(batch)
+        if not taken:
             return _error("批次不存在或已处理")
-        paths = [
-            str(item.get("path") or "")
-            for item in (batch.get("items") or [])
-            if isinstance(item, dict) and item.get("path")
-        ]
-        mapping_id = str(batch.get("mapping_id") or "")
-        if not paths:
+        jobs: list[tuple[str, list[str]]] = []
+        for batch in taken:
+            paths = [
+                str(item.get("path") or "")
+                for item in (batch.get("items") or [])
+                if isinstance(item, dict) and item.get("path")
+            ]
+            if paths:
+                jobs.append((str(batch.get("mapping_id") or ""), paths))
+        if not jobs:
+            self._restore_batches(taken)
             return _error("批次没有可执行的明细，请等下一轮巡检重新统计")
+        total = sum(len(paths) for _mapping_id, paths in jobs)
         result = self._start(
             "sweep",
-            lambda: self.run_strm_sweep(paths, bypass_confirm=True, mapping_id=mapping_id),
-            f"已确认，开始清理 {len(paths)} 个媒体对应的 115 文件",
+            lambda: [entry for job in jobs for entry in self.run_strm_sweep(
+                job[1], bypass_confirm=True, mapping_id=job[0]
+            )],
+            f"已确认 {len(jobs)} 个批次，开始清理 {total} 个媒体对应的 115 文件",
         )
         if not result.get("success"):
             # 起不来就把批次放回去 —— 用户点了一次不能就这么丢了
-            batches = self._store.get_strm_delete_pending()
-            batches[batch_id] = batch
-            self._store.save_strm_delete_pending(batches)
+            self._restore_batches(taken)
         return result
 
+    def _restore_batches(self, taken: list[Dict[str, Any]]) -> None:
+        batches = self._store.get_strm_delete_pending()
+        for batch in taken:
+            batches[str(batch.get("id") or "")] = batch
+        self._store.save_strm_delete_pending(batches)
+
     def dismiss_strm_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """驳回一个待删批次：只丢批次，115 云端一个文件都不动。"""
-        batch_id = str((payload or {}).get("batch_id") or "").strip()
-        if not batch_id:
+        """驳回待删批次：只丢批次，115 云端一个文件都不动。"""
+        batch_ids = self._requested_batch_ids(payload)
+        if not batch_ids:
             return _error("缺少批次 ID")
-        batch = self._store.pop_strm_delete_batch(batch_id)
-        if batch is None:
+        dropped = 0
+        for batch_id in batch_ids:
+            batch = self._store.pop_strm_delete_batch(batch_id)
+            if not isinstance(batch, dict):
+                continue
+            dropped += 1
+            logger.info(
+                f"【STRM反向删除】用户驳回待确认批次 {batch_id}"
+                f"（{int(batch.get('count') or 0)} 个），115 云端文件保持不动"
+            )
+        if not dropped:
             return _error("批次不存在或已处理")
-        logger.info(
-            f"【STRM反向删除】用户驳回待确认批次 {batch_id}"
-            f"（{int(batch.get('count') or 0)} 个），115 云端文件保持不动"
-        )
-        return _ok(message="已忽略该批次，115 云端文件保持不动")
+        return _ok(message=f"已忽略 {dropped} 个批次，115 云端文件保持不动")
 
     def _notify_strm(
         self,

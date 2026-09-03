@@ -796,3 +796,112 @@ class ServiceRegistrationTest(unittest.TestCase):
         self.assertIn(("/strm/sweep/pending", ("GET",)), paths)
         self.assertIn(("/strm/sweep/confirm", ("POST",)), paths)
         self.assertIn(("/strm/sweep/dismiss", ("POST",)), paths)
+
+
+class PendingReviewApiTest(unittest.TestCase):
+    """待确认批次的审查接口：完整清单、批量确认、批量驳回。"""
+
+    class ReviewStore(SweepOrchestrationTest.SweepStore):
+        pass
+
+    def _api(self, directory, batches):
+        api = Api(FakeClient, self.ReviewStore(directory))
+        api._store.pending = batches
+        return api
+
+    @staticmethod
+    def _batch(batch_id, count, created):
+        return {
+            "id": batch_id,
+            "mapping_id": "movies",
+            "mapping": "/影视",
+            "created_at": created,
+            "updated_at": created,
+            "reason": "超过阈值",
+            "count": count,
+            "items_truncated": False,
+            "items": [
+                {
+                    "record_key": f"movies:S/{batch_id}{i}.mkv",
+                    "path": f"/media/Strm/{batch_id}{i}.strm",
+                    "cloud_path": f"/影视/{batch_id}{i}.mkv",
+                    "name": f"{batch_id}{i}.mkv",
+                }
+                for i in range(count)
+            ],
+        }
+
+    def test_summary_lists_batches_newest_first(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory, {
+                "aaa": self._batch("aaa", 2, "2026-09-01T00:00:00"),
+                "bbb": self._batch("bbb", 3, "2026-09-02T00:00:00"),
+            })
+
+            batches = api.strm_delete_pending()["data"]["batches"]
+
+            self.assertEqual([b["id"] for b in batches], ["bbb", "aaa"])
+            self.assertEqual([b["count"] for b in batches], [3, 2])
+            self.assertEqual(len(batches[0]["samples"]), 3)
+
+    def test_single_batch_returns_full_list_with_paging(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory, {"aaa": self._batch("aaa", 5, "2026-09-01T00:00:00")})
+
+            page = api.strm_delete_pending(batch_id="aaa", offset=0, limit=2)["data"]
+            self.assertEqual(page["total"], 5)
+            self.assertEqual(len(page["items"]), 2)
+            self.assertEqual(page["items"][0]["path"], "/media/Strm/aaa0.strm")
+            self.assertIn("cloud_path", page["items"][0])
+
+            tail = api.strm_delete_pending(batch_id="aaa", offset=4, limit=2)["data"]
+            self.assertEqual(len(tail["items"]), 1)
+            self.assertEqual(tail["items"][0]["name"], "aaa4.mkv")
+
+    def test_unknown_batch_id_is_rejected(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory, {})
+
+            self.assertFalse(api.strm_delete_pending(batch_id="nope")["success"])
+
+    def test_dismiss_accepts_multiple_batches(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory, {
+                "aaa": self._batch("aaa", 2, "2026-09-01T00:00:00"),
+                "bbb": self._batch("bbb", 3, "2026-09-02T00:00:00"),
+            })
+
+            result = api.dismiss_strm_delete({"batch_ids": ["aaa", "bbb"]})
+
+            self.assertTrue(result["success"])
+            self.assertIn("2 个批次", result["message"])
+            self.assertEqual(api._store.pending, {})
+
+    def test_confirm_restores_every_batch_when_task_cannot_start(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory, {
+                "aaa": self._batch("aaa", 2, "2026-09-01T00:00:00"),
+                "bbb": self._batch("bbb", 3, "2026-09-02T00:00:00"),
+            })
+            api._cloud_task_lock.acquire()
+            try:
+                result = api.confirm_strm_delete({"batch_ids": ["aaa", "bbb"]})
+            finally:
+                api._cloud_task_lock.release()
+
+            self.assertFalse(result["success"])
+            self.assertEqual(sorted(api._store.pending), ["aaa", "bbb"])
+
+    def test_confirm_reports_how_many_batches_and_files(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory, {
+                "aaa": self._batch("aaa", 2, "2026-09-01T00:00:00"),
+                "bbb": self._batch("bbb", 3, "2026-09-02T00:00:00"),
+            })
+
+            result = api.confirm_strm_delete({"batch_ids": ["aaa", "bbb"]})
+
+            self.assertTrue(result["success"])
+            self.assertIn("2 个批次", result["message"])
+            self.assertIn("5 个媒体", result["message"])
+            self.assertEqual(api._store.pending, {})
