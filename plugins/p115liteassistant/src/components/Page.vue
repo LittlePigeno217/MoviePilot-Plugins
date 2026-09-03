@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, reactive, ref } from 'vue'
+import { computed, inject, onMounted, reactive, ref, watch } from 'vue'
 import AppBar from './ui/AppBar.vue'
 import { pluginGet, pluginPost, useHostNotice } from '../plugin.js'
 import '../styles/kit.scss'
@@ -12,6 +12,14 @@ const emit = defineEmits(['switch', 'close', 'action'])
 
 const status = ref({ running: [], recent_uploads: [], history: [] })
 const busy = ref(false)
+// 第一次 /status 回来之前不知道有没有记录，所以空态不能说「还没有」。
+// ready = 问过了，failed = 问了但没答上来，两者都不该展示真空态文案。
+const ready = ref(false)
+const failed = ref(false)
+const probeNote = computed(() =>
+  failed.value ? '状态没读到。点右上角的刷新重试一次。' : '正在读取…',
+)
+const trusted = computed(() => ready.value && !failed.value)
 const local = reactive({ text: '', kind: 'info' })
 const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
   local.text = text
@@ -67,6 +75,7 @@ const services = computed(() => [
     label: '生活事件',
     value: status.value.life_monitor_running ? '监听中' : status.value.life_monitor_enabled ? '等待启动' : '未启用',
     ok: Boolean(status.value.life_monitor_running),
+    live: Boolean(status.value.life_monitor_running),
     hint: '',
   },
   {
@@ -74,6 +83,7 @@ const services = computed(() => [
     label: '云端清理',
     value: sweepValue.value,
     ok: Boolean(status.value.strm_delete_enabled),
+    live: Boolean(status.value.strm_delete_watch_running),
     hint: status.value.pending_sweep ? `${status.value.pending_sweep}排队中` : '',
   },
 ])
@@ -91,10 +101,13 @@ async function refresh() {
   busy.value = true
   try {
     status.value = await pluginGet(props.api, '/status')
+    failed.value = false
   } catch (error) {
+    failed.value = true
     notice.error(error?.message || '状态获取失败')
   } finally {
     busy.value = false
+    ready.value = true
   }
 }
 
@@ -166,6 +179,52 @@ const pendingTotal = computed(() =>
 )
 const pendingIds = computed(() => pendingDeletes.value.map(batch => batch.id))
 
+// 默认摊开第一批（等得最久的那批）。这个界面存在的意义就是让人真的看一眼清单，
+// 所以不要求先点一下「查看清单」；其余批次仍然按需展开。
+watch(pendingIds, ids => {
+  if (expanded.value && !ids.includes(expanded.value)) expanded.value = ''
+  if (!expanded.value && ids.length) toggleDetail({ id: ids[0] })
+})
+
+// 体积用等宽 + 定宽单位，好让一列数字对齐着扫
+function bytes(value) {
+  let left = Number(value) || 0
+  if (left <= 0) return ''
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let unit = 0
+  while (left >= 1024 && unit < units.length - 1) {
+    left /= 1024
+    unit += 1
+  }
+  const shown = unit === 0 || left >= 100 ? Math.round(left) : left.toFixed(1)
+  return `${shown} ${units[unit]}`
+}
+
+// 云端路径只留头尾：中间几层跟判断无关，末尾那个季目录才是「在库里的哪儿」
+function shortDir(cloudPath) {
+  const parts = String(cloudPath || '').split('/').filter(Boolean)
+  if (parts.length <= 1) return '/'
+  const dirs = parts.slice(0, -1)
+  if (dirs.length <= 2) return `/${dirs.join('/')}`
+  return `/${dirs[0]}/…/${dirs[dirs.length - 1]}`
+}
+
+// 路径分隔符不写字面反斜杠，省掉一层转义坑（宿主可能跑在 Windows 上）
+const PATH_SEPARATORS = ['/', String.fromCharCode(92)]
+
+function fileName(path) {
+  let value = String(path || '')
+  for (const separator of PATH_SEPARATORS) {
+    const cut = value.lastIndexOf(separator)
+    if (cut >= 0) value = value.slice(cut + 1)
+  }
+  return value
+}
+
+function shortTime(stamp) {
+  return String(stamp || '').replace('T', ' ').slice(5, 16)
+}
+
 function seconds(ms) {
   const value = Number(ms)
   if (!Number.isFinite(value) || value <= 0) return ''
@@ -206,6 +265,7 @@ onMounted(refresh)
     <AppBar
       view="运行台"
       :online="Boolean(status.authenticated)"
+      :probing="!trusted"
       :show-switch="show_switch"
       :busy="busy"
       show-refresh
@@ -220,20 +280,25 @@ onMounted(refresh)
     </button>
 
     <div class="run__body">
-      <div class="run__strip">
-        <div v-for="item in services" :key="item.key" class="svc" :class="{ 'svc--ok': item.ok }">
+      <div class="run__strip p115-enter">
+        <div
+          v-for="item in services"
+          :key="item.key"
+          class="svc"
+          :class="{ 'svc--ok': trusted && item.ok, 'svc--live': trusted && item.live }"
+        >
           <span class="svc__label p115-endpoint-tag">{{ item.label }}</span>
-          <span class="svc__value">{{ item.value }}</span>
-          <span v-if="item.hint" class="svc__hint">{{ item.hint }}</span>
+          <span class="svc__value">{{ ready ? item.value : '···' }}</span>
+          <span v-if="trusted && item.hint" class="svc__hint">{{ item.hint }}</span>
         </div>
       </div>
 
-      <div class="p115-panel">
+      <div class="p115-panel p115-enter p115-enter--2">
         <div class="p115-panel__head">
           <div>
             <h3 class="p115-section-title">手动跑一次</h3>
             <p class="p115-hint">
-              {{ workingNow ? `正在跑：${running.map(kind => kindNames[kind] || kind).join('、')}` : '当前空闲，按需触发。' }}
+              {{ !trusted ? probeNote : workingNow ? `正在跑：${running.map(kind => kindNames[kind] || kind).join('、')}` : '当前空闲，按需触发。' }}
             </p>
           </div>
         </div>
@@ -246,7 +311,7 @@ onMounted(refresh)
               variant="outlined"
               size="small"
               :prepend-icon="action.icon"
-              :disabled="workingNow"
+              :disabled="workingNow || !trusted"
               @click="run(action)"
             >
               {{ action.label }}
@@ -255,92 +320,105 @@ onMounted(refresh)
         </div>
       </div>
 
-      <div v-if="pendingDeletes.length" class="p115-panel p115-panel--alert">
-        <div class="p115-panel__head">
+      <!-- 待审阅：本地已消失 / 115 上仍在的对账清单。整块保持冷静，只有提交按钮是热的 -->
+      <section v-if="pendingDeletes.length" class="p115-panel pend p115-enter">
+        <header class="pend__head">
           <div>
-            <h3 class="p115-section-title">待确认删除</h3>
-            <p class="p115-hint p115-hint--warn">
-              {{ pendingDeletes.length }} 批 · 共 {{ pendingTotal }} 个媒体。每批都要单独过一眼，
-              确认后才会真的删 115 上的文件（进回收站，可人工还原）。
-            </p>
+            <span class="p115-endpoint-tag">待你审阅</span>
+            <h3 class="p115-section-title">本地已消失，115 上仍在</h3>
           </div>
           <div v-if="pendingDeletes.length > 1" class="pend__acts">
             <v-btn variant="text" size="small" :disabled="Boolean(deciding)" @click="decidePending(pendingIds, false)">
-              全部忽略
+              全部保留
             </v-btn>
             <v-btn
+              class="pend__commit"
+              color="error"
               variant="outlined"
               size="small"
-              color="warning"
               :loading="deciding === 'all'"
               :disabled="Boolean(deciding) || workingNow"
               @click="decidePending(pendingIds, true)"
             >
-              全部确认
+              全部删除 {{ pendingTotal }} 个
             </v-btn>
           </div>
-        </div>
-        <div class="p115-panel__body">
-          <div v-for="batch in pendingDeletes" :key="batch.id" class="pend-row">
-            <div class="pend">
-              <div class="pend__text">
-                <span class="pend__mapping">{{ batch.mapping }}</span>
-                <span class="pend__count p115-mono">{{ batch.count }} 个媒体</span>
-                <span v-if="batch.created_at" class="pend__when p115-mono">{{ batch.created_at }}</span>
-                <span v-if="batch.items_truncated" class="pend__when">（清单已截断）</span>
-              </div>
-              <div class="pend__acts">
-                <v-btn
-                  variant="text"
-                  size="small"
-                  :append-icon="expanded === batch.id ? 'mdi-chevron-up' : 'mdi-chevron-down'"
-                  @click="toggleDetail(batch)"
-                >
-                  查看清单
-                </v-btn>
-                <v-btn variant="text" size="small" :disabled="Boolean(deciding)" @click="decidePending(batch.id, false)">
-                  忽略
-                </v-btn>
-                <v-btn
-                  variant="outlined"
-                  size="small"
-                  color="warning"
-                  :loading="deciding === batch.id"
-                  :disabled="Boolean(deciding) || workingNow"
-                  @click="decidePending(batch.id, true)"
-                >
-                  确认删除
-                </v-btn>
+        </header>
+
+        <article v-for="batch in pendingDeletes" :key="batch.id" class="pend__batch">
+          <div class="pend__tally">
+            <span class="p115-readout">{{ batch.count }}</span>
+            <span class="pend__unit">个文件</span>
+            <span v-if="bytes(batch.total_size)" class="pend__weight p115-mono">{{ bytes(batch.total_size) }}</span>
+            <button
+              type="button"
+              class="pend__toggle"
+              :aria-expanded="expanded === batch.id ? 'true' : 'false'"
+              @click="toggleDetail(batch)"
+            >
+              {{ expanded === batch.id ? '收起清单' : '查看清单' }}
+            </button>
+          </div>
+          <p class="pend__meta p115-mono">
+            {{ batch.mapping }}<template v-if="batch.created_at"> · 发现于 {{ shortTime(batch.created_at) }}</template>
+          </p>
+
+          <div v-if="expanded === batch.id" class="pend__ledger">
+            <div class="pend__ledger-head">
+              <span>本地 STRM →</span>
+              <span>115 上的位置</span>
+              <span class="pend__bytes">体积</span>
+            </div>
+            <p v-if="detail.loading && !detail.items.length" class="pend__state">读取清单…</p>
+            <p v-else-if="!detail.items.length" class="pend__state">这批清单空了，下一轮巡检会重新统计。</p>
+            <div v-else class="pend__rows">
+              <div v-for="item in detail.items" :key="item.path" class="pend__pair">
+                <span class="pend__gone p115-mono" :title="item.path">{{ fileName(item.path) }}</span>
+                <span class="pend__where p115-mono" :title="item.cloud_path">{{ shortDir(item.cloud_path) }}</span>
+                <span class="pend__bytes p115-mono">{{ bytes(item.size) }}</span>
               </div>
             </div>
-            <div v-if="expanded === batch.id" class="pend-list">
-              <p v-if="detail.loading && !detail.items.length" class="p115-hint">读取清单中…</p>
-              <template v-else>
-                <div v-for="item in detail.items" :key="item.path" class="pend-list__row p115-mono">
-                  {{ item.cloud_path || item.path }}
-                </div>
-                <p v-if="!detail.items.length" class="p115-hint">清单为空。</p>
-                <div v-if="detail.items.length < detail.total" class="pend-list__more">
-                  <span class="p115-hint">已显示 {{ detail.items.length }} / {{ detail.total }}</span>
-                  <v-btn variant="text" size="small" :loading="detail.loading" @click="loadDetail(batch.id, true)">
-                    加载更多
-                  </v-btn>
-                </div>
-              </template>
+            <div v-if="detail.items.length && detail.items.length < detail.total" class="pend__more">
+              <span class="p115-mono">已看 {{ detail.items.length }} / {{ detail.total }}</span>
+              <v-btn variant="text" size="small" :loading="detail.loading" @click="loadDetail(batch.id, true)">
+                再看 {{ Math.min(200, detail.total - detail.items.length) }} 条
+              </v-btn>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div class="p115-panel">
+          <footer class="pend__foot">
+            <div class="pend__acts">
+              <v-btn variant="text" size="small" :disabled="Boolean(deciding)" @click="decidePending(batch.id, false)">
+                保留
+              </v-btn>
+              <v-btn
+                class="pend__commit"
+                color="error"
+                variant="flat"
+                size="small"
+                :loading="deciding === batch.id"
+                :disabled="Boolean(deciding) || workingNow"
+                @click="decidePending(batch.id, true)"
+              >
+                删除 {{ batch.count }} 个<template v-if="bytes(batch.total_size)"> · {{ bytes(batch.total_size) }}</template>
+              </v-btn>
+            </div>
+          </footer>
+        </article>
+
+        <p class="pend__note">删除后进 115 回收站，可在 115 侧还原。</p>
+      </section>
+
+      <div class="p115-panel p115-enter p115-enter--3">
         <div class="p115-panel__head">
           <div>
             <h3 class="p115-section-title">最近上传</h3>
-            <p class="p115-hint">最新 {{ visibleUploads.length }} 部，标了「秒传」的没有实际耗流量。</p>
+            <p class="p115-hint">标了「秒传」的那几部没有实际耗流量。</p>
           </div>
         </div>
         <div class="p115-panel__body">
-          <div v-if="visibleUploads.length" class="card-grid">
+          <p v-if="!trusted" class="p115-probe">{{ probeNote }}</p>
+          <div v-else-if="visibleUploads.length" class="card-grid">
             <div v-for="item in visibleUploads" :key="`${item.path}-${item.uploaded_at}`" class="card">
               <span class="card__name" :title="item.name">{{ item.name }}</span>
               <span class="card__meta">
@@ -355,15 +433,16 @@ onMounted(refresh)
         </div>
       </div>
 
-      <div class="p115-panel">
+      <div class="p115-panel p115-enter p115-enter--4">
         <div class="p115-panel__head">
           <div>
             <h3 class="p115-section-title">执行记录</h3>
-            <p class="p115-hint">最近 {{ visibleHistory.length }} 条，最新的在最上面。</p>
+            <p class="p115-hint">最新的在最上面，只留最近几条。</p>
           </div>
         </div>
         <div class="p115-panel__body">
-          <div v-if="visibleHistory.length" class="log-grid">
+          <p v-if="!trusted" class="p115-probe">{{ probeNote }}</p>
+          <div v-else-if="visibleHistory.length" class="log-grid">
             <div v-for="(entry, index) in visibleHistory" :key="`${entry.kind}-${entry.time}-${index}`" class="log-card">
               <div class="log-card__top">
                 <span class="log-card__kind">{{ kindNames[entry.kind] || entry.kind }}</span>
@@ -445,16 +524,39 @@ onMounted(refresh)
 }
 
 // 签名：顶部 2px 状态细线。亮 = 该链路正常（primary 色），灰 = 未就绪。
+// 挂载时整条一起扫过一次 —— 520ms 正好盖住一次 /status 往返，于是「面板通电」
+// 和「请求在路上」是同一个视觉事件，不需要再加转圈。
 .svc::before {
   content: '';
   position: absolute;
   inset: 0 0 auto;
   height: 2px;
   background: var(--p115-faint);
+  transform-origin: left center;
+  animation: p115-trace 520ms var(--p115-ease) both;
 }
 
 .svc--ok::before {
   background: var(--p115-accent);
+}
+
+// 正在监听的链路：底线退回浅色，由上面这条呼吸的线来表示「有信号在走」。
+// 单独用 ::after 而不是给 ::before 叠第二个动画，是为了不和上面的 animation
+// 简写抢 animation-delay。顺序敏感：这条必须排在 .svc--ok::before 之后。
+.svc--live::before {
+  background: var(--p115-faint);
+}
+
+.svc--live::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--p115-accent);
+  transform-origin: left center;
+  animation:
+    p115-trace 520ms var(--p115-ease) both,
+    p115-breathe 3.2s ease-in-out 520ms infinite;
 }
 
 .svc__label {
@@ -485,16 +587,6 @@ onMounted(refresh)
 
 .run__act {
   min-width: 0;
-}
-
-.haul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.haul__row:first-child {
-  border-top: 0;
 }
 
 // ── 卡片网格（最近上传，简约）───────────────────────────────────
@@ -556,70 +648,28 @@ onMounted(refresh)
   color: var(--p115-accent);
 }
 
-// ── 待确认删除（破坏性操作，视觉上要跳出来）─────────────────────
-.p115-panel--alert {
-  border-color: rgb(var(--v-theme-warning, 245 124 0) / 0.5);
+// ── 待你审阅（对账清单，不是告警）───────────────────────────────
+// 这块是一张对账表：左边本地已经没了，右边 115 上还在。整块保持冷静 ——
+// 竖着的 2px 线（对应服务条那条横线）表示「在等你决定」，红色只出现一次，
+// 在真正不可逆的那个按钮上。
+.pend {
+  position: relative;
+  padding: 16px 18px 14px 20px;
+  border-left: 2px solid var(--p115-hold);
+  background: var(--p115-hold-soft);
 }
 
-.pend {
+.pend__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 10px 0;
 }
 
-.pend-row + .pend-row {
-  border-top: 1px solid var(--p115-hairline);
-}
-
-// 完整清单：等宽、可滚，几百条也不至于把页面撑爆
-.pend-list {
-  max-height: 260px;
-  overflow-y: auto;
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  border-radius: var(--p115-radius);
-  background: var(--p115-well);
-}
-
-.pend-list__row {
-  font-size: 11px;
-  line-height: 1.7;
-  color: var(--p115-muted);
-  word-break: break-all;
-}
-
-.pend-list__more {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.pend__text {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.pend__mapping {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.pend__count {
-  font-size: 12px;
-  color: rgb(var(--v-theme-warning, 245 124 0));
-}
-
-.pend__when {
-  font-size: 11px;
-  color: var(--p115-muted);
+.pend__head .p115-endpoint-tag {
+  display: block;
+  color: var(--p115-hold);
 }
 
 .pend__acts {
@@ -627,6 +677,181 @@ onMounted(refresh)
   align-items: center;
   gap: 6px;
 }
+
+.pend__batch {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--p115-hairline);
+}
+
+// 先给出量级：个数与体积并排，都是等宽数字，看一眼就知道这次要动多少
+.pend__tally {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pend__unit {
+  font-size: 12px;
+  color: var(--p115-muted);
+}
+
+.pend__weight {
+  color: var(--p115-muted);
+}
+
+.pend__weight::before {
+  content: '·';
+  margin-inline-end: 6px;
+}
+
+.pend__toggle {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--p115-hold);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pend__toggle:hover {
+  text-decoration: underline;
+}
+
+.pend__meta {
+  margin: 4px 0 0;
+  color: var(--p115-muted);
+}
+
+// 清单主体：一行就是一次对账 —— 划掉的本地名 ⇄ 115 上的位置 ⇄ 体积。
+// 高度封顶 + contain，几百行也不让整页重新布局；不给行做逐条入场动画。
+.pend__ledger {
+  margin-top: 10px;
+  border: 1px solid var(--p115-hairline);
+  border-radius: var(--p115-radius-sm);
+  background: var(--p115-paper);
+  overflow: hidden;
+  contain: content;
+  animation: p115-rise 200ms var(--p115-ease) both;
+}
+
+.pend__ledger-head,
+.pend__pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 12px;
+}
+
+.pend__ledger-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--p115-muted);
+  border-bottom: 1px solid var(--p115-hairline);
+}
+
+// 285px ≈ 9.5 行：故意露出半行，让「下面还有」这件事不用额外说明。
+.pend__rows {
+  max-height: 285px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pend__pair + .pend__pair {
+  border-top: 1px solid var(--p115-faint);
+}
+
+.pend__gone,
+.pend__where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 本地那一列压成弱色就够了 —— 标题已经说过「本地已消失」，再加删除线是把
+// 最需要认片名的那一列牺牲掉换一个重复的语义。
+.pend__gone {
+  color: var(--p115-muted);
+}
+
+.pend__where {
+  color: var(--p115-ink);
+}
+
+.pend__bytes {
+  text-align: right;
+  color: var(--p115-muted);
+}
+
+.pend__state {
+  margin: 0;
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--p115-muted);
+}
+
+.pend__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  border-top: 1px solid var(--p115-hairline);
+  color: var(--p115-muted);
+}
+
+.pend__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+// 整块只说一次：回收站这件事对所有批次都一样，重复一遍只是噪音
+.pend__note {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--p115-muted);
+}
+
+.pend__commit {
+  font-variant-numeric: tabular-nums;
+}
+
+// 窄屏：一行拆成两行 —— 上行「文件名 + 体积」，下行 115 上的位置。
+// 三个格子必须显式定位，否则自动流会把体积挤到第三行单独占一行。
+@media (max-width: 560px) {
+  .pend__ledger-head {
+    display: none;
+  }
+
+  .pend__pair {
+    grid-template-columns: minmax(0, 1fr) 76px;
+    row-gap: 1px;
+    padding-block: 7px;
+  }
+
+  .pend__gone {
+    grid-area: 1 / 1 / 2 / 2;
+  }
+
+  .pend__bytes {
+    grid-area: 1 / 2 / 2 / 3;
+  }
+
+  .pend__where {
+    grid-area: 2 / 1 / 3 / 3;
+    font-size: 11px;
+  }
+}
+
 
 // ── 执行记录（卡片式，简约）───────────────────────────────────
 .log-grid {

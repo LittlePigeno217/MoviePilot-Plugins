@@ -28,7 +28,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "strm_delete_sweep_cron": "37 */2 * * *",
     "strm_delete_watch": False,
     # 单次待删媒体数超过它就先进待确认队列；0 表示永不拦人。
-    "strm_delete_confirm_threshold": 20,
+    "strm_delete_confirm_threshold": 16,
     "strm_notify": False,
     "strm_notify_type": RESOURCE_NOTIFY_TYPE,
     "strm_mappings": [],

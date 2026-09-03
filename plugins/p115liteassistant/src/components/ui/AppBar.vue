@@ -6,6 +6,8 @@
 defineProps({
   view: { type: String, default: '' },
   online: { type: Boolean, default: false },
+  // 第一次状态还没读到时既不是已连接也不是未连接，别替用户下结论
+  probing: { type: Boolean, default: false },
   showSwitch: { type: Boolean, default: true },
   busy: { type: Boolean, default: false },
   showRefresh: { type: Boolean, default: false },
@@ -23,9 +25,9 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
       </span>
     </div>
 
-    <span class="bar__link" :class="{ 'bar__link--on': online }">
+    <span class="bar__link" :class="{ 'bar__link--on': online && !probing }">
       <span class="bar__dot" aria-hidden="true" />
-      {{ online ? '已连接 115' : '未连接 115' }}
+      {{ probing ? '正在读取…' : online ? '已连接 115' : '未连接 115' }}
     </span>
 
     <div class="bar__tools">

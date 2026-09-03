@@ -47,7 +47,7 @@ CLOUD_DIR_DELETE_DELAY = 2.0
 #: 出现这些字样说明目标本来就不在了 —— 对删除来说等同于成功。
 ALREADY_MISSING_MARKERS = ("不存在", "已删除", "未找到", "找不到")
 #: 单次待删媒体数超过它就先进待确认队列。
-DEFAULT_CONFIRM_THRESHOLD = 20
+DEFAULT_CONFIRM_THRESHOLD = 16
 #: 待确认批次的保留天数与单批明细上限。
 STRM_DELETE_PENDING_TTL_DAYS = 7
 STRM_DELETE_PENDING_MAX_ITEMS = 2000
@@ -289,7 +289,16 @@ class ReverseDeleter:
             "file_id": str(record.get("file_id") or record.get("fileid") or "").strip(),
             "parent_id": str(record.get("parent_id") or "").strip(),
             "name": cls._record_media_name(record_key, record, media_prefix),
+            # 体积带进来是给人看的：审阅时「20 个文件 / 22.4 GB」比「20 个媒体」好判断得多
+            "size": cls._record_size(record),
         }
+
+    @staticmethod
+    def _record_size(record: Dict[str, Any]) -> int:
+        try:
+            return max(0, int(record.get("size") or 0))
+        except (TypeError, ValueError):
+            return 0
 
     @staticmethod
     def _has_any_strm(target_dir: Path) -> bool:
@@ -1065,6 +1074,7 @@ class ReverseDeleter:
             "updated_at": now,
             "reason": decision.reason,
             "count": len(merged),
+            "total_size": sum(self._record_size(item) for item in merged),
             "items_truncated": len(merged) > len(items),
             "items": items,
         }
@@ -1112,6 +1122,7 @@ class ReverseDeleter:
             if len(kept) != len(batch.get("items") or []):
                 batch["items"] = kept
                 batch["count"] = len(kept)
+                batch["total_size"] = sum(self._record_size(item) for item in kept)
                 batch["items_truncated"] = False
                 batch["updated_at"] = datetime.now().isoformat(timespec="seconds")
                 batches[batch_id] = batch

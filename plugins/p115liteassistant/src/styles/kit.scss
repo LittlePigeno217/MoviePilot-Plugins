@@ -9,7 +9,14 @@
 // Vuetify 以裸 `r,g,b` 三元组输出这些变量，所以 rgba(var(--x), .12) 可直接取透明度。
 //
 // 设计原则（简约）：少即是多。只保留信息层次需要的对比，不做毛玻璃/渐变/
-// 光晕等装饰。唯一签名亮点 = 服务条顶部的状态细线（亮=该链路正常）。
+// 光晕等装饰。
+//
+// 签名 = 一条 2px 的线，用「方向 + 行为」说明你在看什么：
+//   横线在顶部          这条链路的状态（亮 = 正常）
+//   横线扫过一次        面板刚挂载，读数还在建立
+//   横线缓慢呼吸        这条链路此刻真的在监听（动效即信息，不是装饰）
+//   竖线在左侧          这块在等你做决定
+// 除此之外不再引入第二种视觉隐喻。
 //
 // 所有选择器都收敛在 .p115 命名空间下，不会泄漏到宿主应用。
 //
@@ -26,8 +33,12 @@
   --p115-hairline: rgba(var(--v-border-color), var(--v-border-opacity));
   --p115-muted: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity, 0.6));
   --p115-faint: rgba(var(--v-theme-on-surface), 0.03);
+  // 等人工决定的冷色（刻意不用红：审阅态不是报错态）
+  --p115-hold: rgb(var(--v-theme-info, 33 150 243));
+  --p115-hold-soft: rgba(var(--v-theme-info, 33 150 243), 0.07);
   --p115-radius: 12px;
   --p115-radius-sm: 8px;
+  --p115-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   --p115-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
   // 极淡阴影：只给浮起的面板一点点层次，不喧宾夺主
   --p115-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
@@ -42,17 +53,21 @@
 }
 
 // ── 排版 ────────────────────────────────────────────────────────────
-.p115-display {
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  margin: 0;
-}
-
 .p115-mono {
   font-family: var(--p115-mono);
   font-size: 12px;
   letter-spacing: -0.01em;
+  // 体积、耗时这些列是竖着扫的，等宽数字才对得齐
+  font-variant-numeric: tabular-nums;
+}
+
+// 读数字号：只给「点下去之前需要先称一称的那个数」用，全插件仅一处
+.p115-readout {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .p115-endpoint-tag {
@@ -104,10 +119,6 @@
   padding: 12px 18px 18px;
 }
 
-.p115-panel--well {
-  background: var(--p115-well);
-}
-
 // 表单行：标签在上、控件在下，窄屏自动堆叠
 .p115-fields {
   display: grid;
@@ -135,7 +146,90 @@
   color: rgb(var(--v-theme-warning, 245 124 0));
 }
 
-// ── 空态 ────────────────────────────────────────────────────────────
+// ── 加载编排 ────────────────────────────────────────────────────────
+// 只动 transform 与 opacity：两者都在合成层，不触发布局与重绘。全部一次性
+// 播放（fill-mode both），播完不留任何常驻动画，空闲时的合成开销为零。
+//
+// 顺序敏感：.p115-enter 用的是 animation 简写，会把 animation-delay 重置为 0，
+// 所以下面的延迟修饰类必须排在它后面。不要调换这几条规则的先后。
+@keyframes p115-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.p115-enter {
+  animation: p115-rise 260ms var(--p115-ease) both;
+}
+
+.p115-enter--2 {
+  animation-delay: 70ms;
+}
+
+.p115-enter--3 {
+  animation-delay: 140ms;
+}
+
+.p115-enter--4 {
+  animation-delay: 210ms;
+}
+
+// 状态细线扫过一次：读数还在建立。时长盖过一次 /status 往返（局域网约 100-400ms），
+// 于是「面板在通电」和「请求在路上」是同一个视觉事件，不需要额外的转圈。
+@keyframes p115-trace {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+// 缓慢呼吸：这条链路此刻真的在监听。只作用在一个 2px 高的元素上，代价近似于零。
+// 下限刻意留在 0.55：这条线代表「在监听」，平均亮度必须高于静态的状态线，
+// 否则「活着」看起来反而比「只是配好了」更弱。
+@keyframes p115-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+// 一处总闸：系统开了「减少动态效果」就把命名空间内所有动画与过渡按掉，
+// 包括各组件自己的 scoped 动画，也包括以后新加的。只在这条媒体查询里用
+// !important —— 无障碍覆盖高于组件意图。
+@media (prefers-reduced-motion: reduce) {
+  .p115 *,
+  .p115 *::before,
+  .p115 *::after,
+  .p115-portal *,
+  .p115-portal *::before,
+  .p115-portal *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0s !important;
+  }
+}
+
+// ── 空态与未知态 ────────────────────────────────────────────────────
+// 两者要长得不一样：虚线盒 = 问过了，确实没有，可以动手；轻量一行 = 还没问到。
+.p115-probe {
+  margin: 0;
+  padding: 6px 0 2px;
+  font-size: 12px;
+  color: var(--p115-muted);
+}
+
 .p115-empty {
   border: 1px dashed var(--p115-hairline);
   border-radius: var(--p115-radius);

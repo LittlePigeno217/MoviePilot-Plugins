@@ -24,7 +24,7 @@ export const DEFAULT_CONFIG = {
   strm_delete_cloud_on_missing: false,
   strm_delete_sweep_cron: '37 */2 * * *',
   strm_delete_watch: false,
-  strm_delete_confirm_threshold: 20,
+  strm_delete_confirm_threshold: 16,
   strm_notify: false,
   strm_notify_type: 'Organize',
   strm_mappings: [],

@@ -351,6 +351,8 @@ class Api:
                         "id": str(batch.get("id") or ""),
                         "mapping": str(batch.get("mapping") or "-"),
                         "count": int(batch.get("count") or 0),
+                        "total_size": int(batch.get("total_size") or 0),
+                        "created_at": str(batch.get("created_at") or ""),
                         "updated_at": str(batch.get("updated_at") or ""),
                         "items_truncated": bool(batch.get("items_truncated")),
                     }
@@ -807,6 +809,7 @@ class Api:
                     "created_at": str(batch.get("created_at") or ""),
                     "updated_at": str(batch.get("updated_at") or ""),
                     "reason": str(batch.get("reason") or ""),
+                    "total_size": int(batch.get("total_size") or 0),
                     "items_truncated": bool(batch.get("items_truncated")),
                     "offset": page_offset,
                     "limit": page_limit,
@@ -816,6 +819,7 @@ class Api:
                             "path": str(item.get("path") or ""),
                             "cloud_path": str(item.get("cloud_path") or ""),
                             "name": str(item.get("name") or ""),
+                            "size": int(item.get("size") or 0),
                         }
                         for item in window
                     ],
@@ -831,6 +835,7 @@ class Api:
                 "id": str(batch.get("id") or ""),
                 "mapping": str(batch.get("mapping") or "-"),
                 "count": int(batch.get("count") or 0),
+                "total_size": int(batch.get("total_size") or 0),
                 "created_at": str(batch.get("created_at") or ""),
                 "updated_at": str(batch.get("updated_at") or ""),
                 "reason": str(batch.get("reason") or ""),

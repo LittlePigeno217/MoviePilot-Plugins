@@ -188,7 +188,10 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
         </button>
       </nav>
 
-      <div class="cfg__pane">
+      <!-- key 跟着分区变：切换时这块重新挂载，入场动画重播一次。
+           不用 <Transition>，因为 out-in 会给切换硬加一段离场延迟，
+           而设置面板的手感应该是「立刻到」。 -->
+      <div :key="section" class="cfg__pane p115-enter">
         <section v-if="section === 'link'">
           <div class="p115-panel">
             <div class="p115-panel__head">
