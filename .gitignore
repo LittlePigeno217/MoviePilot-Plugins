@@ -165,6 +165,9 @@ cython_debug/
 node_modules/
 *.zip
 
+# 通知排版预览：由仓库外的 preview.py 生成，随时可重跑，不进版本库
+notify-preview.txt
+
 # 本地开发工具产物
 .agents/
 .claude/

@@ -13,7 +13,7 @@ MoviePilot-Plugins/
 ├── tests/               # 插件单测，按插件 ID 建子目录
 ├── pytest.ini
 ├── docs/                # 文档
-├── scripts/             # 仓库维护脚本
+├── scripts/             # 仓库维护脚本（generate_readme / nas / check_ui_spec）
 ├── templates/           # 插件开发模板
 └── .github/workflows/   # 自动发布工作流
 ```
@@ -130,8 +130,44 @@ npm run build          # = vite build，产物落到 dist/assets/
 | `system_version` | 推荐声明 | 未声明 | 尚未确定各插件的最低宿主版本 |
 | `.githooks/`、`tests/ci/` 门禁 | 有 | 无 | 两个插件的规模用不上 |
 
-## 8. 相关文档
+## 8. 真机联调
 
+`AGENTS.md` 要求插件必须在 NAS 上的 MoviePilot Docker Compose 里调试。入口是
+[`scripts/nas.sh`](../scripts/nas.sh)：
+
+```bash
+scripts/nas.sh ver                                  # 本地 / 宿主 / 容器三处版本 + 内容指纹
+scripts/nas.sh deploy checkin p115liteassistant     # 打包 → 推两处 → 清残留 → 重启 → 等加载
+scripts/nas.sh log p115liteassistant -n 40          # 插件自己的日志
+scripts/nas.sh replay probe.py                      # 用容器里的真运行时跑一段脚本
+scripts/nas.sh psql query.sql                       # 配置与插件数据都在 Postgres
+```
+
+这台机器上有四件事必须知道，否则「部署完了行为没变」会反复出现：
+
+**1. 运行时目录在容器内。** Python 真正 import 的是容器内 `/app/app/plugins/<id>/`；宿主挂载点
+`…/MoviePilot-v2/plugins/<id>/` 只是 MoviePilot 的安装位置，不是任何 bind mount。只写一处，
+跑的还是旧代码。`deploy` 一次写两处。
+
+**2. 版本号比不出「同版本改了代码」。** 开发中间态不升版本号，只对 `plugin_version` 就会在容器
+跑着旧代码时报「一致」。`ver` 因此按 `.py` / `requirements.txt` / `dist` 的内容算指纹，两边各自
+列文件再比 —— 容器里残留的旧模块也会让指纹对不上。
+
+**3. `tar` 只覆盖不删除。** 改名前的模块、上一版的 `remoteEntry`、早年放在插件目录里的
+`tests/`（真机上确实躺着一份）会一直留在运行时副本里被 import。`deploy` 先清后铺：清掉所有
+`.py` 与整个 `dist/`，`index.html`、`package.json` 这些市场安装留下的文件不动。
+
+**4. 热重载不重绑 HTTP 路由。** 文件监控只调 `PluginManager().reload_plugin(pid)`，而重绑路由的
+`_update_plugin_api_routes()` 只在 HTTP 重载端点和启动时调用。于是接口仍指向已销毁实例的
+bound method，内存态（锁、任务集、探针）全是僵尸的，还会出现两个实例各持一把锁同时动同一批
+数据。改了 `.py` 就必须重启容器（`deploy` 默认这么做），只改 `dist/` 才用 `--no-restart`。
+
+另外：新增配置键要**先部署代码再写配置** —— 旧版本代码一次 `init_plugin` 就会把它不认识的键
+按 `DEFAULT_CONFIG` 白名单洗掉。
+
+## 9. 相关文档
+
+- 插件界面规范：[Plugin_UI_Spec.md](Plugin_UI_Spec.md) —— 令牌、数值、两套外壳、词表与文案规矩
 - 测试约定与运行方式：[../tests/README.md](../tests/README.md)
 - 插件开发模板：[../templates/README.md](../templates/README.md)
 - 插件目录说明：[../plugins/README.md](../plugins/README.md)
