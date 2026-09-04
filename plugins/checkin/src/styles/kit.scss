@@ -1,30 +1,61 @@
-// 自用签到工具 —— 共享视觉底座
+// 自用签到 —— 共享视觉底座
+//
+// 与「115 轻量助手」同一套语法：同样的令牌来源、同样的面板结构、同样的动效纪律。
+// 两个插件长得像亲戚而不是双胞胎 —— 语法共享，词汇各有主题。
 //
 // 硬规则：这个文件里不允许出现任何写死的颜色值。所有颜色都从 MoviePilot 运行时
 // 注入的 Vuetify 主题变量读取，浅色 / 深色 / 紫色主题切换时插件自动跟随。
 //   rgb(var(--v-theme-surface))                          面板
 //   rgb(var(--v-theme-background))                       凹槽
-//   rgb(var(--v-theme-on-surface))                        正文
-//   rgb(var(--v-theme-primary))                           强调色（已签到）
-//   rgb(var(--v-theme-success) / warning / error)          状态
-//   rgba(var(--v-border-color), var(--v-border-opacity))   细分隔线
+//   rgb(var(--v-theme-primary))                          强调色（签上了）
+//   rgb(var(--v-theme-success) / warning / error)         状态
+//   rgba(var(--v-border-color), var(--v-border-opacity))  细分隔线
 // Vuetify 以裸 `r,g,b` 三元组输出这些变量，所以 rgba(var(--x), .12) 可直接取透明度。
 //
-// 选择器全部收敛在 .ck 命名空间下，不会泄漏到宿主应用。
+// 签名 = 两种记号，各说一件事：
+//   一格一天的打卡带    这一个月签成了什么样（本插件独有的主题词汇）
+//   2px 的线            这一块此刻处于什么状态（与 115 轻量助手同一套语汇）
+//     横线在顶部        这条记录的结果（亮 = 签上了）
+//     横线扫过一次      面板刚挂载，读数还在建立
+//     竖线在左侧        这块在等一件事发生
+// 除此之外不再引入第三种视觉隐喻。
+//
+// 选择器全部收敛在 .ck 命名空间下，不会泄漏到宿主应用。以后要是加了 v-dialog、
+// v-select 这类会被 teleport 到 body 的组件，令牌得再挂一个 .ck-portal 类。
+//
+// ── 两个插件的共用规格（改这里之前先看另一份 kit.scss）──────────────
+//
+// 同一个宿主的插件列表里并排放着，用户开哪个都该是同一套读法。所以「同一个区域
+// 长同一个样」是硬规格，不是风格偏好。以下数值两份 kit 必须逐字相同：
+//
+//   面板       间距 18 · 头 16/18/0 · 身 12/18/18 · 圆角 12（小件 8）
+//   读数格     内边距 14/14/12 · 值 15px/700 · 条 gap 12 · minmax(150px)
+//   记录卡     栅格 auto-fill minmax(180px) gap 10 · 内边距 11/13 · 圆角 8
+//   读数丸     1/7 · 圆角 999 · 11px · 极淡底 · 细边
+//   小标签     10px/700 · 字距 0.18em · 次要色（中文用不上 uppercase 与等宽）
+//   空态       虚线框 24/18 · 居中 13px 次要色
+//   等你决定   左侧 2px 竖线 + 极淡底，颜色用 info 不用红（审阅态不是报错态）
+//   动效       入场 rise 260ms 阶梯 70ms · 状态线 trace 520ms · 呼吸 3.2s
+//
+// 角色类名也一一对应，只差命名空间前缀：
+//   *-section-title  *-hint  *-label  *-mono  *-muted  *-panel  *-pill  *-empty  *-probe
+//
+// 词表也共用一份（通知、运行台、设置三处同名）：
+//   刮削文件 / 清理 / 等你确认 / 网盘删了 / 对不上网盘文件 / 网盘上没了 / 秒
+//   已开启 · 已关闭 · 未启用 · 待填写 · 运行台 · 设置
 
 .ck {
   --ck-ink: rgb(var(--v-theme-on-surface));
   --ck-ink-70: rgba(var(--v-theme-on-surface), 0.68);
-  --ck-ink-50: rgba(var(--v-theme-on-surface), 0.5);
-  --ck-ink-30: rgba(var(--v-theme-on-surface), 0.3);
+  --ck-ink-50: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity, 0.6));
   --ck-ink-14: rgba(var(--v-theme-on-surface), 0.14);
   --ck-paper: rgb(var(--v-theme-surface));
   --ck-well: rgb(var(--v-theme-background));
-  --ck-faint: rgba(var(--v-theme-on-surface), 0.04);
+  --ck-faint: rgba(var(--v-theme-on-surface), 0.03);
   --ck-line: rgba(var(--v-border-color), var(--v-border-opacity));
   --ck-line-strong: rgba(var(--v-theme-on-surface), 0.18);
   --ck-accent: rgb(var(--v-theme-primary));
-  --ck-accent-soft: rgba(var(--v-theme-primary), 0.1);
+  --ck-accent-soft: rgba(var(--v-theme-primary), 0.08);
   --ck-accent-line: rgba(var(--v-theme-primary), 0.42);
   --ck-ok: rgb(var(--v-theme-success));
   --ck-warn: rgb(var(--v-theme-warning));
@@ -33,10 +64,17 @@
   --ck-bad: rgb(var(--v-theme-error));
   --ck-bad-soft: rgba(var(--v-theme-error), 0.1);
   --ck-bad-line: rgba(var(--v-theme-error), 0.4);
-  --ck-radius: 10px;
+  // 等你做决定的冷色（刻意不用红：待补不是报错）——与 115 轻量助手同一个语义槽
+  --ck-hold: rgb(var(--v-theme-info, 33 150 243));
+  --ck-hold-soft: rgba(var(--v-theme-info, 33 150 243), 0.07);
+  --ck-radius: 12px;
+  --ck-radius-sm: 8px;
+  --ck-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   --ck-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
   --ck-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Noto Sans Mono CJK SC', monospace;
+}
 
+.ck {
   color: var(--ck-ink);
   background: var(--ck-paper);
   min-height: 100%;
@@ -48,23 +86,24 @@
 }
 
 // ── 排版 ────────────────────────────────────────────────────────────
-// 数据全部走等宽，正文走系统 CJK 无衬线。台账的性格由等宽那一层承担。
+// 数据全部走等宽，正文走系统 CJK 无衬线。这套界面的性格由等宽那一层承担。
 .ck-mono {
   font-family: var(--ck-mono);
+  // 天数、次数这些列是竖着扫的，等宽数字才对得齐
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 
-.ck-eyebrow {
-  font-family: var(--ck-mono);
+// 小标签。中文用不上 uppercase，等宽在中文上也只是让字距变乱，所以只靠字号、
+// 字重和字距把它压成一行「这块是什么」——与 115 轻量助手逐字相同。
+.ck-label {
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.18em;
   color: var(--ck-ink-50);
 }
 
-.ck-title {
+.ck-section-title {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -82,68 +121,209 @@
   color: var(--ck-ink-50);
 }
 
-// ── 分区：横线为主的台账结构 ────────────────────────────────────────
-.ck-sheet {
-  border-top: 1px solid var(--ck-line);
-  padding: 12px 14px 14px;
+// ── 面板 ────────────────────────────────────────────────────────────
+// 留白大于边框。面板之间用间距分开，不再靠通栏横线切割。
+.ck-panel {
+  border: 1px solid var(--ck-line);
+  border-radius: var(--ck-radius);
+  background: var(--ck-paper);
+  box-shadow: var(--ck-shadow);
 }
 
-.ck-sheet:first-of-type {
-  border-top: 0;
+.ck-panel + .ck-panel {
+  margin-top: 18px;
 }
 
-.ck-sheet__head {
+.ck-panel__head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  padding: 16px 18px 0;
 }
 
-// ── 状态标签 ────────────────────────────────────────────────────────
-.ck-chip {
+.ck-panel__body {
+  padding: 12px 18px 18px;
+}
+
+// 面板内部的分组线：同一件事的下一段，不值得再起一个面板
+.ck-row-sep {
+  border-top: 1px solid var(--ck-line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+// ── 读数丸 ──────────────────────────────────────────────────────────
+// 一次执行报出来的每个数、一个站点的每种属性，都是这一颗丸子。基础态就是「一个读数」，
+// 只有需要说清成没成时才挂颜色修饰 —— 与 115 轻量助手的记录卡逐字相同。
+.ck-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 1px 7px;
-  border: 1px solid var(--ck-line-strong);
+  border: 1px solid var(--ck-line);
   border-radius: 999px;
+  background: var(--ck-faint);
   font-size: 11px;
-  font-weight: 600;
   line-height: 1.6;
   white-space: nowrap;
   color: var(--ck-ink-70);
 }
 
-.ck-chip--on {
+.ck-pill--on {
   color: var(--ck-accent);
   border-color: var(--ck-accent-line);
   background: var(--ck-accent-soft);
 }
 
-.ck-chip--warn {
+.ck-pill--warn {
   color: var(--ck-warn);
   border-color: var(--ck-warn-line);
   background: var(--ck-warn-soft);
 }
 
-.ck-chip--bad {
+.ck-pill--bad {
   color: var(--ck-bad);
   border-color: var(--ck-bad-line);
   background: var(--ck-bad-soft);
 }
 
-// ── 空态：邀请去做下一步，不是一句「暂无数据」────────────────────
+.ck-pill--hold {
+  color: var(--ck-hold);
+  border-color: var(--ck-hold);
+  background: var(--ck-hold-soft);
+}
+
+// ── 加载编排 ────────────────────────────────────────────────────────
+// 只动 transform 与 opacity：两者都在合成层，不触发布局与重绘。全部一次性播放
+// （fill-mode both），播完不留任何常驻动画，空闲时的合成开销为零。
+//
+// 顺序敏感：.ck-enter 用的是 animation 简写，会把 animation-delay 重置为 0，所以
+// 下面的延迟修饰类必须排在它后面。不要调换这几条规则的先后。
+@keyframes ck-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ck-enter {
+  animation: ck-rise 260ms var(--ck-ease) both;
+}
+
+.ck-enter--2 {
+  animation-delay: 70ms;
+}
+
+.ck-enter--3 {
+  animation-delay: 140ms;
+}
+
+.ck-enter--4 {
+  animation-delay: 210ms;
+}
+
+// 细线扫过一次：读数还在建立。时长盖过一次 /status 往返（局域网约 100-400ms），
+// 于是「面板在通电」和「请求在路上」是同一个视觉事件，不需要额外的转圈。
+@keyframes ck-trace {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+// ── 状态线（签名）────────────────────────────────────────────────────
+// 一条 2px 的横线贴在卡片顶部，颜色说结果，挂载时扫过一次说读数刚到。
+.ck-lined {
+  position: relative;
+  overflow: hidden;
+}
+
+.ck-lined::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--ck-line);
+  transform-origin: left center;
+  animation: ck-trace 520ms var(--ck-ease) both;
+}
+
+.ck-lined--on::before {
+  background: var(--ck-accent);
+}
+
+.ck-lined--warn::before {
+  background: var(--ck-warn);
+}
+
+.ck-lined--bad::before {
+  background: var(--ck-bad);
+}
+
+
+// ── 空态与未知态 ────────────────────────────────────────────────────
+// 两者要长得不一样：虚线盒 = 问过了，确实没有，可以动手；轻量一行 = 还没问到。
 .ck-empty {
   border: 1px dashed var(--ck-line-strong);
   border-radius: var(--ck-radius);
-  padding: 22px 18px;
+  padding: 24px 18px;
   text-align: center;
   font-size: 13px;
   color: var(--ck-ink-50);
 }
 
-// Vuetify 自己的控件（v-btn / v-switch / v-text-field）不在这里改写：
-// vite.config.js 的 vuetify-filter 会删掉任何含 `.v-` 的规则，宿主的按钮和
-// 输入框样式就是「跟随 MoviePilot 主题」的应有结果。
+.ck-probe {
+  margin: 0;
+  padding: 6px 0 2px;
+  font-size: 12px;
+  color: var(--ck-ink-50);
+}
+
+// ── Vuetify 局部收敛（命名空间内提权，不与宿主打架）────────────────
+// 这些规则以前写不了：旧构建把整份 Vuetify 样式打进产物，只能用一个 postcss 插件
+// 事后删掉所有含 `.v-` 的规则来兜。现在产物不再包含 Vuetify 基础样式，带 .ck 前缀
+// 的收敛规则可以安全存在 —— 它们只在插件子树内生效。
+.ck .v-btn {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.ck .v-btn--size-small,
+.ck .v-btn--size-default {
+  border-radius: var(--ck-radius-sm);
+}
+
+.ck .v-switch .v-label,
+.ck .v-checkbox .v-label {
+  font-size: 13px;
+  opacity: 1;
+}
+
+.ck .v-field input,
+.ck .v-field textarea {
+  font-size: 13px;
+}
+
+// ── 动效总闸 ────────────────────────────────────────────────────────
+// 系统开了「减少动态效果」就把命名空间内所有动画与过渡按掉，包括各组件自己的
+// scoped 动画，也包括以后新加的。只在这条媒体查询里用 !important —— 无障碍覆盖
+// 高于组件意图。
+@media (prefers-reduced-motion: reduce) {
+  .ck *,
+  .ck *::before,
+  .ck *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0s !important;
+  }
+}

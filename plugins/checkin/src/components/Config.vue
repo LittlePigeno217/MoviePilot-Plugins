@@ -1,5 +1,5 @@
 <script setup>
-// 自用签到 · 设置页。视觉与台账页同一套语言，校验逻辑不变：
+// 自用签到 · 设置页。视觉与运行台同一套语言，校验逻辑不变：
 // 保存前跑一遍 validateConfig，通过后交给宿主写入配置。
 import { computed, inject, reactive, ref, watch } from 'vue'
 import AppBar from './ui/AppBar.vue'
@@ -24,6 +24,17 @@ const notice = useHostNotice(inject('moviepilot:toast', null), (text, kind) => {
 
 const siteList = Object.values(SITE_META)
 
+// 设置分区：与 115 轻量助手同一套外壳 —— 左边一条导轨，右边一个分区面板。
+// 一个站点一个分区，导轨上顺带把每个站点的状态摆出来（已开启 / 待填写 / 已关闭），
+// 不用点进去就知道哪个还没配好。
+const section = ref('run')
+const SECTION_ICON = {
+  run: 'mdi-clock-outline',
+  flzt: 'mdi-download-network-outline',
+  right_forum: 'mdi-forum-outline',
+  ypojie: 'mdi-package-variant-closed',
+}
+
 // 每个站点是不是「开了但没填」——设置页唯一需要提醒的事
 function pending(key) {
   const site = config.sites[key]
@@ -44,6 +55,24 @@ const barTone = computed(() => {
   if (!openCount.value) return 'idle'
   return pendingCount.value ? 'warn' : 'on'
 })
+
+const siteNote = key => {
+  if (!config.sites[key]?.enabled) return '已关闭'
+  return pending(key) ? '待填写' : '已开启'
+}
+
+const sections = computed(() => [
+  { key: 'run', icon: SECTION_ICON.run, label: '执行方式', note: config.enabled ? '已开启' : '已关闭' },
+  ...siteList.map(site => ({
+    key: site.key,
+    icon: SECTION_ICON[site.key],
+    label: site.title,
+    note: siteNote(site.key),
+  })),
+])
+
+// 当前分区对应的站点；执行方式那一分区返回 null
+const activeSite = computed(() => SITE_META[section.value] || null)
 
 function apply(value = {}) {
   Object.assign(config, normalizeConfig(value))
@@ -93,116 +122,152 @@ watch(() => props.lastSavedAt, value => {
       @close="emit('close')"
     />
 
-    <button v-if="local.text" type="button" class="cfg__local" :class="`cfg__local--${local.kind}`" @click="local.text = ''">
+    <button
+      v-if="local.text"
+      type="button"
+      class="cfg__local"
+      :class="`cfg__local--${local.kind}`"
+      @click="local.text = ''"
+    >
       {{ local.text }}
       <span class="cfg__local-x">知道了</span>
     </button>
 
-    <section class="ck-sheet">
-      <div class="ck-sheet__head">
-        <h3 class="ck-title">执行方式</h3>
-        <p class="ck-hint">插件关掉时定时任务不会注册，手动签到也不会执行。</p>
-      </div>
+    <div class="cfg__shell">
+      <nav class="cfg__rail" aria-label="设置分区">
+        <button
+          v-for="item in sections"
+          :key="item.key"
+          type="button"
+          class="cfg__tab"
+          :class="{ 'cfg__tab--on': section === item.key }"
+          :aria-current="section === item.key ? 'true' : undefined"
+          @click="section = item.key"
+        >
+          <v-icon :icon="item.icon" size="17" />
+          <span class="cfg__tab-text">
+            <span class="cfg__tab-label">{{ item.label }}</span>
+            <span class="cfg__tab-note">{{ item.note }}</span>
+          </span>
+        </button>
+      </nav>
 
-      <div class="cfg__switches">
-        <v-switch v-model="config.enabled" color="primary" density="compact" hide-details label="启用插件" />
-        <v-switch v-model="config.notify" color="primary" density="compact" hide-details label="执行后发送通知" />
-      </div>
+      <!-- key 跟着分区变：切换时这块重新挂载，入场动画重播一次。
+           不用 <Transition>，因为 out-in 会给切换硬加一段离场延迟，
+           而设置面板的手感应该是「立刻到」。 -->
+      <div :key="section" class="cfg__pane ck-enter">
+        <section v-if="section === 'run'" class="ck-panel">
+          <div class="ck-panel__head">
+            <div>
+              <h3 class="ck-section-title">执行方式</h3>
+              <p class="ck-hint">关掉插件就不执行。到点机器没在跑也不会漏，每半小时自动补一次。</p>
+            </div>
+          </div>
+          <div class="ck-panel__body">
+            <div class="cfg__switches">
+              <v-switch v-model="config.enabled" color="primary" density="compact" hide-details label="启用插件" />
+              <v-switch v-model="config.notify" color="primary" density="compact" hide-details label="执行后发送通知" />
+            </div>
 
-      <div class="cfg__fields">
-        <v-text-field
-          v-model="config.cron"
-          label="执行时间"
-          variant="outlined"
-          density="compact"
-          placeholder="10 8 * * *"
-          hint="cron 表达式，10 8 * * * 是每天 08:10"
-          persistent-hint
-        />
-        <v-text-field
-          v-model.number="config.timeout"
-          label="单次请求超时（秒）"
-          type="number"
-          min="5"
-          variant="outlined"
-          density="compact"
-          hide-details
-        />
-        <v-text-field
-          v-model.number="config.retry_count"
-          label="失败重试次数"
-          type="number"
-          min="1"
-          variant="outlined"
-          density="compact"
-          hide-details
-        />
-      </div>
-    </section>
+            <div class="cfg__fields ck-row-sep">
+              <v-text-field
+                v-model="config.cron"
+                label="执行时间"
+                variant="outlined"
+                density="compact"
+                placeholder="10 8 * * *"
+                hint="cron 表达式，10 8 * * * 是每天 08:10"
+                persistent-hint
+              />
+              <v-text-field
+                v-model.number="config.timeout"
+                label="单次请求超时（秒）"
+                type="number"
+                min="5"
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
+              <v-text-field
+                v-model.number="config.retry_count"
+                label="失败重试次数"
+                type="number"
+                min="1"
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
+            </div>
+          </div>
+        </section>
 
-    <section v-for="site in siteList" :key="site.key" class="ck-sheet">
-      <div class="ck-sheet__head">
-        <h3 class="ck-title cfg__site-title">
-          <span class="cfg__badge ck-mono" aria-hidden="true">{{ site.badge }}</span>
-          {{ site.title }}
-          <span class="ck-chip">{{ site.mode }}</span>
-          <span v-if="pending(site.key)" class="ck-chip ck-chip--warn">待填写</span>
-        </h3>
-        <v-switch
-          v-model="config.sites[site.key].enabled"
-          color="primary"
-          density="compact"
-          hide-details
-          :label="config.sites[site.key].enabled ? '已启用' : '已关闭'"
-        />
-      </div>
+        <section v-else-if="activeSite" class="ck-panel">
+          <div class="ck-panel__head">
+            <h3 class="ck-section-title cfg__site-title">
+              <span class="cfg__badge ck-mono" aria-hidden="true">{{ activeSite.badge }}</span>
+              {{ activeSite.title }}
+              <span class="ck-pill">{{ activeSite.mode }}</span>
+              <span v-if="pending(activeSite.key)" class="ck-pill ck-pill--warn">待填写</span>
+            </h3>
+            <v-switch
+              v-model="config.sites[activeSite.key].enabled"
+              color="primary"
+              density="compact"
+              hide-details
+              :label="config.sites[activeSite.key].enabled ? '已开启' : '已关闭'"
+            />
+          </div>
 
-      <div class="cfg__fields">
-        <template v-if="site.key === 'right_forum'">
-          <v-textarea
-            v-model="config.sites[site.key].cookie"
-            class="cfg__wide"
-            label="Cookie"
-            variant="outlined"
-            density="compact"
-            rows="3"
-            auto-grow
-            no-resize
-            hint="从浏览器复制登录后的完整 Cookie，需要包含 auth 或 saltkey"
-            persistent-hint
-          />
-        </template>
-        <template v-else>
-          <v-text-field
-            v-model="config.sites[site.key].email"
-            :label="site.key === 'flzt' ? '登录邮箱' : '登录账号'"
-            variant="outlined"
-            density="compact"
-            autocomplete="off"
-            hide-details
-          />
-          <v-text-field
-            v-model="config.sites[site.key].password"
-            label="密码"
-            type="password"
-            variant="outlined"
-            density="compact"
-            autocomplete="new-password"
-            hide-details
-          />
-        </template>
-        <v-switch
-          v-model="config.sites[site.key].use_proxy"
-          color="primary"
-          density="compact"
-          hide-details
-          label="通过代理访问"
-        />
+          <div class="ck-panel__body">
+            <div class="cfg__fields">
+              <template v-if="activeSite.key === 'right_forum'">
+                <v-textarea
+                  v-model="config.sites[activeSite.key].cookie"
+                  class="cfg__wide"
+                  label="Cookie"
+                  variant="outlined"
+                  density="compact"
+                  rows="3"
+                  auto-grow
+                  no-resize
+                  hint="从浏览器复制登录后的完整 Cookie，需要包含 auth 或 saltkey"
+                  persistent-hint
+                />
+              </template>
+              <template v-else>
+                <v-text-field
+                  v-model="config.sites[activeSite.key].email"
+                  :label="activeSite.key === 'flzt' ? '登录邮箱' : '登录账号'"
+                  variant="outlined"
+                  density="compact"
+                  autocomplete="off"
+                  hide-details
+                />
+                <v-text-field
+                  v-model="config.sites[activeSite.key].password"
+                  label="密码"
+                  type="password"
+                  variant="outlined"
+                  density="compact"
+                  autocomplete="new-password"
+                  hide-details
+                />
+              </template>
+              <v-switch
+                v-model="config.sites[activeSite.key].use_proxy"
+                color="primary"
+                density="compact"
+                hide-details
+                label="通过代理访问"
+              />
+            </div>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
 
     <footer class="cfg__foot">
-      <span class="cfg__foot-note ck-muted">保存后立即生效，无需重启 MoviePilot。</span>
+      <span class="cfg__foot-note ck-muted">保存后立即生效，不用重启 MoviePilot。</span>
       <span class="cfg__foot-acts">
         <v-btn variant="text" size="small" :disabled="saving" @click="reload">放弃改动</v-btn>
         <v-btn color="primary" variant="flat" size="small" :loading="saving" @click="save">保存配置</v-btn>
@@ -244,6 +309,79 @@ watch(() => props.lastSavedAt, value => {
   color: var(--ck-ok);
 }
 
+.cfg__shell {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  padding: 16px;
+}
+
+.cfg__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 58px;
+}
+
+.cfg__tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ck-ink-50);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.cfg__tab:hover {
+  background: var(--ck-faint);
+}
+
+.cfg__tab:focus-visible {
+  outline: 2px solid var(--ck-accent);
+  outline-offset: 1px;
+}
+
+.cfg__tab--on {
+  background: var(--ck-accent-soft);
+  border-color: var(--ck-accent);
+  color: var(--ck-accent);
+}
+
+.cfg__tab-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cfg__tab-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ck-ink);
+  line-height: 1.3;
+}
+
+.cfg__tab--on .cfg__tab-label {
+  color: var(--ck-accent);
+}
+
+.cfg__tab-note {
+  font-size: 11px;
+  color: var(--ck-ink-50);
+  line-height: 1.3;
+}
+
+.cfg__pane {
+  min-width: 0;
+}
+
 .cfg__site-title {
   display: inline-flex;
   align-items: center;
@@ -267,12 +405,11 @@ watch(() => props.lastSavedAt, value => {
   display: grid;
   gap: 2px 20px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-bottom: 10px;
 }
 
 .cfg__fields {
   display: grid;
-  gap: 12px 14px;
+  gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   align-items: start;
 }
@@ -304,7 +441,26 @@ watch(() => props.lastSavedAt, value => {
   margin-inline-start: auto;
 }
 
-@media (max-width: 620px) {
+@media (max-width: 720px) {
+  .cfg__shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cfg__rail {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .cfg__tab {
+    flex: 0 0 auto;
+  }
+
+  .cfg__tab-note {
+    display: none;
+  }
+
   .cfg__foot-note {
     display: none;
   }

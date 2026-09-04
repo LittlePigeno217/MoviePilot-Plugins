@@ -71,6 +71,9 @@ function title(cell) {
   margin: 0;
   padding: 0;
   list-style: none;
+  // 与四格读数的顶线同一个动作、同一段时长：这一屏的读数在同一刻建立
+  transform-origin: left center;
+  animation: ck-trace 520ms var(--ck-ease) both;
 }
 
 .tape__slot {
@@ -112,10 +115,11 @@ function title(cell) {
 
 .tape__cell--today {
   position: relative;
-  border-color: var(--ck-ink);
+  // 用交互色描边：这一格和界面里的按钮同色，不用文字也说得清它能按
+  border-color: var(--ck-accent);
   border-width: 2px;
   cursor: pointer;
-  transition: transform 0.14s ease, background 0.14s ease;
+  transition: transform 0.14s var(--ck-ease), background 0.14s var(--ck-ease);
 }
 
 .tape__cell--today:hover:not(:disabled) {
@@ -147,9 +151,13 @@ function title(cell) {
   background: var(--ck-ink);
 }
 
-.tape__cell--full .tape__today-hit,
-.tape__cell--part .tape__today-hit {
+.tape__cell--full .tape__today-hit {
   background: rgb(var(--v-theme-on-primary));
+}
+
+// 黄底上白针看不见，换回深色
+.tape__cell--part .tape__today-hit {
+  background: var(--ck-ink);
 }
 
 .tape__cell--busy .tape__today-hit {
@@ -159,17 +167,17 @@ function title(cell) {
 @keyframes tape-punch {
   0%,
   100% {
-    transform: translateY(-6px);
+    transform: translateY(-3px);
   }
   50% {
-    transform: translateY(6px);
+    transform: translateY(3px);
   }
 }
 
 .tape__scale {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: baseline;
-  justify-content: space-between;
   gap: 8px;
   font-size: 10px;
   color: var(--ck-ink-50);
@@ -177,6 +185,10 @@ function title(cell) {
 
 .tape__scale-mid {
   text-align: center;
+}
+
+.tape__scale > :last-child {
+  text-align: right;
 }
 
 @media (max-width: 620px) {
@@ -194,20 +206,6 @@ function title(cell) {
 
   .tape__scale-mid {
     display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tape__cell--today {
-    transition: none;
-  }
-
-  .tape__cell--today:hover:not(:disabled) {
-    transform: none;
-  }
-
-  .tape__cell--busy .tape__today-hit {
-    animation: none;
   }
 }
 </style>

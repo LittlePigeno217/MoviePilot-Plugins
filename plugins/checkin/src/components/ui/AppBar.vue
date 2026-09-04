@@ -20,7 +20,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
 
     <span class="bar__names">
       <span class="bar__name">自用签到</span>
-      <span class="bar__view ck-eyebrow">{{ view }}</span>
+      <span class="bar__view ck-label">{{ view }}</span>
     </span>
 
     <span v-if="state" class="bar__state" :class="`bar__state--${tone}`">
@@ -43,7 +43,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
         icon="mdi-swap-horizontal"
         variant="text"
         size="small"
-        :aria-label="view === '台账' ? '前往设置' : '前往台账'"
+        :aria-label="view === '运行台' ? '前往设置' : '前往运行台'"
         @click="emit('switch')"
       />
       <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="emit('close')" />
@@ -55,7 +55,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
 .bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 10px 12px 10px 16px;
   border-bottom: 1px solid var(--ck-line);
   background: var(--ck-paper);
@@ -70,8 +70,9 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
   inline-size: 26px;
   block-size: 26px;
   flex: none;
-  border: 1px solid var(--ck-line-strong);
   border-radius: 6px;
+  background: var(--ck-accent);
+  color: rgb(var(--v-theme-on-primary));
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
@@ -80,6 +81,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
 .bar__names {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -98,7 +100,6 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-inline-start: auto;
   font-size: 12px;
   color: var(--ck-ink-50);
   white-space: nowrap;
@@ -134,11 +135,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-inline-start: auto;
-}
-
-.bar__state + .bar__tools {
-  margin-inline-start: 0;
+  flex: none;
 }
 
 @media (max-width: 560px) {
