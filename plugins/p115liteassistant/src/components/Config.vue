@@ -214,7 +214,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 autocomplete="off"
                 placeholder="UID=...; CID=...; SEID=..."
               />
-              <p class="p115-hint">Cookie 只保存在 MoviePilot 本地配置里，界面不会回显明文。</p>
+              <p class="p115-hint">Cookie 只存在 MoviePilot 本地，界面不回显明文。</p>
             </div>
           </div>
 
@@ -222,7 +222,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
             <div class="p115-panel__head">
               <div>
                 <h3 class="p115-section-title">播放地址</h3>
-                <p class="p115-hint">STRM 里写入的回源地址，播放器要能访问到它。</p>
+                <p class="p115-hint">写进 STRM 的回源地址，播放器要能连上。</p>
               </div>
             </div>
             <div class="p115-panel__body">
@@ -279,7 +279,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
             <div class="p115-panel__head">
               <div>
                 <h3 class="p115-section-title">STRM 通道</h3>
-                <p class="p115-hint">每条通道把一个 115 目录的媒体文件生成为本地 STRM。</p>
+                <p class="p115-hint">一条通道把一个 115 目录生成成本地 STRM。</p>
               </div>
               <v-btn variant="outlined" size="small" prepend-icon="mdi-plus" @click="addStrm">加一条通道</v-btn>
             </div>
@@ -304,7 +304,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                   color="primary"
                   density="compact"
                   hide-details
-                  label="本地 STRM 被删除时同步删除 115 对应文件"
+                  label="本地 STRM 删了，网盘上跟着删"
                 />
               </div>
               <div v-if="config.strm_delete_cloud_on_missing" class="p115-subpanel">
@@ -319,7 +319,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 <div class="p115-fields">
                   <v-text-field
                     v-model="config.strm_delete_sweep_cron"
-                    label="巡检周期（cron，留空关闭）"
+                    label="巡检周期（cron 表达式，留空不巡检）"
                     variant="outlined"
                     density="compact"
                     hide-details
@@ -329,7 +329,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                     v-model.number="config.strm_delete_confirm_threshold"
                     type="number"
                     min="0"
-                    label="超过多少个先等人工确认（0 = 不拦）"
+                    label="一次要删超过这个数就先等你确认（0 = 不等）"
                     variant="outlined"
                     density="compact"
                     hide-details
@@ -340,7 +340,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                   color="primary"
                   density="compact"
                   hide-details
-                  label="本地目录实时监听（网络挂载可能收不到事件）"
+                  label="本地目录实时监听（网络挂载可能收不到）"
                 />
                 <p class="p115-hint">
                   实时监听只是加速：删除事件安静 30 秒后才上报。真正兜底的是定时巡检。
@@ -351,7 +351,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 v-model:type="config.strm_notify_type"
                 :types="config.notify_types"
                 label="STRM 同步完成后发送通知"
-                hint="每次同步结束发一条，逐条列出映射的新增、更新与失败数。"
+                hint="每次同步完发一条，一条通道一行。"
               />
             </div>
           </div>
@@ -375,7 +375,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
             <div class="p115-panel__head">
               <div>
                 <h3 class="p115-section-title">上传通道</h3>
-                <p class="p115-hint">每条通道把一个本地目录的媒体文件上传到 115。</p>
+                <p class="p115-hint">一条通道把一个本地目录传到 115。</p>
               </div>
               <v-btn variant="outlined" size="small" prepend-icon="mdi-plus" @click="addUpload">加一条通道</v-btn>
             </div>
@@ -429,7 +429,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 v-model:type="config.upload_notify_type"
                 :types="config.notify_types"
                 label="上传完成后发送通知"
-                hint="汇报上传、秒传、生成 STRM 与失败数，手动触发和整理入库后的自动上传都算。通知海报自动使用 MoviePilot 内置的 TMDB 配置。"
+                hint="一部片子一条，带海报和这一季齐没齐。手动传和入库后自动传都算。"
               />
             </div>
           </div>
@@ -453,7 +453,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
             <div class="p115-panel__head">
               <div>
                 <h3 class="p115-section-title">每日签到</h3>
-                <p class="p115-hint">每天在时间窗内随机挑一刻执行，看起来更像人在操作。</p>
+                <p class="p115-hint">每天在这个时间段里随机挑一刻执行。</p>
               </div>
               <v-switch
                 v-model="config.checkin_enabled"
@@ -480,7 +480,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                 v-model:type="config.checkin_notify_type"
                 :types="config.notify_types"
                 label="签到后发送通知"
-                hint="成功带上连续天数和本次积分，失败带上原因。"
+                hint="签上了带积分和连续天数，没签上带原因。"
               />
             </div>
           </div>
@@ -493,7 +493,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
     </div>
 
     <footer class="cfg__foot">
-      <span class="cfg__foot-note p115-muted">保存后立即生效，无需重启 MoviePilot。</span>
+      <span class="cfg__foot-note p115-muted">保存后立即生效，不用重启 MoviePilot。</span>
       <div class="cfg__foot-acts">
         <v-btn variant="text" size="small" :disabled="busy" @click="reload">放弃改动</v-btn>
         <v-btn color="primary" variant="flat" size="small" :loading="busy || saving" @click="save">保存配置</v-btn>

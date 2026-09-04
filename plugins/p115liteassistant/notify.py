@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from importlib import import_module
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .log_utils import safe_error_text
@@ -33,14 +34,41 @@ except Exception:  # noqa: BLE001  # pragma: no cover
     _CreateMessageRequestBody = None  # type: ignore[assignment]
     _LARK_OK = False
 
-try:  # pragma: no cover
-    from app.runtime.extensions.service_config import ServiceConfigHelper
-    from app.core.config import settings as _mp_settings
-    _MP_HELPER_OK = True
-except Exception:  # noqa: BLE001  # pragma: no cover
-    ServiceConfigHelper = None  # type: ignore[assignment]
-    _mp_settings = None  # type: ignore[assignment]
-    _MP_HELPER_OK = False
+# 读通知渠道配置的两个入口在 V2 / V3 之间搬过家，两代的路径都得试：
+#
+#   SystemConfigOper     V2 app.db.systemconfig_oper          V3 app.db.oper.systemconfig
+#   ServiceConfigHelper  V2 app.helper.service                V3 app.runtime.extensions.service_config
+#
+# 以前只写了 V3 那两条，于是在 V2 真机上两条路径全 ImportError、`_feishu_channels()`
+# 永远返回空列表 —— 飞书美化卡片一次都没发出去过，全程静默退回纯文本，日志里只留一句
+# 「读取通知渠道配置失败」。这个插件声明同时兼容 V2 与 V3，导入就不能只认一代。
+def _import_first(*candidates: tuple[str, str]) -> Any:
+    """按顺序尝试 (模块, 属性)，返回第一个导得到的对象；全失败返回 None。"""
+    for module_path, attribute in candidates:
+        try:
+            module = import_module(module_path)
+        except Exception:  # noqa: BLE001
+            continue
+        target = getattr(module, attribute, None)
+        if target is not None:
+            return target
+    return None
+
+
+SystemConfigOper = _import_first(
+    ("app.db.systemconfig_oper", "SystemConfigOper"),
+    ("app.db.oper.systemconfig", "SystemConfigOper"),
+)
+SystemConfigKey = _import_first(
+    ("app.schemas.types", "SystemConfigKey"),
+    ("app.runtime.enums", "SystemConfigKey"),
+)
+ServiceConfigHelper = _import_first(
+    ("app.helper.service", "ServiceConfigHelper"),
+    ("app.runtime.extensions.service_config", "ServiceConfigHelper"),
+)
+_mp_settings = _import_first(("app.core.config", "settings"))
+_MP_HELPER_OK = ServiceConfigHelper is not None
 
 
 DEFAULT_NOTIFY_TYPE = "Plugin"
@@ -154,13 +182,7 @@ class Notifier:
         if not meta or not self.is_enabled(channel):
             return
         body = self._compose(lines)
-        # 上传通道标题：115 网盘・{媒体标题} 已入库（不带通道名）
-        if channel == "upload":
-            title = f"115 网盘・{headline}" if headline else "115 网盘"
-        else:
-            title = f"{self._title_prefix} · {meta['label']}"
-            if headline:
-                title = f"{title} {headline}"
+        title = self._title(channel, headline)
         try:
             config = self._config_provider() or {}
             mtype = resolve_notify_type(config.get(meta["type_key"]))
@@ -172,6 +194,17 @@ class Notifier:
             self._poster(**kwargs)  # type: ignore[misc]
         except Exception as err:  # noqa: BLE001
             self._log_error(f"【{meta['label']}】发送通知失败：{safe_error_text(err)}")
+
+    def _title(self, channel: str, headline: str) -> str:
+        """标题 = 「自称 · 结论」，中间一个间隔号，全篇只有这一处分隔符。
+
+        通道名（「STRM 通道」「每日签到」）不进标题：每条 headline 都写成自报家门的一句
+        话（「新增 12 个 STRM」「已签到，+5 积分」），再加一个通道名就是把同一件事说两遍，
+        还要从结论那边挤掉两三个字 —— 锁屏上常常只看得到这一行。
+        上传通道自称「115 网盘」：那条通知讲的是某部片子入库了，不是插件在汇报工作。
+        """
+        prefix = "115 网盘" if channel == "upload" else self._title_prefix
+        return f"{prefix} · {headline}" if headline else prefix
 
     @staticmethod
     def _compose(lines: Iterable[Any]) -> str:
@@ -205,18 +238,14 @@ class Notifier:
         包含该类型对应中文名的渠道；不传则返回全部启用的飞书渠道。
         """
         raw_configs: Any = None
-        try:  # 优先直接读数据库 systemconfig，不依赖启动期注入的 reader
-            from app.db.oper.systemconfig import SystemConfigOper
+        if SystemConfigOper is not None:
+            # 优先直接读数据库 systemconfig，不依赖启动期注入的 reader
             try:
-                from app.schemas.types import SystemConfigKey
-            except Exception:  # noqa: BLE001
-                from app.runtime.enums import SystemConfigKey  # type: ignore[no-redef]  # pragma: no cover
-            op = SystemConfigOper()
-            key = getattr(SystemConfigKey, "Notifications", None)
-            raw_configs = op.get(key.value if key else "Notifications")
-        except Exception as err:  # noqa: BLE001
-            Notifier._log_error(f"读取通知渠道配置失败：{safe_error_text(err)}")
-            return []
+                key = getattr(SystemConfigKey, "Notifications", None) if SystemConfigKey else None
+                raw_configs = SystemConfigOper().get(key.value if key else "Notifications")
+            except Exception as err:  # noqa: BLE001
+                Notifier._log_error(f"读取通知渠道配置失败：{safe_error_text(err)}")
+                raw_configs = None
         if not raw_configs and _MP_HELPER_OK and ServiceConfigHelper is not None:
             try:
                 raw_configs = [

@@ -45,7 +45,7 @@ const sweepValue = computed(() => {
 
 const pendingDeletes = computed(() => status.value.pending_deletes || [])
 
-const kindNames = { strm: '生成 STRM', upload: '上传', checkin: '签到', strm_sweep: '清理云端' }
+const kindNames = { strm: '生成 STRM', upload: '上传', checkin: '签到', strm_sweep: '网盘清理' }
 
 // 服务条：每一项都是“现在能不能干活”的答案，不是装饰性的计数
 const services = computed(() => [
@@ -80,7 +80,7 @@ const services = computed(() => [
   },
   {
     key: 'sweep',
-    label: '云端清理',
+    label: '网盘清理',
     value: sweepValue.value,
     ok: Boolean(status.value.strm_delete_enabled),
     live: Boolean(status.value.strm_delete_watch_running),
@@ -92,7 +92,7 @@ const actions = [
   { key: 'strm', label: '生成 STRM', icon: 'mdi-file-link-outline', path: '/strm/sync', payload: {} },
   { key: 'full', label: '全量上传', icon: 'mdi-tray-arrow-up', path: '/upload', payload: { incremental: false } },
   { key: 'inc', label: '增量上传', icon: 'mdi-tray-plus', path: '/upload', payload: { incremental: true } },
-  { key: 'sweep', label: '清理云端', icon: 'mdi-cloud-off-outline', path: '/strm/sweep', payload: {} },
+  { key: 'sweep', label: '清理网盘', icon: 'mdi-cloud-off-outline', path: '/strm/sweep', payload: {} },
   { key: 'checkin', label: '立即签到', icon: 'mdi-calendar-check-outline', path: '/checkin', payload: {} },
 ]
 
@@ -135,7 +135,7 @@ async function decidePending(batchIds, approve) {
   try {
     const path = approve ? '/strm/sweep/confirm' : '/strm/sweep/dismiss'
     const result = await pluginPost(props.api, path, { batch_ids: ids })
-    if (result.success) notice.success(result.message || (approve ? '已开始清理云端' : '已忽略'))
+    if (result.success) notice.success(result.message || (approve ? '已开始清理网盘' : '已忽略'))
     else notice.error(result.message || '操作未生效')
     if (ids.includes(expanded.value)) expanded.value = ''
     await refresh()
@@ -200,7 +200,7 @@ function bytes(value) {
   return `${shown} ${units[unit]}`
 }
 
-// 云端路径只留头尾：中间几层跟判断无关，末尾那个季目录才是「在库里的哪儿」
+// 网盘路径只留头尾：中间几层跟判断无关，末尾那个季目录才是「在库里的哪儿」
 function shortDir(cloudPath) {
   const parts = String(cloudPath || '').split('/').filter(Boolean)
   if (parts.length <= 1) return '/'
@@ -225,36 +225,48 @@ function shortTime(stamp) {
   return String(stamp || '').replace('T', ' ').slice(5, 16)
 }
 
+// 与通知层的 _duration_text 同一个写法：写「3.1 秒」而不是「3100ms」，毫秒是给日志看的
 function seconds(ms) {
   const value = Number(ms)
   if (!Number.isFinite(value) || value <= 0) return ''
-  return value < 1000 ? `${value}ms` : `${(value / 1000).toFixed(1)}s`
+  if (value < 1000) return '不到 1 秒'
+  const total = value / 1000
+  if (total < 60) return `${total.toFixed(1)} 秒`
+  const mins = Math.floor(total / 60)
+  const rest = Math.round(total % 60)
+  return rest ? `${mins} 分 ${rest} 秒` : `${mins} 分`
 }
 
-// 每种任务只汇报它自己有意义的那几个数，避免整排 0
+// 每种任务只汇报它自己有意义的那几个数，避免整排 0。词表与通知层共用一份：
+// 刮削文件 / 清理 / 等你确认 / 网盘删了 / 对不上网盘文件 / 网盘上没了 —— 同一件事在
+// 通知、运行台、设置三处只有一个名字。出事的那颗丸子着红，一眼能挑出来。
 function tally(entry) {
-  const pick = keys => keys.filter(([, key]) => Number(entry[key]) > 0).map(([label, key]) => `${label} ${entry[key]}`)
+  const pick = keys =>
+    keys
+      .filter(([, key]) => Number(entry[key]) > 0)
+      .map(([label, key]) => ({ text: `${label} ${entry[key]}`, tone: key === 'errors' ? 'bad' : '' }))
+  const plain = text => [{ text, tone: '' }]
   if (entry.kind === 'strm') {
-    const parts = pick([['新增', 'added'], ['更新', 'updated'], ['清理', 'removed'], ['附加', 'sidecars'], ['跳过', 'skipped'], ['冲突', 'conflicts'], ['失败', 'errors']])
-    return parts.length ? parts : ['没有变化']
+    const parts = pick([['新增', 'added'], ['更新', 'updated'], ['清理', 'removed'], ['刮削文件', 'sidecars'], ['跳过', 'skipped'], ['同名', 'conflicts'], ['没生成', 'errors']])
+    return parts.length ? parts : plain('已经是最新的')
   }
   if (entry.kind === 'upload') {
-    const parts = pick([['上传', 'uploaded'], ['秒传', 'instant'], ['STRM', 'strm_generated'], ['跳过', 'skipped'], ['删除', 'deleted'], ['延后', 'deferred'], ['失败', 'errors']])
-    return parts.length ? parts : ['没有变化']
+    const parts = pick([['上传', 'uploaded'], ['秒传', 'instant'], ['STRM', 'strm_generated'], ['跳过', 'skipped'], ['删除本地', 'deleted'], ['延后', 'deferred'], ['没传上', 'errors']])
+    return parts.length ? parts : plain('没有变化')
   }
   if (entry.kind === 'strm_sweep') {
-    const parts = pick([['云端删除', 'cloud_deleted'], ['刮削', 'scrapes_deleted'], ['空目录', 'cloud_dirs_deleted'], ['待确认', 'pending'], ['云端已无', 'already_gone'], ['溯源缺失', 'unidentified'], ['失败', 'errors']])
+    const parts = pick([['网盘删了', 'cloud_deleted'], ['刮削文件', 'scrapes_deleted'], ['空文件夹', 'cloud_dirs_deleted'], ['等你确认', 'pending'], ['网盘上没了', 'already_gone'], ['对不上网盘文件', 'unidentified'], ['没删掉', 'errors']])
     if (parts.length) return parts
-    return [entry.reason || '没有变化']
+    return plain(entry.reason || '没有要删的')
   }
   if (entry.kind === 'checkin') {
     const parts = []
-    if (entry.already) parts.push('今天已签过')
-    if (Number(entry.continuous_day) > 0) parts.push(`连续 ${entry.continuous_day} 天`)
-    if (Number(entry.points_num) > 0) parts.push(`+${entry.points_num} 积分`)
-    return parts.length ? parts : [entry.message || '已签到']
+    if (entry.already) parts.push({ text: '今天已经签过了', tone: '' })
+    if (Number(entry.continuous_day) > 0) parts.push({ text: `连续 ${entry.continuous_day} 天`, tone: '' })
+    if (Number(entry.points_num) > 0) parts.push({ text: `+${entry.points_num} 积分`, tone: '' })
+    return parts.length ? parts : plain(entry.message || '已签到')
   }
-  return [entry.message || '已完成']
+  return plain(entry.message || '已完成')
 }
 
 onMounted(refresh)
@@ -287,7 +299,7 @@ onMounted(refresh)
           class="svc"
           :class="{ 'svc--ok': trusted && item.ok, 'svc--live': trusted && item.live }"
         >
-          <span class="svc__label p115-endpoint-tag">{{ item.label }}</span>
+          <span class="svc__label p115-label">{{ item.label }}</span>
           <span class="svc__value">{{ ready ? item.value : '···' }}</span>
           <span v-if="trusted && item.hint" class="svc__hint">{{ item.hint }}</span>
         </div>
@@ -324,8 +336,8 @@ onMounted(refresh)
       <section v-if="pendingDeletes.length" class="p115-panel pend p115-enter">
         <header class="pend__head">
           <div>
-            <span class="p115-endpoint-tag">待你审阅</span>
-            <h3 class="p115-section-title">本地已消失，115 上仍在</h3>
+            <span class="p115-label">待你审阅</span>
+            <h3 class="p115-section-title">本地已消失，网盘上还在</h3>
           </div>
           <div v-if="pendingDeletes.length > 1" class="pend__acts">
             <v-btn variant="text" size="small" :disabled="Boolean(deciding)" @click="decidePending(pendingIds, false)">
@@ -366,7 +378,7 @@ onMounted(refresh)
           <div v-if="expanded === batch.id" class="pend__ledger">
             <div class="pend__ledger-head">
               <span>本地 STRM →</span>
-              <span>115 上的位置</span>
+              <span>网盘上的位置</span>
               <span class="pend__bytes">体积</span>
             </div>
             <p v-if="detail.loading && !detail.items.length" class="pend__state">读取清单…</p>
@@ -406,7 +418,7 @@ onMounted(refresh)
           </footer>
         </article>
 
-        <p class="pend__note">删除后进 115 回收站，可在 115 侧还原。</p>
+        <p class="pend__note">删掉的进 115 回收站，能在 115 上还原。</p>
       </section>
 
       <div class="p115-panel p115-enter p115-enter--3">
@@ -437,7 +449,7 @@ onMounted(refresh)
         <div class="p115-panel__head">
           <div>
             <h3 class="p115-section-title">执行记录</h3>
-            <p class="p115-hint">最新的在最上面，只留最近几条。</p>
+            <p class="p115-hint">最新的在最上面，只留最近几次。</p>
           </div>
         </div>
         <div class="p115-panel__body">
@@ -450,7 +462,12 @@ onMounted(refresh)
               </div>
               <div class="log-card__when p115-mono">{{ entry.time || '' }}</div>
               <div class="log-card__tally">
-                <span v-for="text in tally(entry)" :key="text" class="log-card__chip">{{ text }}</span>
+                <span
+                  v-for="pill in tally(entry)"
+                  :key="pill.text"
+                  class="p115-pill"
+                  :class="pill.tone ? `p115-pill--${pill.tone}` : ''"
+                >{{ pill.text }}</span>
               </div>
             </div>
           </div>
@@ -667,7 +684,7 @@ onMounted(refresh)
   flex-wrap: wrap;
 }
 
-.pend__head .p115-endpoint-tag {
+.pend__head .p115-label {
   display: block;
   color: var(--p115-hold);
 }
@@ -726,7 +743,7 @@ onMounted(refresh)
   color: var(--p115-muted);
 }
 
-// 清单主体：一行就是一次对账 —— 划掉的本地名 ⇄ 115 上的位置 ⇄ 体积。
+// 清单主体：一行就是一次对账 —— 划掉的本地名 ⇄ 网盘上的位置 ⇄ 体积。
 // 高度封顶 + contain，几百行也不让整页重新布局；不给行做逐条入场动画。
 .pend__ledger {
   margin-top: 10px;
@@ -825,7 +842,7 @@ onMounted(refresh)
   font-variant-numeric: tabular-nums;
 }
 
-// 窄屏：一行拆成两行 —— 上行「文件名 + 体积」，下行 115 上的位置。
+// 窄屏：一行拆成两行 —— 上行「文件名 + 体积」，下行网盘上的位置。
 // 三个格子必须显式定位，否则自动流会把体积挤到第三行单独占一行。
 @media (max-width: 560px) {
   .pend__ledger-head {
@@ -856,7 +873,7 @@ onMounted(refresh)
 // ── 执行记录（卡片式，简约）───────────────────────────────────
 .log-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 10px;
 }
 
@@ -892,6 +909,7 @@ onMounted(refresh)
 }
 
 .log-card__cost {
+  font-size: 12px;
   color: var(--p115-muted);
   white-space: nowrap;
 }
@@ -908,15 +926,6 @@ onMounted(refresh)
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  font-size: 11px;
-}
-
-.log-card__chip {
-  padding: 1px 7px;
-  border: 1px solid var(--p115-hairline);
-  border-radius: 999px;
-  background: var(--p115-faint);
-  white-space: nowrap;
 }
 
 @media (max-width: 620px) {

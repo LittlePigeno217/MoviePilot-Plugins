@@ -21,7 +21,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
       <span class="bar__glyph" aria-hidden="true">115</span>
       <span class="bar__names">
         <span class="bar__name">轻量助手</span>
-        <span class="bar__view p115-endpoint-tag">{{ view }}</span>
+        <span class="bar__view p115-label">{{ view }}</span>
       </span>
     </div>
 
@@ -70,6 +70,8 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
   display: flex;
   align-items: center;
   gap: 10px;
+  // 由它吃掉中间的空白：这样不论状态那一格在不在，工具按钮都贴着右边
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -108,7 +110,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-inline-start: auto;
+  flex: none;
   font-size: 12px;
   color: var(--p115-muted);
   white-space: nowrap;
@@ -134,6 +136,7 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
   display: flex;
   align-items: center;
   gap: 2px;
+  flex: none;
 }
 
 @media (max-width: 560px) {

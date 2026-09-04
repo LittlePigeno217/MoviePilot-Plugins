@@ -48,14 +48,17 @@ class NotifierTest(unittest.TestCase):
 
         self.assertEqual(len(self.poster.calls), 1)
         call = self.poster.calls[0]
-        self.assertEqual(call["title"], "115 · 每日签到 签到成功")
+        # 标题是「自称 · 结论」，通道名不进标题 —— 每条 headline 都自报家门，
+        # 再加一个「每日签到」就是把同一件事说两遍，还要从结论那边挤掉几个字
+        self.assertEqual(call["title"], "115 · 签到成功")
         self.assertEqual(call["text"], "连续 3 天\n\n+5 积分")
 
     def test_empty_body_becomes_placeholder(self):
         self.config["upload_notify"] = True
         self.notifier.notify("upload", "", [])
         self.assertEqual(self.poster.calls[0]["text"], "-")
-        self.assertEqual(self.poster.calls[0]["title"], "115 · 上传通道")
+        # 上传通道自称「115 网盘」：那条通知讲的是某部片子入库了，不是插件在汇报工作
+        self.assertEqual(self.poster.calls[0]["title"], "115 网盘")
 
     def test_unknown_channel_ignored(self):
         self.config["strm_notify"] = True

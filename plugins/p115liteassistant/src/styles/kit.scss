@@ -22,6 +22,27 @@
 //
 // v-dialog 的内容会被 teleport 到 body，脱离 .p115 子树，所以令牌同时挂在
 // .p115-portal 上，弹窗根节点带这个类即可继承同一套值。
+//
+// ── 两个插件的共用规格（改这里之前先看另一份 kit.scss）──────────────
+//
+// 同一个宿主的插件列表里并排放着，用户开哪个都该是同一套读法。所以「同一个区域
+// 长同一个样」是硬规格，不是风格偏好。以下数值两份 kit 必须逐字相同：
+//
+//   面板       间距 18 · 头 16/18/0 · 身 12/18/18 · 圆角 12（小件 8）
+//   读数格     内边距 14/14/12 · 值 15px/700 · 条 gap 12 · minmax(150px)
+//   记录卡     栅格 auto-fill minmax(180px) gap 10 · 内边距 11/13 · 圆角 8
+//   读数丸     1/7 · 圆角 999 · 11px · 极淡底 · 细边
+//   小标签     10px/700 · 字距 0.18em · 次要色（中文用不上 uppercase 与等宽）
+//   空态       虚线框 24/18 · 居中 13px 次要色
+//   等你决定   左侧 2px 竖线 + 极淡底，颜色用 info 不用红（审阅态不是报错态）
+//   动效       入场 rise 260ms 阶梯 70ms · 状态线 trace 520ms · 呼吸 3.2s
+//
+// 角色类名也一一对应，只差命名空间前缀：
+//   *-section-title  *-hint  *-label  *-mono  *-muted  *-panel  *-pill  *-empty  *-probe
+//
+// 词表也共用一份（通知、运行台、设置三处同名）：
+//   刮削文件 / 清理 / 等你确认 / 网盘删了 / 对不上网盘文件 / 网盘上没了 / 秒
+//   已开启 · 已关闭 · 未启用 · 待填写 · 运行台 · 设置
 
 .p115,
 .p115-portal {
@@ -70,7 +91,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.p115-endpoint-tag {
+// 小标签。中文用不上 uppercase，等宽在中文上也只是让字距变乱，所以只靠字号、
+// 字重和字距把它压成一行「这块是什么」——与自用签到逐字相同。
+.p115-label {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -96,6 +119,47 @@
 }
 
 // ── 面板（简约：留白大于边框）──────────────────────────────────────
+// ── 读数丸 ──────────────────────────────────────────────────────────
+// 一次执行报出来的每个数都是这一颗丸子。基础态就是「一个读数」，只有需要说清成没成
+// 时才挂颜色修饰 —— 与自用签到逐字相同。
+.p115-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--p115-hairline);
+  border-radius: 999px;
+  background: var(--p115-faint);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--p115-ink);
+}
+
+.p115-pill--on {
+  color: var(--p115-accent);
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: var(--p115-accent-soft);
+}
+
+.p115-pill--warn {
+  color: rgb(var(--v-theme-warning, 245 124 0));
+  border-color: rgba(var(--v-theme-warning, 245 124 0), 0.4);
+  background: rgba(var(--v-theme-warning, 245 124 0), 0.12);
+}
+
+.p115-pill--bad {
+  color: rgb(var(--v-theme-error));
+  border-color: rgba(var(--v-theme-error), 0.4);
+  background: rgba(var(--v-theme-error), 0.1);
+}
+
+.p115-pill--hold {
+  color: var(--p115-hold);
+  border-color: var(--p115-hold);
+  background: var(--p115-hold-soft);
+}
+
 .p115-panel {
   border: 1px solid var(--p115-hairline);
   border-radius: var(--p115-radius);

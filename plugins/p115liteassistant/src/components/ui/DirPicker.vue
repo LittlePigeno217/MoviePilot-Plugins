@@ -111,7 +111,7 @@ watch(
     <v-card class="picker p115-portal">
       <div class="picker__head">
         <div>
-          <div class="p115-endpoint-tag">{{ remote ? '115 云端' : 'MOVIEPILOT 本地' }}</div>
+          <div class="p115-label">{{ remote ? '115 网盘' : 'MOVIEPILOT 本地' }}</div>
           <h2 class="picker__title">{{ title }}</h2>
         </div>
         <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="emit('update:modelValue', false)" />

@@ -101,7 +101,7 @@ onBeforeUnmount(stopPolling)
     <v-card class="qr p115-portal">
       <div class="qr__head">
         <div>
-          <div class="p115-endpoint-tag">115 授权</div>
+          <div class="p115-label">115 授权</div>
           <h2 class="qr__title">扫码登录</h2>
         </div>
         <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="emit('update:modelValue', false)" />

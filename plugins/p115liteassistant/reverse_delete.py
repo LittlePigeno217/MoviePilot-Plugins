@@ -1,4 +1,4 @@
-"""反向删除：本地 STRM 被删除后清理 115 云端对应的媒体、刮削文件与空目录。
+"""反向删除：本地 STRM 被删除后清理网盘上对应的媒体、刮削文件与空目录。
 
 设计上把「判定」和「执行」严格分开：
 
@@ -401,7 +401,7 @@ class ReverseDeleter:
             return SweepDecision(
                 ACTION_SKIPPED,
                 f"{total} 条记录里有 {missing_total} 条本地 STRM 缺失，比例过高，"
-                "疑似媒体库掉盘或输出目录变更，跳过本轮；确实要清空云端请在 115 侧直接删除",
+                "疑似媒体库掉盘或输出目录变更，跳过本轮；确实要清空网盘请在 115 侧直接删除",
                 total_records=total,
                 missing_total=missing_total,
             )
@@ -541,7 +541,7 @@ class ReverseDeleter:
             raise
         except Exception as err:  # noqa: BLE001
             logger.warning(
-                f"{LOG_TAG}按云端路径反查失败，保留记录：{cloud_path}，"
+                f"{LOG_TAG}按网盘路径反查失败，保留记录：{cloud_path}，"
                 f"原因：{safe_error_text(err)}"
             )
             return None
@@ -777,7 +777,7 @@ class ReverseDeleter:
                     deleted_names.add(str(target["name"]))
                 self._bump(counts, "cloud_deleted")
                 logger.info(
-                    f"{LOG_TAG}本地 STRM 已删除，移除 115 云端文件："
+                    f"{LOG_TAG}本地 STRM 已删除，移除网盘上的文件："
                     f"{target.get('cloud_path') or target.get('path')}"
                 )
 
@@ -856,7 +856,7 @@ class ReverseDeleter:
         for item_id, name in pending.items():
             self._bump(counts, "scrapes_deleted")
             self.remember_deleted_id(item_id)
-            logger.info(f"{LOG_TAG}移除 115 云端刮削/字幕文件：{name}")
+            logger.info(f"{LOG_TAG}移除网盘上的刮削/字幕文件：{name}")
         deleted_ids = set(pending)
         dropped = self._drop_records_for_cloud_ids(
             records, media_prefix, deleted_ids, target_dir
@@ -896,7 +896,7 @@ class ReverseDeleter:
                 break
         if not dir_cloud_path:
             # 判断不了它在云端的层级，也就判断不了它是不是一级目录，宁可留着
-            logger.debug(f"{LOG_TAG}目录云端路径未知，不删除：{dir_id}")
+            logger.debug(f"{LOG_TAG}目录在网盘上的路径未知，不删除：{dir_id}")
             return
         if is_protected_cloud_dir(dir_id, dir_cloud_path, protected_dir_ids):
             logger.debug(f"{LOG_TAG}目录受保护，不删除：{dir_cloud_path}")
@@ -911,7 +911,7 @@ class ReverseDeleter:
             return
         self._bump(counts, "cloud_dirs_deleted")
         self.remember_deleted_id(dir_id)
-        logger.info(f"{LOG_TAG}目录已空，删除 115 云端目录：{dir_cloud_path}")
+        logger.info(f"{LOG_TAG}目录已空，删除网盘上的空目录：{dir_cloud_path}")
         dropped = self._drop_records_under_cloud_dir(
             records, media_prefix, dir_id, dir_cloud_path, target_dir
         )
@@ -1174,7 +1174,7 @@ class ReverseDeleter:
             elif decision.reason:
                 logger.error(f"{LOG_TAG}{label}：{decision.reason}")
         else:
-            logger.info(f"{LOG_TAG}{label}：{len(decision.targets)} 个本地 STRM 已删除，开始清理云端")
+            logger.info(f"{LOG_TAG}{label}：{len(decision.targets)} 个本地 STRM 已删除，开始清理网盘")
             try:
                 self.execute(mapping, records, decision.targets, counts)
             finally:
@@ -1189,7 +1189,7 @@ class ReverseDeleter:
         if counts["unidentified"]:
             logger.warning(
                 f"{LOG_TAG}{counts['unidentified']} 条记录的本地 STRM 已不存在，但拿不到可信的"
-                "115 文件 ID，本轮没有删除对应云端文件；这类记录来自旧版本，"
+                "115 文件 ID，本轮没有删除网盘上对应的文件；这类记录来自旧版本，"
                 "执行一次全量 STRM 同步补齐记录后即可删除"
             )
         return {

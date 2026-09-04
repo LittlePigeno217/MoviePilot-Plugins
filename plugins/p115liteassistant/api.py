@@ -197,14 +197,13 @@ class Api:
                 f"当前类型 {meta['type_key']}="
                 f"{self._store.get_config().get(meta['type_key'])}"
             )
-        headline = str(payload.get("title") or "模拟测试通知")
+        headline = str(payload.get("title") or "通道自检")
+        # 这条是排版的样板间：`**加粗**`、`•` 在微信 / Bark 这类渠道不会渲染，长横线在窄屏
+        # 会折行，所以自检消息也照正式通知的规矩来写。
         lines = [
-            "━━━━━━━━━━━━━",
-            "**📨 MoviePilot 通知管道测试**",
-            "• 通道：115 轻量助手",
-            f"• 消息类型：{self._store.get_config().get(meta['type_key'])}",
-            "• 说明：本条由插件 API /test-notify 触发，走宿主 post_message 完整链路",
-            f"• 时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "看到这条说明这条通道能正常送到你手上。",
+            "",
+            f"消息类型 {self._store.get_config().get(meta['type_key'])}",
         ]
         self._notifier.notify(channel, headline, lines)
         return _ok(message=f"已通过 MoviePilot 通知管道发送（{meta['label']}）")
@@ -541,7 +540,7 @@ class Api:
         self._notify_strm(entries, totals, incremental)
         return entries
 
-    # ---- 反向删除：本地 STRM 被删除后清理 115 云端 ----
+    # ---- 反向删除：本地 STRM 被删除后清理网盘上对应的文件 ----
 
     def _sweep_start_error(self) -> str:
         config = self._store.get_config()
@@ -733,12 +732,13 @@ class Api:
                 totals[key] += int(entry.get(key) or 0)
             if stop:
                 break
+        # 日志用的词和运行台、通知里那套一致：对着一条通知回查日志时不用再翻译一遍
         summary = (
-            f"云端删除 {totals['cloud_deleted']}，刮削 {totals['scrapes_deleted']}，"
-            f"空目录 {totals['cloud_dirs_deleted']}，新入队 {totals['pending']}，"
-            f"队列中等待 {totals['queued']}，云端已无 {totals['already_gone']}，"
-            f"溯源缺失 {totals['unidentified']}，失败 {totals['errors']}，"
-            f"耗时 {totals['duration_ms']}ms"
+            f"网盘删了 {totals['cloud_deleted']}，刮削文件 {totals['scrapes_deleted']}，"
+            f"空文件夹 {totals['cloud_dirs_deleted']}，新入队 {totals['pending']}，"
+            f"队列中等待 {totals['queued']}，网盘上没了 {totals['already_gone']}，"
+            f"对不上网盘文件 {totals['unidentified']}，没删掉 {totals['errors']}，"
+            f"耗时 {self._duration_text(totals['duration_ms'])}"
         )
         log_total = logger.warning if totals["errors"] else logger.info
         log_total(f"【STRM反向删除】执行完成，{summary}")
@@ -750,34 +750,122 @@ class Api:
         entries: list[Dict[str, Any]],
         totals: Dict[str, int],
     ) -> None:
-        """反向删除通知复用 STRM 通道 —— 删除是破坏性动作，只要动过就报一声。"""
+        """反向删除通知复用 STRM 通道 —— 删除是破坏性动作，只要动过就报一声。
+
+        全篇不加装饰：删掉的是网盘上的真文件，读的人只想知道「删了什么、能不能找回来、
+        还有什么等着我」。排版照那套语法走：清单 → 小计 → 下一步。
+
+        地名一律叫「网盘」，不叫「云端」，也不在正文里叫「115」——「115」留给服务本身
+        （115 授权、115 回收站），「网盘」是文件待着的那个地方。以前这三个词混着用，
+        一条通知里能出现两个地名指同一处。
+
+        数只在标题里报一次：标题说「删了 3 个网盘文件」，清单行就只说是哪条映射、
+        凭什么删，不再重复那个 3。
+        """
         if not any(self._sweep_entry_is_noteworthy(entry) for entry in entries):
             return
         if not self._notifier.is_enabled("strm"):
             return
-        if totals.get("errors"):
-            headline = "❌ 有失败"
-        elif totals.get("pending"):
-            headline = "⏸ 待确认"
+        deleted = int(totals.get("cloud_deleted", 0))
+        pending = int(totals.get("pending", 0))
+        failed = int(totals.get("errors", 0))
+        # 删除不可逆，标题先说清「动了多少」。地名写「网盘」而不是「115 上」——标题
+        # 前缀已经是「115 轻量助手」，同一个数字前面挂两个 115 读起来像口误
+        if failed:
+            headline = f"{failed} 个网盘文件没删掉"
+        elif deleted:
+            headline = f"删了 {deleted} 个网盘文件"
+        elif pending:
+            headline = f"{pending} 个网盘文件等你确认"
         else:
-            headline = "✅ 已清理"
-        lines = [
-            f"  {headline}  │  {len(entries)} 通道  │  {self._duration_text(totals.get('duration_ms'))}",
-            "",
-            f"  云端删除 {totals.get('cloud_deleted', 0)}  ·  刮削 {totals.get('scrapes_deleted', 0)}"
-            f"  ·  空目录 {totals.get('cloud_dirs_deleted', 0)}",
-        ]
-        if totals.get("pending"):
-            lines.append(f"  待人工确认 {totals['pending']} 个，请到插件运行台处理")
-        if totals.get("unidentified"):
-            lines.append(
-                f"  {totals['unidentified']} 条记录缺少 115 溯源信息，跑一次全量 STRM 同步即可补齐"
+            headline = "没有要删的"
+
+        # 出事的、等人的排前面：映射多到要折叠时，被折掉的必须是已经办完的那几条。
+        # 只有一条映射时（真机上的常态）行里不带数：那个数标题刚说过，行里要说的是
+        # 「哪条映射」，那才是标题没给的信息
+        ranked = sorted(
+            (row for row in (self._sweep_row(entry) for entry in entries) if row[1]),
+            key=lambda item: item[0],
+        )
+        if len(ranked) == 1:
+            single = self._sweep_row(
+                next(entry for entry in entries if self._sweep_row(entry)[1]), terse=True
             )
-        for entry in entries:
-            reason = str(entry.get("reason") or "").strip()
-            if reason:
-                lines.append(f"  📁 {entry.get('mapping') or '-'}  ·  {reason}")
-        self._notifier.notify("strm", headline, lines)
+            ranked = [single]
+        lines = [row for _rank, row in ranked[: self.NOTIFY_ROW_LIMIT]]
+        if len(ranked) > self.NOTIFY_ROW_LIMIT:
+            lines.append(f"另外 {len(ranked) - self.NOTIFY_ROW_LIMIT} 条映射见插件运行台")
+        # 标题被失败数占了的时候，「已经删掉几个」没别的地方报，补进小计
+        if aside := self._sweep_aside_line(totals, deleted if failed else 0):
+            lines.append(aside)
+
+        # 末尾按「最该动手的排前面」：等人确认 → 需要跑一次同步 → 兜底那句「能还原」。
+        # 回收站那句是安慰，不是待办，所以垫在最后
+        tail: list[str] = []
+        if pending:
+            tail.append("一次要删这么多，先让你过一眼。去插件运行台确认了才真删")
+        if int(totals.get("unidentified", 0)):
+            tail.append(
+                f"另有 {int(totals['unidentified'])} 条记录对不上网盘文件（旧版本留下的），"
+                f"跑一次全量 STRM 同步就能补上"
+            )
+        if deleted:
+            # 破坏性动作必须把「能不能找回来」说在通知里 —— 收到「删了 20 个文件」时，
+            # 第一个念头就是这个。运行台里本来有这句话，通知里一直没有
+            tail.append("本地 STRM 没了才会删，删掉的进 115 回收站，能还原")
+        if tail:
+            lines.append("")
+            lines.extend(tail)
+        self._notifier.notify("strm", headline, lines or ["这次没有需要处理的"])
+
+    @classmethod
+    def _sweep_row(cls, entry: Dict[str, Any], terse: bool = False) -> tuple[int, str]:
+        """一条映射这一轮的结果：(排序权重, 行文本)；什么都没发生返回 (0, "")。
+
+        一条映射可能既删了几个、又搁下一批等确认，这里只报最要紧的那一种 —— 一行里
+        塞两个状态位，读的人得先分辨这行到底算成还是没成。
+
+        行里报的是「这条映射怎么了」，不是「一共几个」：总数在标题里已经说过一次，
+        映射只有一条时（真机上的常态）行里再写一遍就是复述标题。所以：
+          ❌ 只说原因（数在标题里）
+          ⏳ 说搁下了几个（多映射时各不相同，标题给的是总数）
+          ✅ 说删了几个（同上）
+        「凭什么删」是全局的同一句话，放在末尾那段，不在每行里各抄一遍。
+        """
+        failed = int(entry.get("errors") or 0)
+        pending = int(entry.get("pending") or 0)
+        deleted = int(entry.get("cloud_deleted") or 0)
+        reason = cls._short_note(entry.get("reason"))
+        if failed:
+            # 只留原因：失败数已经在标题里，护栏原话截短后往往也只剩那个数
+            return 1, cls._row("❌", entry.get("mapping"), reason or "没说原因")
+        if pending or (reason and not deleted):
+            note = "" if terse and pending else (f"{pending} 个先搁着没删" if pending else reason)
+            return 2, cls._row("⏳", entry.get("mapping"), note)
+        if deleted:
+            return 3, cls._row("✅", entry.get("mapping"), "" if terse else f"删了 {deleted} 个")
+        return 0, ""
+
+    @staticmethod
+    def _sweep_aside_line(totals: Dict[str, int], deleted: int = 0) -> str:
+        """小计：跟着一起清掉的东西，必要时补上已经删掉的数目。
+
+        刮削文件和空文件夹不是谁点名要删的，但它们确实在网盘上被删了 —— 破坏性动作必须
+        把连带影响说出来，哪怕只占半行。
+        ``deleted`` 由调用方在「标题被失败数占掉」时传进来：那种场合成功删掉的几个没有
+        别的地方可报。
+        """
+        swept = [
+            f"{int(totals.get('scrapes_deleted', 0))} 个刮削文件"
+            if int(totals.get("scrapes_deleted", 0)) else "",
+            f"{int(totals.get('cloud_dirs_deleted', 0))} 个空文件夹"
+            if int(totals.get("cloud_dirs_deleted", 0)) else "",
+        ]
+        swept = [cell for cell in swept if cell]
+        cells = [f"另外 {deleted} 个已经删了"] if deleted else []
+        if swept:
+            cells.append(f"连带清掉网盘上 {'、'.join(swept)}")
+        return " · ".join(cells)
 
     _PENDING_PAGE_LIMIT = 200
 
@@ -912,7 +1000,7 @@ class Api:
         self._store.save_strm_delete_pending(batches)
 
     def dismiss_strm_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """驳回待删批次：只丢批次，115 云端一个文件都不动。"""
+        """驳回待删批次：只丢批次，网盘上一个文件都不动。"""
         batch_ids = self._requested_batch_ids(payload)
         if not batch_ids:
             return _error("缺少批次 ID")
@@ -924,11 +1012,61 @@ class Api:
             dropped += 1
             logger.info(
                 f"【STRM反向删除】用户驳回待确认批次 {batch_id}"
-                f"（{int(batch.get('count') or 0)} 个），115 云端文件保持不动"
+                f"（{int(batch.get('count') or 0)} 个），网盘上的文件一个都没动"
             )
         if not dropped:
             return _error("批次不存在或已处理")
-        return _ok(message=f"已忽略 {dropped} 个批次，115 云端文件保持不动")
+        return _ok(message=f"已忽略 {dropped} 个批次，网盘上的文件一个都没动")
+
+    # ── 飞书卡片的排版零件 ──────────────────────────────────────────────────
+    #
+    # 卡片和纯文本走的是同一份信息架构：一行结论、一行读数、一份清单。卡片多的只是
+    # 颜色和分栏，不多一条信息 —— 两边不一致的话，飞书里看到的和微信里看到的就成了
+    # 两回事。
+
+    @staticmethod
+    def _card_text(content: str, *, margin: str = "4px 16px 0px 16px", align: str = "") -> dict:
+        element: dict = {"tag": "markdown", "content": content, "margin": margin}
+        if align:
+            element["text_align"] = align
+        return element
+
+    @staticmethod
+    def _card_rule(margin: str = "8px 16px 4px 16px") -> dict:
+        return {"tag": "hr", "margin": margin}
+
+    @classmethod
+    def _card_stats(cls, cells: list[tuple], *, margin: str = "8px 16px 0px 16px") -> dict:
+        """一行读数：每格上面一个大数，下面一个灰色小标签。
+
+        格数按传进来的算，不补空列 —— 三格里只放两个数，会让人以为第三格丢了。
+        """
+        return {
+            "tag": "column_set",
+            "flex_mode": "none",
+            "margin": margin,
+            "columns": [
+                {
+                    "tag": "column",
+                    "width": "weighted",
+                    "weight": 1,
+                    "elements": [
+                        cls._card_text(f"**{value}**", margin="0px", align="center"),
+                        cls._card_text(
+                            f"<font color='grey'>{label}</font>", margin="0px", align="center"
+                        ),
+                    ],
+                }
+                for value, label in cells
+            ],
+        }
+
+    @staticmethod
+    def _card_close(elements: list[dict]) -> list[dict]:
+        """给卡片最后一行补底部留白，收尾不至于贴着边。"""
+        if elements:
+            elements[-1] = {**elements[-1], "margin": "4px 16px 12px 16px"}
+        return elements
 
     def _notify_strm(
         self,
@@ -936,107 +1074,318 @@ class Api:
         totals: Dict[str, int],
         incremental: bool,
     ) -> None:
-        """STRM 通道执行完成后的通知，美化卡片 + 按消息类型分流。"""
+        """STRM 通道执行完成后的通知：飞书发卡片，其余渠道发同一套文案的纯文本。
+
+        三个大数（新增 / 更新 / 清理）单独占一行，剩下的（刮削文件 / 没变化 / 失败）挤成
+        一行灰字 —— 它们只在出事的时候才会被看，平时不该和主数字抢注意力。
+        """
         if not self._notifier.is_enabled("strm"):
             return
-        has_errors = bool(totals.get("errors"))
-        status_icon = "❌" if has_errors else "✅"
-        status_text = "有失败" if has_errors else "完成"
-        duration = self._duration_text(totals.get("duration_ms"))
-        title = "115 轻量助手・STRM 同步"
-
-        # 构造卡片元素
-        elements: list[dict] = []
-        # 状态行
-        elements.append({
-            "tag": "markdown",
-            "content": f"**{status_icon} {status_text}**　<font color='grey'>{'增量' if incremental else '全量'} · {len(entries)} 映射 · {duration}</font>",
-            "margin": "0px 16px 0px 16px",
-        })
-        elements.append({"tag": "hr", "margin": "8px 16px 4px 16px"})
-
-        # 统计三列（新增/更新/清理）
-        stat_cols = []
-        for value, label in [
-            (totals.get("added", 0), "新增"),
-            (totals.get("updated", 0), "更新"),
-            (totals.get("removed", 0), "清理"),
-        ]:
-            stat_cols.append({
-                "tag": "column", "width": "weighted", "weight": 1,
-                "elements": [
-                    {"tag": "markdown", "content": f"**{value}**", "margin": "0px", "text_align": "center"},
-                    {"tag": "markdown", "content": label, "margin": "0px", "text_align": "center"},
-                ],
-            })
-        elements.append({"tag": "column_set", "flex_mode": "none", "columns": stat_cols,
-                         "margin": "8px 16px 0px 16px"})
-
-        # 附属/跳过/失败
-        sub_cols = []
-        for value, label in [
-            (totals.get("sidecars", 0), "附属"),
-            (totals.get("skipped", 0), "跳过"),
-            (totals.get("errors", 0), "失败"),
-        ]:
-            sub_cols.append({
-                "tag": "column", "width": "weighted", "weight": 1,
-                "elements": [
-                    {"tag": "markdown", "content": f"**{value}**", "margin": "0px", "text_align": "center"},
-                    {"tag": "markdown", "content": label, "margin": "0px", "text_align": "center"},
-                ],
-            })
-        elements.append({"tag": "column_set", "flex_mode": "none", "columns": sub_cols,
-                         "margin": "8px 16px 0px 16px"})
-
-        # 映射详情
-        has_mapping = False
-        for entry in entries:
-            mapping = str(entry.get("mapping") or "-")
-            if int(entry.get("errors") or 0):
-                detail = f"❌ 失败 {int(entry.get('errors') or 0)}"
-            else:
-                parts = []
-                for k, sym in [("added", "+"), ("updated", "~"), ("removed", "✕")]:
-                    v = int(entry.get(k) or 0)
-                    if v:
-                        parts.append(f"{sym}{v}")
-                detail = "  ".join(parts) if parts else "无变化"
-            message = str(entry.get("message") or "").strip()
-
-            if not has_mapping:
-                elements.append({"tag": "hr", "margin": "8px 16px 8px 16px"})
-                elements.append({"tag": "markdown", "content": "**映射**", "margin": "0px 16px 0px 16px"})
-                has_mapping = True
-            line = f"📁 {mapping}  {detail}"
-            if message:
-                line += f"  ·  {message}"
-            elements.append({
-                "tag": "markdown", "content": line,
-                "margin": "4px 16px 0px 16px",
-            })
-
-        # 优先飞书卡片，失败回退文本
-        strm_mtype = normalize_notify_type(
-            self._store.get_config().get("strm_notify_type")
+        failed = int(totals.get("errors") or 0)
+        meta = (
+            f"{'增量' if incremental else '全量'} · {len(entries)} 个映射"
+            f" · {self._duration_text(totals.get('duration_ms'))}"
         )
-        if not self._notifier.send_upload_feishu_card(title, elements, mtype=strm_mtype):
-            # 文本回退（保持原有纯文本格式）
-            headline = "❌ 有失败" if has_errors else "✅ 完成"
-            lines = [
-                f"  {headline}  │  {'增量' if incremental else '全量'}  │  {len(entries)} 映射  │  {duration}",
-            ]
-            self._notifier.notify("strm", headline, lines)
+        verdict = (
+            f"<font color='red'>**❌ {failed} 个没生成**</font>"
+            if failed
+            else "<font color='green'>**✅ 全部完成**</font>"
+        )
+        elements: list[dict] = [
+            self._card_text(
+                f"{verdict}　<font color='grey'>{meta}</font>", margin="0px 16px 0px 16px"
+            ),
+            self._card_rule(),
+            self._card_stats([
+                (int(totals.get("added") or 0), "新增"),
+                (int(totals.get("updated") or 0), "更新"),
+                (int(totals.get("removed") or 0), "清理"),
+            ]),
+        ]
+        aside = [
+            f"刮削文件 {int(totals.get('sidecars') or 0)}",
+            f"没变化 {int(totals.get('skipped') or 0)}",
+        ]
+        if failed:
+            aside.append(f"<font color='red'>失败 {failed}</font>")
+        elements.append(
+            self._card_text(
+                f"<font color='grey'>{' · '.join(aside)}</font>",
+                margin="6px 16px 0px 16px",
+                align="center",
+            )
+        )
+        # 出错的映射排在前面：映射多到要折叠时，被折掉的必须是「都好」的那几条
+        ordered = sorted(entries, key=lambda entry: not int(entry.get("errors") or 0))
+        if ordered:
+            elements.append(self._card_rule("8px 16px 8px 16px"))
+            elements.append(self._card_text("**映射**", margin="0px 16px 0px 16px"))
+            elements.extend(
+                self._card_text(self._strm_row_line(entry))
+                for entry in ordered[: self.NOTIFY_ROW_LIMIT]
+            )
+            if len(ordered) > self.NOTIFY_ROW_LIMIT:
+                elements.append(
+                    self._card_text(
+                        f"<font color='grey'>另外 {len(ordered) - self.NOTIFY_ROW_LIMIT}"
+                        f" 条映射见插件运行台</font>"
+                    )
+                )
+
+        strm_mtype = normalize_notify_type(self._store.get_config().get("strm_notify_type"))
+        if not self._notifier.send_upload_feishu_card(
+            "115 轻量助手 · STRM 同步", self._card_close(elements), mtype=strm_mtype
+        ):
+            self._notifier.notify("strm", *self._strm_text_notice(entries, totals, incremental))
+
+    # 通知里最多逐行列几条映射，再多就折叠 —— 锁屏上看不完那么长
+    NOTIFY_ROW_LIMIT = 8
+    # 附在行尾的原因截断到这么长
+    NOTIFY_NOTE_LIMIT = 24
+    # 短于这个长度的分句不算「说完了一句话」，截断时会接着往下取
+    NOTE_MIN_CLAUSE = 4
+
+    @classmethod
+    def _short_note(cls, message: Any) -> str:
+        """把一句原因压成能读完的话。
+
+        底层抛上来的原话多是「结论，加一串通用建议」。通知里要的是结论，所以在第一个
+        说得完整的分句处收住；分句短到不成话（「失败」这种）就接着往下取。
+        """
+        note = re.sub(r"\s+", " ", str(message or "").strip())
+        if not note:
+            return ""
+        head = note[: cls.NOTIFY_NOTE_LIMIT]
+        cut = next(
+            (
+                index
+                for index, char in enumerate(head)
+                if char in "，。；！？,;." and index >= cls.NOTE_MIN_CLAUSE
+            ),
+            -1,
+        )
+        if cut < 0:
+            return note if len(note) <= cls.NOTIFY_NOTE_LIMIT else f"{head}…"
+        return note[:cut] if cut == len(note) - 1 else f"{note[:cut]}…"
+
+    @staticmethod
+    def _strm_change_text(entry: Dict[str, Any]) -> str:
+        """一条映射这次动了什么。用「新增 / 更新 / 清理」而不是 +~✕ —— 符号省地方，
+        但通知是给人看一眼的，不该让人先猜图例。三个词和卡片上那排读数用的是同一套，
+        同一件事在飞书和微信里不能有两个名字。"""
+        failed = int(entry.get("errors") or 0)
+        if failed:
+            return f"{failed} 个没生成"
+        parts = [
+            f"{label} {int(entry.get(key) or 0)} 个"
+            for key, label in (("added", "新增"), ("updated", "更新"), ("removed", "清理"))
+            if int(entry.get(key) or 0)
+        ]
+        return "，".join(parts) if parts else "已经是最新的"
+
+    @staticmethod
+    def _row(mark: str, name: Any, note: str = "") -> str:
+        """清单行的统一写法：状态位 + 名称 + 两个空格 + 发生了什么。
+
+        行首那个状态位自己对齐成一列 —— 不拿空格填充，各家通知渠道字体宽度不同，空格
+        对齐到手机上就散了。这套写法和签到插件那边逐字一致：两个插件的消息落在同一个
+        通知列表里，读的人只该学一遍。
+        """
+        head = f"{mark} {name or '-'}"
+        return f"{head}  {note}" if note else head
+
+    @classmethod
+    def _strm_row_line(cls, entry: Dict[str, Any]) -> str:
+        """一条映射一行：✅/❌ 名称  这次动了什么 · 没成的原因。
+
+        失败必须带原因：只报一个数字，人还得自己去翻日志。
+        """
+        failed = int(entry.get("errors") or 0)
+        note = cls._strm_change_text(entry)
+        if failed and (reason := cls._short_note(entry.get("message"))):
+            note = f"{note} · {reason}"
+        return cls._row("❌" if failed else "✅", entry.get("mapping"), note)
+
+    def _strm_text_notice(
+        self, entries: list[Dict[str, Any]], totals: Dict[str, int], incremental: bool,
+    ) -> tuple:
+        """STRM 同步的纯文本通知：标题报最该知道的那个数，正文一条映射一行。
+
+        标题先说新增而不是新增 + 更新的和：新片子进来了几个才是消息，更新是维护。两个
+        数放一起加成一个「生成 12 个」，反而谁都说不清。
+        正文分两段：清单（一条映射一行）紧接小计（跳过和刮削文件），小计不带行首状态位，
+        视觉上退出清单那一列。这一条不加落款 —— 同步是家务活，没什么值得庆祝的。
+        """
+        added = int(totals.get("added", 0))
+        updated = int(totals.get("updated", 0))
+        failed = int(totals.get("errors", 0))
+        if failed:
+            headline = f"{failed} 个 STRM 文件没生成"
+        elif added:
+            headline = f"新增 {added} 个 STRM 文件"
+        elif updated:
+            headline = f"更新 {updated} 个 STRM 文件"
+        else:
+            headline = "没有需要更新的"
+        # 出错的映射排在前面：映射多到要折叠时，被折掉的必须是「都好」的那几条
+        ordered = sorted(entries, key=lambda entry: not int(entry.get("errors") or 0))
+        lines = [self._strm_row_line(entry) for entry in ordered[: self.NOTIFY_ROW_LIMIT]]
+        if len(ordered) > self.NOTIFY_ROW_LIMIT:
+            lines.append(f"另外 {len(ordered) - self.NOTIFY_ROW_LIMIT} 条映射见插件运行台")
+        if aside := self._strm_aside_line(totals, incremental):
+            lines.append(aside)
+        return headline, lines
+
+    @staticmethod
+    def _strm_aside_line(totals: Dict[str, int], incremental: bool) -> str:
+        """小计：这一轮里不需要人操心的那些数。
+
+        跳过和刮削文件平时没人看，出事的时候才会被翻出来核对，所以挤成一行读数，
+        不和上面那几个主数字抢注意力。
+        """
+        cells: list[str] = []
+        if skipped := int(totals.get("skipped", 0)):
+            cells.append(f"跳过 {skipped} 个没变化的" if incremental else f"{skipped} 个已经是最新的")
+        if sidecars := int(totals.get("sidecars", 0)):
+            cells.append(f"顺带 {sidecars} 个刮削文件")
+        return " · ".join(cells)
+
+    # ── 库存带 ────────────────────────────────────────────────────────
+    #
+    # 一季有几集在 115 上，一眼看得出。和签到插件那条打卡带用的是同一套记号
+    # （■ 有、□ 没有），换的只是单位：一个数天，一个数集。两个插件的消息落在同一个
+    # 通知列表里，同一套图形让它们看起来出自同一只手。
+    #
+    # 固定十格，不按集数伸缩：一季 24 集就画 24 格，手机上直接折行。格数固定，长度才
+    # 可预期；精确到第几集由后面那句读数负责 —— 图形报量级，文字报数目。
+    SEASON_BAR_CELLS = 10
+
+    @classmethod
+    def _season_bar(cls, have: int, total: int) -> str:
+        """库存带。总集数为 0（TMDB 没答上来）时返回空串，不画一条骗人的带子。
+
+        只差一集也绝不画满：59/60 集按比例算正好是十格，图形说齐了、读数说没齐，眼睛
+        第一时间信的是图形。
+        """
+        if total <= 0:
+            return ""
+        cells = cls.SEASON_BAR_CELLS
+        filled = cells if have >= total else min(cells - 1, max(0, have) * cells // total)
+        return "■" * filled + "□" * (cells - filled)
+
+    @staticmethod
+    def _season_episodes_map(se_text: Any) -> dict[int, set[int]]:
+        """把 `第2季 第1-3、7集` 拆成 {2: {1, 2, 3, 7}}。"""
+        result: dict[int, set[int]] = {}
+        for part in str(se_text or "").split("，"):
+            match = re.match(r"第(\d+)季\s*第([\d、\-]+)集", part.strip())
+            if not match:
+                continue
+            episodes: set[int] = set()
+            for segment in re.findall(r"\d+(?:-\d+)?", match.group(2)):
+                if "-" in segment:
+                    start, end = segment.split("-")
+                    episodes.update(range(int(start), int(end) + 1))
+                else:
+                    episodes.add(int(segment))
+            result[int(match.group(1))] = episodes
+        return result
+
+    @staticmethod
+    def _season_ranges(se_text: Any) -> dict[int, str]:
+        """把 `第2季 第1-10集` 拆成 {2: "第 1-10 集"}。
+
+        数字两边留一个空格是这一仓的中文排版惯例（「近 7 天」「10 集齐了」都这么写）。
+        只在显示时插空格，`_aggregate_seasons()` 的原格式不动 —— 那串文本还要被正则
+        拆回季号和集号。
+        """
+        return {
+            int(match.group(1)): f"第 {match.group(2)} 集"
+            for match in (
+                re.match(r"第(\d+)季\s*第([\d、\-]+)集", part.strip())
+                for part in str(se_text or "").split("，")
+            )
+            if match
+        }
+
+    @classmethod
+    def _season_lines(
+        cls, se_text: Any, progress: dict[int, tuple[int, int]] | None = None,
+    ) -> list[str]:
+        """每季一行：第 N 季  库存带  读数。
+
+        ``progress`` 是 {季号: (115 上已有集数, 该季总集数)}。TMDB 答不上来时退回集号
+        范围那一行 —— 画不出满不满，就老实报有哪几集，不含糊过去。
+        """
+        ranges = cls._season_ranges(se_text)
+        progress = progress or {}
+        lines: list[str] = []
+        for season in sorted(set(ranges) | set(progress)):
+            have, total = progress.get(season, (0, 0))
+            if bar := cls._season_bar(have, total):
+                reading = f"{total} 集齐了" if have >= total else f"{total} 集里有 {have} 集"
+                lines.append(f"第 {season} 季  {bar}  {reading}")
+            elif text := ranges.get(season, ""):
+                lines.append(f"第 {season} 季  {text}")
+        return lines
+
+    @staticmethod
+    def _upload_haul_line(facts: Dict[str, Any]) -> str:
+        """这次进了多少那一行。并列的读数用「·」隔开，读起来是一排读数而不是一句话。
+
+        上面那几行库存带讲的是「现在 115 上有多少」，这一行讲的是「这一趟搬了多少」——
+        两个数不是一回事，收到通知的人先想知道后者，因为那才是这条消息的由来。
+        剧集论集、电影论文件：说「这次进了 4 集」比「4 个文件」贴近人怎么想这件事。
+        秒传才值得单独说 —— 上传是默认动作，写「上传 6 个」和前面的「6 个」是同一个
+        数字说两遍；秒传是「没真传、几秒就完事」，那是消息。
+        """
+        count = int(facts.get("count") or 0)
+        instant = int(facts.get("instant") or 0)
+        unit = "集" if facts.get("season_lines") else "个文件"
+        cells = [f"这次进了 {count} {unit}", str(facts.get("size") or "-")]
+        if instant and instant >= count:
+            cells.append("全部秒传")
+        elif instant:
+            cells.append(f"其中 {instant} {unit}秒传")
+        return " · ".join(cells)
+
+    @classmethod
+    def _upload_text_lines(cls, facts: Dict[str, Any]) -> list[str]:
+        """上传通道的纯文本正文。
+
+        顺序照「最想知道什么」排：这一季现在齐没齐 → 这次进了多少 → 放在哪。以前是一行
+        挤七个「字段：值」，在手机上要横着读完才知道入库的是第几集。
+        库存带自己占一段，和下面两行之间空一行 —— 它是这条通知里唯一的装饰，紧贴读数
+        就成了表头。
+        """
+        lines: list[str] = [str(line) for line in (facts.get("season_lines") or [])]
+        if lines:
+            lines.append("")
+        lines.append(cls._upload_haul_line(facts))
+        placed = [f"存进「{facts.get('library') or '媒体库'}」"]
+        if int(facts.get("strm") or 0):
+            placed.append(f"生成 {int(facts['strm'])} 个 STRM")
+        if int(facts.get("sidecars") or 0):
+            placed.append(f"带上 {int(facts['sidecars'])} 个刮削文件")
+        lines.append("，".join(placed))
+        return lines
 
     @staticmethod
     def _duration_text(duration_ms: Any) -> str:
+        """耗时读数。写「8.6 秒」而不是「8600ms」—— 通知是给人看的，毫秒是给日志看的。"""
         try:
             value = int(duration_ms or 0)
         except (TypeError, ValueError):
             return "-"
         if value <= 0:
             return "-"
-        return f"{value}ms" if value < 1000 else f"{value / 1000:.1f}s"
+        if value < 1000:
+            return "不到 1 秒"
+        seconds = value / 1000
+        if seconds < 60:
+            return f"{seconds:.1f} 秒"
+        minutes, rest = divmod(int(seconds), 60)
+        return f"{minutes} 分 {rest} 秒" if rest else f"{minutes} 分"
 
     @staticmethod
     def _format_size(size_bytes: int) -> str:
@@ -1187,28 +1536,31 @@ class Api:
         except Exception:
             return set()
 
-    def _complete_seasons(
+    def _season_progress(
         self,
         title: str,
         year: str,
         cloud_seasons: dict[int, set[int]],
-    ) -> list[int]:
-        """判断哪些季在网盘中已整季完整。
+    ) -> dict[int, tuple[int, int]]:
+        """每季在网盘上有多少集、这一季一共该有多少集：{季号: (已有, 总数)}。
 
-        网盘已有集数 == TMDB 该季总集数 → 该季完整。
-        返回完整季号列表，如 [1, 2]。失败（无 TMDB 数据）返回空。
+        走的还是以前那批 TMDB 请求，只是把「齐了没有」这个布尔换成两个数 —— 库存带要
+        画出「差多少」，一个布尔画不出来。TMDB 查不到（没配 key、搜不到剧、季不存在）
+        时总数记 0，调用方据此退回集号范围那一行。
         """
         if not cloud_seasons:
-            return []
+            return {}
         tv_id = self._tmdb_tv_id(title, year)
         if not tv_id:
-            return []
-        complete: list[int] = []
+            return {}
+        progress: dict[int, tuple[int, int]] = {}
         for season, cloud_eps in cloud_seasons.items():
             total = self._tmdb_season_episodes(tv_id, season)
-            if total and cloud_eps == total:
-                complete.append(season)
-        return complete
+            # 交集而不是 len(cloud_eps)：网盘上偶尔躺着 TMDB 没登记的特别篇，
+            # 拿它去凑数会让一季看起来比实际更齐
+            have = len(cloud_eps & total) if total else len(cloud_eps)
+            progress[season] = (have, len(total))
+        return progress
 
     def _tmdb_api_key(self) -> str:
         """优先使用 MoviePilot 内置的 TMDB API Key，插件配置作为可选回退。"""
@@ -1550,39 +1902,26 @@ class Api:
             else:
                 _se_text = self._format_season_episodes(files)
 
-            # 整季完整提示：网盘已有集数 == TMDB 该季总集数
-            complete_hint = ""
+            # 库存带：这一季在 115 上齐没齐。TMDB 不可用时 progress 为空，_season_lines()
+            # 会退回集号范围那一行
+            progress: dict[int, tuple[int, int]] = {}
             if has_meta and _se_text:
                 first_meta = next((m for m in meta_list if m.get("title")), {})
-                title_meta = first_meta.get("title", "")
-                year_meta = first_meta.get("year", "")
-                try:
-                    cloud_records = self._store.get_upload_records().to_dict()
-                except Exception:  # noqa: BLE001
-                    cloud_records = None
+                title_meta = str(first_meta.get("title") or "")
                 if title_meta:
-                    cloud_seasons: dict[int, set[int]] = {}
+                    try:
+                        cloud_records = self._store.get_upload_records().to_dict()
+                    except Exception:  # noqa: BLE001
+                        cloud_records = None
                     meta_for_cloud = [m for m in meta_list if m.get("title")]
-                    se_text_with_cloud = self._aggregate_seasons(meta_for_cloud, cloud_records)
-                    # 从聚合文本解析出网盘集数分布（含 cloud 合并后）
-                    for part in [p.strip() for p in se_text_with_cloud.split("，")]:
-                        m = re.match(r"第(\d+)季 第([\d、\-]+)集", part)
-                        if m:
-                            s = int(m.group(1))
-                            eps: set[int] = set()
-                            for seg in re.findall(r"\d+(?:-\d+)?", m.group(2)):
-                                if "-" in seg:
-                                    a, b = seg.split("-")
-                                    eps.update(range(int(a), int(b) + 1))
-                                else:
-                                    eps.add(int(seg))
-                            cloud_seasons[s] = eps
-                    complete = self._complete_seasons(title_meta, year_meta, cloud_seasons)
-                    if complete:
-                        complete_hint = "✅ " + "、".join(
-                            f"第{s}季已整季完整" for s in complete
-                        )
-            _complete_hint = complete_hint
+                    progress = self._season_progress(
+                        title_meta,
+                        str(first_meta.get("year") or ""),
+                        self._season_episodes_map(
+                            self._aggregate_seasons(meta_for_cloud, cloud_records)
+                        ),
+                    )
+            _season_lines = self._season_lines(_se_text, progress)
 
             # 海报：优先用识别出的 title+year 精确搜 TMDB backdrop（横版），
             # 其次 transferhistory.image（豆瓣，可能竖版），最后回退文件名搜索
@@ -1615,88 +1954,52 @@ class Api:
                     "",
                 )
 
-            # 构造 column_set 卡片（季集在上，统计在下）
-            elements: list[dict] = []
-            if _se_text:
-                elements.append(
-                    {"tag": "markdown", "content": "**季集**", "text_size": "normal", "margin": "0px 16px 0px 16px"}
+            # 卡片和纯文本走同一份信息架构：库存带在上，读数在下。卡片多的只是颜色和
+            # 分栏，不多一条信息 —— 两边不一致的话，飞书里看到的和微信里看到的就成了
+            # 两回事
+            elements: list[dict] = [
+                self._card_text(
+                    f"<font color='green'>{line}</font>" if line.endswith("集齐了") else line,
+                    margin="2px 16px 0px 16px",
                 )
-                entries: list[tuple[str, str]] = []
-                for season_part in [s.strip() for s in _se_text.split("，")]:
-                    m = re.match(r"第(\d+)季 第([\d、\-]+)集", season_part)
-                    if m:
-                        entries.append((f"第{m.group(1)}季", f"第{m.group(2)}集"))
-                for i in range(0, len(entries), 3):
-                    cols = []
-                    for season, eps in entries[i:i+3]:
-                        cols.append({
-                            "tag": "column", "width": "weighted", "weight": 1,
-                            "elements": [{"tag": "markdown", "content": f"**{season}**\n{eps}", "margin": "0px", "text_align": "center"}],
-                        })
-                    while len(cols) < 3:
-                        cols.append({
-                            "tag": "column", "width": "weighted", "weight": 1,
-                            "elements": [{"tag": "markdown", "content": " ", "margin": "0px"}],
-                        })
-                    elements.append({
-                        "tag": "column_set", "flex_mode": "none",
-                        "columns": cols, "margin": "2px 16px 0px 16px",
-                    })
-            # 整季完整提示（季集区下方）
-            if _complete_hint:
-                elements.append({
-                    "tag": "markdown",
-                    "content": f"<font color='green'>{_complete_hint}</font>",
-                    "margin": "4px 16px 0px 16px",
-                })
-            # 统计区
-            elements.append({"tag": "hr", "margin": "8px 16px 4px 16px"})
-            elements.append({
-                "tag": "column_set", "flex_mode": "none",
-                "columns": [
-                    {"tag": "column", "width": "weighted", "weight": 1,
-                     "elements": [{"tag": "markdown", "content": f"**{_count}**\n文件", "margin": "0px", "text_align": "center"}]},
-                    {"tag": "column", "width": "weighted", "weight": 1,
-                     "elements": [{"tag": "markdown", "content": f"**{_size}**\n大小", "margin": "0px", "text_align": "center"}]},
-                    {"tag": "column", "width": "weighted", "weight": 1,
-                     "elements": [{"tag": "markdown", "content": f"**{_method_str}**\n方式", "margin": "0px", "text_align": "center"}]},
-                ],
-                "margin": "4px 16px 0px 16px",
-            })
-            elements.append({
-                "tag": "column_set", "flex_mode": "none",
-                "columns": [
-                    {"tag": "column", "width": "weighted", "weight": 1,
-                     "elements": [{"tag": "markdown", "content": _label_str, "margin": "0px", "text_align": "center"}]},
-                    {"tag": "column", "width": "weighted", "weight": 1,
-                     "elements": [{"tag": "markdown", "content": f"STRM {_strm}", "margin": "0px", "text_align": "center"}]},
-                    {"tag": "column", "width": "weighted", "weight": 1,
-                     "elements": [{"tag": "markdown", "content": f"附属 {_sidecars}", "margin": "0px", "text_align": "center"}]},
-                ],
-                "margin": "0px 16px 12px 16px",
-            })
+                for line in _season_lines
+            ]
+            elements.append(self._card_rule())
+            elements.append(self._card_stats([
+                (_count, "这次进了"),
+                (_size, "大小"),
+                (_method_str, "方式"),
+            ]))
+            elements.append(self._card_stats(
+                [(_label_str, "存进"), (_strm, "STRM"), (_sidecars, "刮削文件")],
+                margin="6px 16px 0px 16px",
+            ))
             # 优先飞书美化卡片，失败回退文本（mtype 用配置的消息类型分流渠道）
             card_title = f"115 网盘・{title_key} 已入库"
             upload_mtype = normalize_notify_type(
                 self._store.get_config().get("upload_notify_type")
             )
-            if not self._notifier.send_upload_feishu_card(card_title, elements, poster, upload_mtype):
-                lines = [
-                    f"类型：媒体，映射：{_label_str}，共 {_count} 个文件，大小：{_size}"
-                    f"，方式：{_method_str}，STRM {_strm} 个，附属 {_sidecars} 个",
-                ]
-                if _se_text:
-                    lines.append(_se_text)
+            if not self._notifier.send_upload_feishu_card(
+                card_title, self._card_close(elements), poster, upload_mtype
+            ):
                 self._notifier.notify(
-                    "upload", f"{title_key} 已入库", lines, image=poster,
+                    "upload",
+                    f"{title_key} 已入库",
+                    self._upload_text_lines({
+                        "season_lines": _season_lines,
+                        "count": _count, "size": _size,
+                        "instant": int(_methods.get("instant") or 0),
+                        "library": _label_str, "strm": _strm, "sidecars": _sidecars,
+                    }),
+                    image=poster,
                 )
-        # 汇总通知（有错误时补充）
+        # 汇总通知（有错误时补充）。标题已经报了失败数，正文只说标题装不下的：这一批
+        # 里还有多少是好的，以及去哪儿看失败原因
         if errors:
-            self._notifier.notify(
-                "upload",
-                "❌ 有失败",
-                [f"本次上传共 {len(per_file)} 个文件，以下文件处理失败：{errors} 个"],
-            )
+            lines = ["失败的文件名和原因在插件运行台的记录里"]
+            if per_file:
+                lines.insert(0, f"同一批里另外 {len(per_file)} 个已经进库了")
+            self._notifier.notify("upload", f"{errors} 个文件没传上去", lines)
 
     def run_checkin(self) -> Dict[str, Any]:
         if not self._checkin_lock.acquire(blocking=False):
@@ -1731,40 +2034,35 @@ class Api:
             self._checkin_lock.release()
 
     def _notify_checkin(self, entry: Dict[str, Any], success: bool) -> None:
-        """每日签到通知，成功和失败都发，失败时带上原因。"""
+        """每日签到通知。
+
+        标题把结论说完，正文只补标题装不下的那点东西 —— 通知自带到达时间，再写一行
+        「时间：」是白占锁屏上的位置。
+        """
         if not self._notifier.is_enabled("checkin"):
             return
         message = str(entry.get("message") or "").strip()
         if not success:
             self._notifier.notify(
                 "checkin",
-                "❌ 失败",
-                [
-                    "━━ 115 轻量助手 · 每日签到 ━━",
-                    "",
-                    "  ❌ 签到失败",
-                    "────────────────────────────",
-                    f"  时间：{entry.get('time') or '-'}",
-                    f"  原因：{message or '未知错误'}",
-                ],
+                "没签上",
+                [message or "115 没说原因，去插件运行台看这次的记录"],
             )
             return
-        headline = "✅ 今日已签到" if entry.get("already") else "✅ 签到成功"
-        lines = [
-            "━━ 115 轻量助手 · 每日签到 ━━",
-            "",
-            f"  {headline}",
-            "────────────────────────────",
-            f"  时间：{entry.get('time') or '-'}",
-        ]
-        if continuous := int(entry.get("continuous_day") or 0):
-            lines.append(f"  连续签到：{continuous} 天")
-        if points := int(entry.get("points_num") or 0):
-            lines.append(f"  本次积分：+{points}")
-        if message:
-            lines.append("")
-            lines.append(f"  📝 回执：{message}")
-        self._notifier.notify("checkin", headline, lines)
+        points = int(entry.get("points_num") or 0)
+        continuous = int(entry.get("continuous_day") or 0)
+        if entry.get("already"):
+            headline = "今天已经签过了"
+        else:
+            headline = f"已签到，+{points} 积分" if points else "已签到"
+        # 连续 1 天也照写：真机上刚断签重来的那天正文只剩一句「签到已记录」，
+        # 而标题已经说了「已签到，+1 积分」—— 那一行等于把同一句话说第二遍。
+        # 「连续签到 1 天」反倒是新消息：连签断了，从今天重新数
+        lines = [f"连续签到 {continuous} 天"] if continuous >= 1 else []
+        # 115 的回执偶尔带活动提示之类的内容，和上面两句不重复时才附上
+        if message and message not in {"签到成功", "今日已签到"} and message not in headline:
+            lines.append(message)
+        self._notifier.notify("checkin", headline, lines or ["签到已记录"])
 
     @staticmethod
     def _checkin_timezone():
