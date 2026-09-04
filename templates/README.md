@@ -16,9 +16,21 @@
 包含内容：
 - 后端插件入口 `__init__.py`
 - Vue 联邦前端骨架
-- `Config.vue` / `Page.vue`
+- `src/styles/kit.scss` —— 共享视觉底座（令牌全从宿主 Vuetify 主题取，无写死颜色）
+- `src/components/ui/AppBar.vue` —— 标题栏（身份 / 状态 / 工具三块，右对齐已处理好）
+- `Config.vue` —— 设置页，导轨 + 分区面板外壳
+- `Page.vue` —— 运行台，读数条 + 手动区 + 执行记录卡片，三态空态分清
 - `vite.config.js`
 - `package.json`
+
+**起手第一件事**：把 `src/` 里的 `tpl` 前缀全部换成你自己的插件前缀（`.tpl` → `.abc`、
+`--tpl-x` → `--abc-x`），然后按需增删令牌。**规格数值不要改** —— 这一仓的插件装在同一个
+MoviePilot 里，同一个区域必须长同一个样，详见
+[../docs/Plugin_UI_Spec.md](../docs/Plugin_UI_Spec.md)。改完跑一次：
+
+```bash
+python scripts/check_ui_spec.py
+```
 
 特点：
 - `get_render_mode() -> ("vue", "dist/assets")`

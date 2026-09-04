@@ -12,13 +12,16 @@ v2-vue-plugin/
 ├── index.html
 ├── README.md
 └── src/
-    ├── App.vue
-    ├── main.js
-    ├── plugin.js
+    ├── main.js                 npm run dev 的宿主替身：复刻 MoviePilot 主题 + 假 api
+    ├── styles/kit.scss         共享视觉底座（令牌全从宿主主题取，无写死颜色）
+    ├── utils/plugin.js
     └── components/
-        ├── Config.vue
-        └── Page.vue
+        ├── ui/AppBar.vue       标题栏：身份 / 状态 / 工具三块
+        ├── Config.vue          设置页：导轨 + 分区面板
+        └── Page.vue            运行台：读数条 + 手动区 + 执行记录
 ```
+
+界面部分已经按 [`docs/Plugin_UI_Spec.md`](../../docs/Plugin_UI_Spec.md) 配好，**不要另起一套**。
 
 ## 使用方式
 
@@ -34,8 +37,12 @@ v2-vue-plugin/
    - `plugin_config_prefix`
 3. 修改 `src/utils/plugin.js` 中的 `PLUGIN_ID`，保持与后端类名一致
 4. 修改 `vite.config.js` 中的联邦名称
-5. 在仓库根目录 `package.json` 中新增插件元数据（含 `v2: true`、`v3: true`）
-6. 安装依赖并构建：
+5. **把 `src/` 下的 `tpl` 前缀全部换成你自己的**（`.tpl` → `.abc`、`--tpl-x` → `--abc-x`、
+   `tpl-panel` → `abc-panel`），命名空间不能和别的插件撞。规格数值不要改，改完跑
+   `python scripts/check_ui_spec.py` 核对
+6. `npm run dev` 起调试壳看两个视图：`?view=page` / `?view=config`，`?theme=dark` 看深色
+7. 在仓库根目录 `package.json` 中新增插件元数据（含 `v2: true`、`v3: true`）
+8. 安装依赖并构建：
    - `yarn`
    - `yarn build`
 

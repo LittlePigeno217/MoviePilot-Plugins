@@ -1,0 +1,294 @@
+// <插件名> —— 共享视觉底座（从 templates/v2-vue-plugin 起手，照 docs/Plugin_UI_Spec.md）
+//
+// 用法：把这个文件里的 `tpl` 全部换成你自己的插件前缀（两三个字母，和 Vue 组件里的
+// 命名空间类名一致），然后按需增删令牌。规格数值不要改 —— 同一个宿主里的插件必须长一样。
+//
+// 硬规则：这个文件里不允许出现任何写死的颜色值。所有颜色都从 MoviePilot 运行时注入的
+// Vuetify 主题变量读取，浅色 / 深色 / 紫色主题切换时插件自动跟随。
+//
+// 数值、类名角色、两套外壳、词表与文案规矩全部见 docs/Plugin_UI_Spec.md。
+// 改这个文件之前先看那份规范，改完跑 `python scripts/check_ui_spec.py` 核对。
+
+.tpl {
+  --tpl-ink: rgb(var(--v-theme-on-surface));
+  --tpl-ink-70: rgba(var(--v-theme-on-surface), 0.68);
+  --tpl-ink-50: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity, 0.6));
+  --tpl-ink-14: rgba(var(--v-theme-on-surface), 0.14);
+  --tpl-paper: rgb(var(--v-theme-surface));
+  --tpl-well: rgb(var(--v-theme-background));
+  --tpl-faint: rgba(var(--v-theme-on-surface), 0.03);
+  --tpl-line: rgba(var(--v-border-color), var(--v-border-opacity));
+  --tpl-line-strong: rgba(var(--v-theme-on-surface), 0.18);
+  --tpl-accent: rgb(var(--v-theme-primary));
+  --tpl-accent-soft: rgba(var(--v-theme-primary), 0.08);
+  --tpl-accent-line: rgba(var(--v-theme-primary), 0.42);
+  --tpl-ok: rgb(var(--v-theme-success));
+  --tpl-warn: rgb(var(--v-theme-warning));
+  --tpl-warn-soft: rgba(var(--v-theme-warning), 0.12);
+  --tpl-warn-line: rgba(var(--v-theme-warning), 0.4);
+  --tpl-bad: rgb(var(--v-theme-error));
+  --tpl-bad-soft: rgba(var(--v-theme-error), 0.1);
+  --tpl-bad-line: rgba(var(--v-theme-error), 0.4);
+  // 等你做决定的冷色（刻意不用红：待补不是报错）——与 仓库里的其它插件同一个语义槽
+  --tpl-hold: rgb(var(--v-theme-info, 33 150 243));
+  --tpl-hold-soft: rgba(var(--v-theme-info, 33 150 243), 0.07);
+  --tpl-radius: 12px;
+  --tpl-radius-sm: 8px;
+  --tpl-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --tpl-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --tpl-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Noto Sans Mono CJK SC', monospace;
+}
+
+.tpl {
+  color: var(--tpl-ink);
+  background: var(--tpl-paper);
+  min-height: 100%;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
+}
+
+// ── 排版 ────────────────────────────────────────────────────────────
+// 数据全部走等宽，正文走系统 CJK 无衬线。这套界面的性格由等宽那一层承担。
+.tpl-mono {
+  font-family: var(--tpl-mono);
+  // 天数、次数这些列是竖着扫的，等宽数字才对得齐
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+// 小标签。中文用不上 uppercase，等宽在中文上也只是让字距变乱，所以只靠字号、
+// 字重和字距把它压成一行「这块是什么」——与 仓库里的其它插件逐字相同。
+.tpl-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--tpl-ink-50);
+}
+
+.tpl-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.tpl-hint {
+  font-size: 12px;
+  color: var(--tpl-ink-50);
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+
+.tpl-muted {
+  color: var(--tpl-ink-50);
+}
+
+// ── 面板 ────────────────────────────────────────────────────────────
+// 留白大于边框。面板之间用间距分开，不再靠通栏横线切割。
+.tpl-panel {
+  border: 1px solid var(--tpl-line);
+  border-radius: var(--tpl-radius);
+  background: var(--tpl-paper);
+  box-shadow: var(--tpl-shadow);
+}
+
+.tpl-panel + .tpl-panel {
+  margin-top: 18px;
+}
+
+.tpl-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 18px 0;
+}
+
+.tpl-panel__body {
+  padding: 12px 18px 18px;
+}
+
+// 面板内部的分组线：同一件事的下一段，不值得再起一个面板
+.tpl-row-sep {
+  border-top: 1px solid var(--tpl-line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+// ── 读数丸 ──────────────────────────────────────────────────────────
+// 一次执行报出来的每个数、一个站点的每种属性，都是这一颗丸子。基础态就是「一个读数」，
+// 只有需要说清成没成时才挂颜色修饰 —— 与 仓库里的其它插件的记录卡逐字相同。
+.tpl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--tpl-line);
+  border-radius: 999px;
+  background: var(--tpl-faint);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--tpl-ink-70);
+}
+
+.tpl-pill--on {
+  color: var(--tpl-accent);
+  border-color: var(--tpl-accent-line);
+  background: var(--tpl-accent-soft);
+}
+
+.tpl-pill--warn {
+  color: var(--tpl-warn);
+  border-color: var(--tpl-warn-line);
+  background: var(--tpl-warn-soft);
+}
+
+.tpl-pill--bad {
+  color: var(--tpl-bad);
+  border-color: var(--tpl-bad-line);
+  background: var(--tpl-bad-soft);
+}
+
+.tpl-pill--hold {
+  color: var(--tpl-hold);
+  border-color: var(--tpl-hold);
+  background: var(--tpl-hold-soft);
+}
+
+// ── 加载编排 ────────────────────────────────────────────────────────
+// 只动 transform 与 opacity：两者都在合成层，不触发布局与重绘。全部一次性播放
+// （fill-mode both），播完不留任何常驻动画，空闲时的合成开销为零。
+//
+// 顺序敏感：.tpl-enter 用的是 animation 简写，会把 animation-delay 重置为 0，所以
+// 下面的延迟修饰类必须排在它后面。不要调换这几条规则的先后。
+@keyframes tpl-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tpl-enter {
+  animation: tpl-rise 260ms var(--tpl-ease) both;
+}
+
+.tpl-enter--2 {
+  animation-delay: 70ms;
+}
+
+.tpl-enter--3 {
+  animation-delay: 140ms;
+}
+
+.tpl-enter--4 {
+  animation-delay: 210ms;
+}
+
+// 细线扫过一次：读数还在建立。时长盖过一次 /status 往返（局域网约 100-400ms），
+// 于是「面板在通电」和「请求在路上」是同一个视觉事件，不需要额外的转圈。
+@keyframes tpl-trace {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+// ── 状态线（签名）────────────────────────────────────────────────────
+// 一条 2px 的横线贴在卡片顶部，颜色说结果，挂载时扫过一次说读数刚到。
+.tpl-lined {
+  position: relative;
+  overflow: hidden;
+}
+
+.tpl-lined::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--tpl-line);
+  transform-origin: left center;
+  animation: tpl-trace 520ms var(--tpl-ease) both;
+}
+
+.tpl-lined--on::before {
+  background: var(--tpl-accent);
+}
+
+.tpl-lined--warn::before {
+  background: var(--tpl-warn);
+}
+
+.tpl-lined--bad::before {
+  background: var(--tpl-bad);
+}
+
+
+// ── 空态与未知态 ────────────────────────────────────────────────────
+// 两者要长得不一样：虚线盒 = 问过了，确实没有，可以动手；轻量一行 = 还没问到。
+.tpl-empty {
+  border: 1px dashed var(--tpl-line-strong);
+  border-radius: var(--tpl-radius);
+  padding: 24px 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--tpl-ink-50);
+}
+
+.tpl-probe {
+  margin: 0;
+  padding: 6px 0 2px;
+  font-size: 12px;
+  color: var(--tpl-ink-50);
+}
+
+// ── Vuetify 局部收敛（命名空间内提权，不与宿主打架）────────────────
+// 这些规则以前写不了：旧构建把整份 Vuetify 样式打进产物，只能用一个 postcss 插件
+// 事后删掉所有含 `.v-` 的规则来兜。现在产物不再包含 Vuetify 基础样式，带 .tpl 前缀
+// 的收敛规则可以安全存在 —— 它们只在插件子树内生效。
+.tpl .v-btn {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.tpl .v-btn--size-small,
+.tpl .v-btn--size-default {
+  border-radius: var(--tpl-radius-sm);
+}
+
+.tpl .v-switch .v-label,
+.tpl .v-checkbox .v-label {
+  font-size: 13px;
+  opacity: 1;
+}
+
+.tpl .v-field input,
+.tpl .v-field textarea {
+  font-size: 13px;
+}
+
+// ── 动效总闸 ────────────────────────────────────────────────────────
+// 系统开了「减少动态效果」就把命名空间内所有动画与过渡按掉，包括各组件自己的
+// scoped 动画，也包括以后新加的。只在这条媒体查询里用 !important —— 无障碍覆盖
+// 高于组件意图。
+@media (prefers-reduced-motion: reduce) {
+  .tpl *,
+  .tpl *::before,
+  .tpl *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0s !important;
+  }
+}
