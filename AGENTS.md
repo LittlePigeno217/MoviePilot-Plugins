@@ -8,6 +8,19 @@
 ## Plugin Debugging
 
 - During plugin development, always install and debug the plugin in the MoviePilot Docker Compose project on the NAS connected through the local `.ssh` configuration.
+- Use `scripts/nas.sh` for that loop (`ver` / `deploy` / `log` / `replay` / `psql`). It writes both the container path and the host mount, clears stale files, restarts, and waits for the load line. The four traps it exists to avoid are documented in [docs/Repository_Guide.md](docs/Repository_Guide.md) section 8.
+
+## Plugin UI
+
+- Every plugin with its own frontend follows one shared design system: same tokens, same class
+  roles, same metrics, same two shells (运行台 / 设置), same wording. A user opens any plugin in
+  this repo and reads it the same way — that is a hard requirement, not a style preference.
+- The spec is [docs/Plugin_UI_Spec.md](docs/Plugin_UI_Spec.md). Read it before touching any
+  `.vue` / `kit.scss` file, and do not invent a second visual language for a new plugin.
+- Start new frontends from [templates/v2-vue-plugin](templates/v2-vue-plugin/) — it already
+  carries the kit, the title bar, and both shells. Rename the `tpl` prefix and build from there.
+- After UI changes run `python scripts/check_ui_spec.py`; it fails when a plugin (or the
+  template) drifts from the shared metrics.
 
 ## Repository Layout
 
