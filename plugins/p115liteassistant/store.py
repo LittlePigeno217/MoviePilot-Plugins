@@ -62,6 +62,8 @@ class Store:
     _LIFE_API_STATE_KEY = "p115liteassistant_life_api_state"
     _LIFE_PATHS_KEY = "p115liteassistant_life_paths"
     _STRM_DELETE_PENDING_KEY = "p115liteassistant_strm_delete_pending"
+    _CLOUD_CHECK_KEY = "p115liteassistant_cloud_check"
+    _LEDGER_DIGEST_KEY = "p115liteassistant_ledger_digest"
 
     # 落盘前加密的字段。密钥由 302 取链用的随机 secret 派生，二者同生共死：
     # 插件数据被清空时，密文和密钥一起消失，不会留下解不开的残留。
@@ -258,6 +260,25 @@ class Store:
         history = TaskHistory(self.get_history())
         history.add(item)
         self._plugin.save_data(self._HISTORY_KEY, history.items)
+
+    def get_cloud_check(self) -> Dict[str, Any]:
+        """网盘核对的结果缓存：``{"rows": {行 id: {state, checked_at}}, "cooldown_until": epoch}``。
+
+        带时间戳存着，所以「还在」「没了」「还没核对」是三种状态 —— 没问过就说没问过。
+        """
+        state = self._plugin.get_data(self._CLOUD_CHECK_KEY) or {}
+        return dict(state) if isinstance(state, dict) else {}
+
+    def save_cloud_check(self, state: Dict[str, Any]) -> None:
+        self._plugin.save_data(self._CLOUD_CHECK_KEY, deepcopy(dict(state)))
+
+    def get_ledger_digest(self) -> Dict[str, Any]:
+        """上一次报过的库况。用来只在**新出问题**时才发通知，而不是每轮巡检都报一遍。"""
+        state = self._plugin.get_data(self._LEDGER_DIGEST_KEY) or {}
+        return dict(state) if isinstance(state, dict) else {}
+
+    def save_ledger_digest(self, state: Dict[str, Any]) -> None:
+        self._plugin.save_data(self._LEDGER_DIGEST_KEY, dict(state))
 
     def get_checkin_schedule(self) -> Dict[str, Any]:
         state = self._plugin.get_data(self._CHECKIN_SCHEDULE_KEY) or {}

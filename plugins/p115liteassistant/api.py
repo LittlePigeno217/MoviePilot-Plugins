@@ -10,7 +10,7 @@ from io import BytesIO
 from math import isfinite
 from pathlib import Path
 from time import monotonic, time
-from typing import Any, Callable, Dict, Iterator
+from typing import Any, Callable, Dict, Iterator, Optional
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from .checkin_schedule import random_epoch_for_date, pick_next_run_epoch
 from .client import U115AccessLimitError, U115ApiError, U115AuthError, U115Client
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, parse_extensions
+from .library_audit import find_untracked, media_records
+from .cloud_check import CHECK_BUDGET, check_rows, cooldown_left, merge as merge_cloud_check, pick_rows
+from .media_ledger import build_ledger
+from .seeding import collect_seeding_paths, seeding_identities
 from .log_utils import safe_error_text
 from .notify import (
     CHANNELS as NOTIFY_CHANNELS,
@@ -90,6 +94,9 @@ class Api:
         self._strm_watch_status = strm_watch_status
         self._notifier = notifier or Notifier(store.get_config)
         self._running: set[str] = set()
+        #: 每个在跑的任务是什么时候起的（epoch 秒）。任务台要显示「已跑多久」，
+        #: 而 _running 只是个集合，答不了这个问题。
+        self._running_since: Dict[str, float] = {}
         # 反向删除的待处理范围记在编排层：抢不到 115 数据任务锁的删除事件不会丢，
         # 锁释放时由 _drain_pending_sweep 接着跑完。None 语义的「全量」单独用布尔表示，
         # 因为空列表表示「没有待处理路径」，绝不能被当成「清理所有记录」。
@@ -97,6 +104,9 @@ class Api:
         self._pending_sweep_all = False
         # 反向删除刚清掉的 pickcode，正向同步据此跳过重建（115 列表接口有延迟）
         self._recent_deletes: TtlCache[str, bool] = TtlCache(RECENT_DELETE_TTL, maxsize=4096)
+        # 实时上传监听触发的“待补跑”标记：_start("upload") 抢不到锁的事件记在这里，
+        # 等当前 115 任务结束由 _drain_pending_upload 补跑一次增量上传，不丢事件。
+        self._pending_upload = False
         self._lock = threading.Lock()
         self._cloud_task_lock = threading.Lock()
         self._checkin_lock = threading.Lock()
@@ -329,8 +339,18 @@ class Api:
     def status(self) -> Dict[str, Any]:
         try:
             config = self._store.get_config()
+            now = time()
             with self._lock:
                 running = sorted(self._running)
+                tasks = [
+                    {
+                        "kind": kind,
+                        "label": self._TASK_LABELS.get(kind, kind),
+                        "elapsed_ms": max(0, int((now - since) * 1000)),
+                        "holds_cloud_lock": kind in self._CLOUD_TASK_KINDS,
+                    }
+                    for kind, since in sorted(self._running_since.items())
+                ]
             return {
                 "enabled": bool(config.get("enabled")),
                 "authenticated": self._client_provider().is_authenticated(),
@@ -359,6 +379,8 @@ class Api:
                     if isinstance(batch, dict)
                 ],
                 "running": running,
+                # 任务台要的是「跑了多久」，running 只答得了「在不在跑」
+                "tasks": tasks,
                 "history": self._store.get_history(),
                 "recent_uploads": self._store.get_recent_uploaded_media(
                     parse_extensions(
@@ -394,24 +416,148 @@ class Api:
                 return "STRM 输出目录不能为空"
         return ""
 
-    def trigger_strm(self) -> Dict[str, Any]:
+    def trigger_strm(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """不带 ``mapping_id`` 跑全部通道；带了就只跑那一条**整条**。
+
+        故意不支持「只跑这条通道里的某个子目录」：``run_mapping`` 会把本轮没见到的记录
+        当成过期记录清掉（``strm.py`` 里 ``mapping_record_keys - seen_record_keys`` 那段），
+        只喂一个子目录进去，这条通道里其它媒体的记录和 STRM 会被一起删掉。
+        """
         if error := self._strm_start_error():
             return _error(error)
+        mapping_id = str((payload or {}).get("mapping_id") or "").strip()
+        mappings = None
+        if mapping_id:
+            mappings = [
+                mapping
+                for mapping in self._store.get_config().get("strm_mappings") or []
+                if isinstance(mapping, dict)
+                and mapping.get("enabled", True)
+                and str(mapping.get("id") or mapping.get("source_cid") or "default") == mapping_id
+            ]
+            if not mappings:
+                return _error("这条通道不存在或已停用")
         moviepilot_url = self._strm_moviepilot_url()
-        return self._start("strm", lambda: self.run_strm(moviepilot_url), "STRM 同步已开始")
+        return self._start(
+            "strm",
+            lambda: self.run_strm(moviepilot_url, mappings),
+            "已开始同步这条通道" if mapping_id else "STRM 同步已开始",
+        )
+
+    # ── 文件管理台：一次性任务 ──────────────────────────────────────────
+    #
+    # 「不建通道就跑一次」。记录照样写进 strm_records（mapping_id 用 once:<cid>），这样
+    # 增量能跳过、体检能看见；但**反向删除不会管它们** —— decide() 只遍历配置里的通道，
+    # once: 不在里面。要让本地删除联动网盘，得去设置里为这个目录建一条正式通道。
+
+    def task_strm_once(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """给指定的 115 目录生成一批 STRM，不落通道配置。"""
+        data = payload or {}
+        source_cid = str(data.get("source_cid") or "").strip()
+        target_dir = str(data.get("target_dir") or "").strip()
+        if not source_cid:
+            return _error("先选一个 115 源目录")
+        if not target_dir:
+            return _error("先选一个本地输出目录")
+        if error := self._strm_start_error():
+            return _error(error)
+        source_path = str(data.get("source_path") or "").strip()
+        mapping = {
+            "id": f"once:{source_cid}",
+            "source_cid": source_cid,
+            "source_path": source_path,
+            "target_dir": target_dir,
+            "enabled": True,
+        }
+        moviepilot_url = self._strm_moviepilot_url()
+        return self._start(
+            "strm",
+            lambda: self.run_strm(moviepilot_url, [mapping]),
+            f"已开始为 {source_path or source_cid} 生成 STRM",
+        )
+
+    def task_upload_once(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """把指定的本地目录传到指定的 115 目录，不落通道配置。"""
+        data = payload or {}
+        source = str(data.get("source") or "").strip()
+        target = str(data.get("target") or "").strip().replace("\\", "/")
+        if not source:
+            return _error("先选一个本地源目录")
+        if not target:
+            return _error("先选一个 115 目标目录")
+        try:
+            source_dir = Path(source).expanduser().resolve()
+        except (OSError, RuntimeError, ValueError):
+            return _error("本地源目录无效")
+        if not source_dir.is_dir():
+            return _error(f"本地源目录不存在：{source_dir}")
+        if error := self._upload_start_error():
+            return _error(error)
+        incremental = bool(data.get("incremental", True))
+        mapping = {
+            "id": f"once:{source_dir.as_posix()}",
+            "source": str(source_dir),
+            "target": target,
+            "strm_target": "",
+            "enabled": True,
+            "label": source_dir.name,
+        }
+        moviepilot_url = self._strm_moviepilot_url()
+        mode = "增量" if incremental else "全量"
+        return self._start(
+            "upload",
+            lambda: self.run_upload(incremental, moviepilot_url, [mapping]),
+            f"已开始{mode}上传 {source_dir.name} → {target}",
+        )
 
     def trigger_upload(
         self,
         payload: Dict[str, Any] | bool | None = None,
     ) -> Dict[str, Any]:
+        """上传入口。
+
+        ``payload`` 为 True / dict 时是手动/媒体整理触发：抢不到锁直接报错，用户看得到。
+        为 False 或 ``None`` 时是实时监听触发的自动语义：抢不到锁记 ``_pending_upload``，
+        等当前 115 任务结束自动补跑，保证源目录新增不漏传。
+        """
         if error := self._upload_start_error():
             return _error(error)
         incremental = payload if isinstance(payload, bool) else bool((payload or {}).get("incremental", True))
+        auto = payload in (False, None) or (isinstance(payload, dict) and payload.get("auto"))
         moviepilot_url = self._strm_moviepilot_url()
-        return self._start(
+        result = self._start(
             "upload",
             lambda: self.run_upload(incremental, moviepilot_url),
             "目录上传已开始",
+        )
+        if result.get("success") or not auto:
+            return result
+        with self._lock:
+            self._pending_upload = True
+        logger.info("【目录上传】任务忙，已排队，等当前 115 任务结束后自动补跑")
+        return _ok(data={"queued": True}, message="已排队，等当前任务结束后自动补跑")
+
+    def queue_upload(self) -> Dict[str, Any]:
+        """实时监听触发的上传入口（自动语义）：抢不到锁就排队补跑，不丢事件。"""
+        return self.trigger_upload(False)
+
+    def _drain_pending_upload(self) -> None:
+        """115 数据任务释放锁之后补跑排队中的实时上传；没排队就什么都不做。"""
+        with self._lock:
+            if not self._pending_upload:
+                return
+            if "upload" in self._running:
+                return
+        if self._upload_start_error():
+            return
+        with self._lock:
+            self._pending_upload = False
+        logger.debug("【目录上传】上一个 115 任务已结束，补跑排队中的增量上传")
+        moviepilot_url = self._strm_moviepilot_url()
+        self._start(
+            "upload",
+            lambda: self.run_upload(True, moviepilot_url),
+            "目录上传已开始（补跑）",
         )
 
     def _upload_start_error(self) -> str:
@@ -432,10 +578,16 @@ class Api:
                 return "上传完成生成 STRM 时，每个映射都必须配置 STRM 输出目录"
         return ""
 
-    def run_strm(self, moviepilot_url: str) -> list[Dict[str, Any]]:
+    def run_strm(
+        self,
+        moviepilot_url: str,
+        mappings: Optional[list[Dict[str, Any]]] = None,
+    ) -> list[Dict[str, Any]]:
+        """``mappings`` 给了就只跑这些（文件管理台的一次性任务），不给就跑配置里启用的那些。"""
         config = self._store.get_config()
         incremental = bool(config.get("strm_incremental", True))
-        mappings = [mapping for mapping in config.get("strm_mappings") or [] if mapping.get("enabled", True)]
+        if mappings is None:
+            mappings = [mapping for mapping in config.get("strm_mappings") or [] if mapping.get("enabled", True)]
         logger.info(f"【STRM同步】开始执行，模式：{'增量' if incremental else '全量'}，有效映射：{len(mappings)}")
         if not mappings:
             logger.warning("【STRM同步】没有启用的目录映射，任务结束")
@@ -570,8 +722,13 @@ class Api:
         return self._enqueue_strm_sweep(paths, auto=True)
 
     def run_scheduled_strm_sweep(self) -> Dict[str, Any]:
-        """定时巡检入口 —— 兜住实时监听漏掉的删除（容器重启、事件丢失、网络挂载等）。"""
-        return self.queue_strm_sweep()
+        """定时巡检入口 —— 兜住实时监听漏掉的删除（容器重启、事件丢失、网络挂载等）。
+
+        顺带在这里报一声库况：那条 cron 本来就在跑，不必为通知再加一个任务。
+        """
+        result = self.queue_strm_sweep()
+        self.notify_ledger_digest()
+        return result
 
     def _enqueue_strm_sweep(self, paths: Any = None, auto: bool = False) -> Dict[str, Any]:
         """反向删除的唯一入口：先把范围记进编排层，再尝试起任务。"""
@@ -613,6 +770,591 @@ class Api:
         if full:
             return None, True
         return paths, bool(paths)
+
+    # ── 网盘管理 ──────────────────────────────────────────────────────
+    #
+    # 能力边界见 docs/research/115-api.md：浏览、新建、改名、删除都在开放接口里；
+    # 移动、容量、回收站列表与还原只有 cookie 链路能做，且那几个端点还没实测过，
+    # 所以这一版不给这些动作，界面上也不留一个按下去会报错的按钮。
+
+    def disk_list(self, cid: str = "0") -> Dict[str, Any]:
+        """列一个 115 目录，目录和文件都要。
+
+        ``/browse-115`` 只回目录 —— 那个是给目录选择器用的；网盘管理器要看见文件、
+        体积和时间，所以另开一个。面包屑由前端自己攒（一路点下去它知道来路），
+        免得每翻一层多打一次 ``folder/get_info``。
+        """
+        try:
+            target = str(cid or "0")
+            items: list[Dict[str, Any]] = []
+            for raw in self._client_provider().get_dir_list(target):
+                if not isinstance(raw, dict):
+                    continue
+                name = U115Client._item_name(raw).strip()
+                item_id = U115Client._item_id(raw)
+                if not name or not item_id:
+                    continue
+                is_dir = U115Client._is_directory(raw)
+                items.append(
+                    {
+                        "id": item_id,
+                        "name": name,
+                        "is_dir": is_dir,
+                        "size": 0 if is_dir else int(U115Client._item_size(raw) or 0),
+                        "mtime": int(U115Client._item_mtime(raw) or 0),
+                        "pickcode": str(
+                            raw.get("pc") or raw.get("pickcode") or raw.get("pick_code") or ""
+                        ),
+                    }
+                )
+            # 目录排前面，各自按名字排 —— 和 115 网页端同一个读法
+            items.sort(key=lambda item: (not item["is_dir"], item["name"].lower()))
+            return _ok({"cid": target, "items": items})
+        except Exception as err:  # noqa: BLE001
+            logger.error(f"【网盘】列目录失败：{safe_error_text(err)}")
+            return _error(safe_error_text(err))
+
+    def disk_mkdir(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        data = payload or {}
+        name = str(data.get("name") or "").strip()
+        if not name:
+            return _error("目录名不能为空")
+        try:
+            self._client_provider().create_child_dir(str(data.get("cid") or "0"), name)
+        except Exception as err:  # noqa: BLE001
+            logger.error(f"【网盘】新建目录失败：{safe_error_text(err)}")
+            return _error(safe_error_text(err))
+        self._browse_115_cache.clear()
+        return _ok(message=f"已新建目录 {name}")
+
+    def disk_rename(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        data = payload or {}
+        file_id = str(data.get("file_id") or "").strip()
+        name = str(data.get("name") or "").strip()
+        if not file_id:
+            return _error("缺少要改名的文件 ID")
+        if not name:
+            return _error("新名字不能为空")
+        try:
+            self._client_provider().rename_item(file_id, name)
+        except Exception as err:  # noqa: BLE001
+            logger.error(f"【网盘】改名失败：{safe_error_text(err)}")
+            return _error(safe_error_text(err))
+        self._browse_115_cache.clear()
+        return _ok(message=f"已改名为 {name}")
+
+    def disk_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """在网盘上删除，进 115 回收站，能在 115 上还原。
+
+        ``also_local`` 给 true 时**顺带**删掉本地对应的 STRM 与记录 —— 默认不动，
+        因为「在网盘上删一个文件」和「把本地那份也删掉」是两件事，不该悄悄一起做。
+        不删的话本地那份就成了死链，界面上要说清这一点。
+        """
+        data = payload or {}
+        raw_ids = data.get("file_ids") or data.get("ids")
+        if isinstance(raw_ids, (str, int)):
+            raw_ids = [raw_ids]
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return _error("没有要删的文件")
+        ids = [str(value).strip() for value in raw_ids if str(value).strip()]
+        if not ids:
+            return _error("没有要删的文件")
+        try:
+            self._client_provider().delete_file(ids)
+        except Exception as err:  # noqa: BLE001
+            logger.error(f"【网盘】删除失败：{safe_error_text(err)}")
+            return _error(safe_error_text(err))
+        self._browse_115_cache.clear()
+
+        local_removed = 0
+        records_dropped = 0
+        if bool(data.get("also_local")):
+            wanted = set(ids)
+            records = self._store.get_strm_records()
+            for key in [
+                key
+                for key, record in records.items()
+                if isinstance(record, dict) and str(record.get("file_id") or "") in wanted
+            ]:
+                record = records.pop(key, None) or {}
+                records_dropped += 1
+                raw_path = str(record.get("path") or "")
+                if not raw_path:
+                    continue
+                try:
+                    local = Path(raw_path)
+                    if local.is_file():
+                        local.unlink()
+                        local_removed += 1
+                except OSError as err:
+                    logger.warning(f"【网盘】本地 STRM 删不掉 {raw_path}：{safe_error_text(err)}")
+            if records_dropped:
+                self._store.save_strm_records(records)
+
+        message = f"网盘删了 {len(ids)} 个，进了 115 回收站，能在 115 上还原"
+        if bool(data.get("also_local")):
+            message += f"；本地跟着删了 {local_removed} 个 STRM"
+        logger.info(f"【网盘】{message}")
+        return _ok(
+            {
+                "deleted": len(ids),
+                "local_removed": local_removed,
+                "records_dropped": records_dropped,
+            },
+            message=message,
+        )
+
+    # ── 媒体清单 ──────────────────────────────────────────────────────
+
+    def _ledger_rows(
+        self,
+        with_seeding: bool = True,
+    ) -> tuple[list[Dict[str, Any]], Dict[str, Any]]:
+        """聚合清单的行。``with_seeding`` 给 False 就不去问下载器 —— 通知那条路每两小时
+        跑一次，不该顺手拉一遍种子列表。"""
+        config = self._store.get_config()
+        records = self._store.get_strm_records()
+
+        pending_paths: set[str] = set()
+        for batch in self._store.get_strm_delete_pending().values():
+            if not isinstance(batch, dict):
+                continue
+            for item in batch.get("items") or []:
+                if isinstance(item, dict) and item.get("path"):
+                    pending_paths.add(str(item["path"]))
+
+        items = media_records(records)
+        known: set[str] = set()
+        for _key, record in items:
+            raw = str(record.get("path") or "")
+            if not raw:
+                continue
+            try:
+                known.add(str(Path(raw).resolve()))
+            except (OSError, RuntimeError, ValueError):
+                known.add(raw)
+        roots = [
+            str(mapping.get("target_dir") or "").strip()
+            for mapping in config.get("strm_mappings") or []
+            if isinstance(mapping, dict) and str(mapping.get("target_dir") or "").strip()
+        ]
+
+        seeding_paths: set[str] = set()
+        seed_ids: Dict[str, int] = {}
+        seed_total = 0
+        seed_error = "没有拉取做种信息"
+        if with_seeding:
+            seeding_paths, seed_hashes, seed_total, seed_error = collect_seeding_paths()
+            seed_ids = seeding_identities(seed_hashes) if not seed_error else {}
+
+        rows = build_ledger(
+            records=records,
+            strm_mappings=[
+                mapping for mapping in config.get("strm_mappings") or [] if isinstance(mapping, dict)
+            ],
+            upload_mappings=[
+                mapping
+                for mapping in config.get("upload_mappings") or []
+                if isinstance(mapping, dict) and mapping.get("enabled", True)
+            ],
+            upload_records=self._store.get_upload_records().to_dict(),
+            pending_paths=pending_paths,
+            media_extensions=parse_extensions(
+                config.get("upload_media_extensions", ""), DEFAULT_MEDIA_EXTENSIONS
+            ),
+            untracked=find_untracked(roots, known),
+            seeding_paths=seeding_paths,
+            seeding_identities=seed_ids,
+        )
+        meta = {
+            "records": len(items),
+            "roots": roots,
+            "seed_total": seed_total,
+            "seed_error": seed_error,
+        }
+
+        cache = self._store.get_cloud_check()
+        cloud = cache.get("rows") or {}
+        for row in rows:
+            entry = cloud.get(row["id"]) if isinstance(cloud, dict) else None
+            if isinstance(entry, dict) and entry.get("state") in ("yes", "no"):
+                row["cloud_state"] = str(entry["state"])
+                row["cloud_checked_at"] = int(entry.get("checked_at") or 0)
+            else:
+                row["cloud_state"] = "unchecked"
+                row["cloud_checked_at"] = 0
+        return rows, meta
+
+    def media_ledger(self) -> Dict[str, Any]:
+        """一部电影一行、一季剧一行的总账，加一份「有事可做」的小结。
+
+        筛选与计数交给前端算 —— 计数要把「你已经选了的其它维度」考虑进去，放后端就得为
+        每一次勾选往返一趟。行本身不多（真机 990 条记录聚合下来几百行），一次给完更快。
+        """
+        try:
+            rows, meta = self._ledger_rows(with_seeding=True)
+            cache = self._store.get_cloud_check()
+            waiting = cooldown_left(cache)
+            unchecked = sum(
+                1 for row in rows if row["cloud_state"] == "unchecked" and row["cloud_folder"]
+            )
+            channels = sorted(
+                {(row["channel_id"], row["channel"]) for row in rows if row["channel_id"]},
+                key=lambda pair: pair[1],
+            )
+            return _ok(
+                {
+                    "rows": rows,
+                    "channels": [{"id": item[0], "label": item[1]} for item in channels],
+                    "records": meta["records"],
+                    "roots": meta["roots"],
+                    # 清单顶上那行总计要的三个「有事可做」的数
+                    "summary": self._ledger_summary(rows),
+                    # 做种这一维只在真拿到种子列表时才可用；拿不到就不画那组筛选，
+                    # 也不解锁「删除源文件」
+                    "has_seeding": not meta["seed_error"],
+                    "seeding_note": meta["seed_error"],
+                    "seeds": meta["seed_total"],
+                    # 网盘核对是按预算的手动动作，不会在打开页面时偷偷打接口
+                    "has_cloud_check": True,
+                    "cloud_unchecked": unchecked,
+                    "cloud_budget": CHECK_BUDGET,
+                    "cloud_cooldown": waiting,
+                    "cloud_note": (
+                        f"115 报过访问上限，还要等 {waiting // 60 + 1} 分钟才能继续核对"
+                        if waiting
+                        else f"还有 {unchecked} 行没核对过网盘"
+                        if unchecked
+                        else "网盘核对都是最新的"
+                    ),
+                }
+            )
+        except Exception as err:  # noqa: BLE001
+            logger.error(f"【媒体清单】聚合失败：{safe_error_text(err)}")
+            return _error(safe_error_text(err))
+
+    def ledger_verify(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """核对网盘：问 115「这些片的目录还在不在」。
+
+        **这是清单里唯一会主动打 115 接口的动作**，所以它按限流的实际情况办事：一次有预算
+        上限、冷却期内不打、撞上访问上限立刻停并如实说停在哪。给了 ``row_ids`` 就只核对那几行，
+        没给就核对最久没核对过的那一批。
+        """
+        data = payload or {}
+        cache = self._store.get_cloud_check()
+        waiting = cooldown_left(cache)
+        if waiting:
+            return _error(
+                f"115 报过访问上限，还要等 {waiting // 60 + 1} 分钟。"
+                f"这段时间不打接口，免得把限流拖得更长"
+            )
+        if error := self._strm_start_error():
+            return _error(error)
+
+        report = self.media_ledger()
+        if not report.get("success"):
+            return report
+        rows = (report.get("data") or {}).get("rows") or []
+        wanted = data.get("row_ids")
+        if isinstance(wanted, str):
+            wanted = [wanted]
+        try:
+            budget = max(1, min(int(data.get("budget") or CHECK_BUDGET), CHECK_BUDGET))
+        except (TypeError, ValueError):
+            budget = CHECK_BUDGET
+
+        if isinstance(wanted, list) and wanted:
+            picked = [row for row in rows if row["id"] in set(wanted) and row["cloud_folder"]]
+            if not picked:
+                return _error("选中的这些行没记下它们在网盘上的位置，先跑一次同步")
+            picked = picked[:budget]
+        else:
+            picked = pick_rows(rows, cache, budget)
+        if not picked:
+            return _error("没有需要核对的行")
+
+        results, stopped = check_rows(self._client_provider, picked, budget)
+        self._store.save_cloud_check(merge_cloud_check(cache, results, bool(stopped) and "访问上限" in stopped))
+
+        gone = sum(1 for entry in results.values() if entry.get("state") == "no")
+        message = f"核对了 {len(results)} 行，其中 {gone} 行网盘上已经没了"
+        if stopped:
+            message += f"；{stopped}"
+        logger.info(f"【网盘核对】{message}")
+        return _ok(
+            {"checked": len(results), "gone": gone, "stopped": stopped, "asked": len(picked)},
+            message=message,
+        )
+
+    def _ledger_summary(self, rows: list[Dict[str, Any]]) -> Dict[str, int]:
+        """库况小结：三个「有事可做」的数，都不用问 115。
+
+        ``source_left`` 是已经传上网盘、本地源文件还占着地方的字节数 —— 这是唯一能靠一次
+        点击立刻腾出来的空间。``cloud_gone`` 只数**核对过**的行：没核对过的不算「没了」。
+        """
+        source_left = 0
+        cloud_gone = 0
+        untracked = 0
+        for row in rows:
+            if row.get("in_library") == "yes" and int(row.get("source_uploaded") or 0):
+                source_left += int(row.get("source_size") or 0)
+            if row.get("cloud_state") == "no":
+                cloud_gone += 1
+            if "untracked" in (row.get("flags") or ()):
+                untracked += 1
+        return {"source_left": source_left, "cloud_gone": cloud_gone, "untracked": untracked}
+
+    def notify_ledger_digest(self) -> None:
+        """库况有**新**问题时报一声，而不是每轮巡检都报一遍。
+
+        触发点挂在定时巡检尾巴上：那条 cron 本来就在跑，不必再加一个任务。判定是「跟上次
+        报过的比，某一类涨了」——没涨就闭嘴。这样通知的意思始终是「有新情况」，
+        而不是「例行汇报」，后者两轮之后就没人看了。
+
+        通道复用 STRM（巡检的通知也走它），不新增配置键：旧版本代码一次 init_plugin
+        就会把它不认识的键按白名单从库里洗掉。
+        """
+        try:
+            if not self._notifier.is_enabled("strm"):
+                return
+            # 不拉种子：这条路每两小时跑一次，不该顺手去问下载器
+            rows, _meta = self._ledger_rows(with_seeding=False)
+            current = self._ledger_summary(rows)
+            previous = self._store.get_ledger_digest()
+            lines: list[str] = []
+            if current["cloud_gone"] > int(previous.get("cloud_gone") or 0):
+                lines.append(f"网盘上没了 {current['cloud_gone']} 部，本地那几份 STRM 已经是死链")
+            if current["source_left"] > int(previous.get("source_left") or 0):
+                lines.append(
+                    f"源文件还占着 {self._bytes_text(current['source_left'])}，这些片已经传上网盘了"
+                )
+            if current["untracked"] > int(previous.get("untracked") or 0):
+                lines.append(f"记录外的 STRM {current['untracked']} 部，反向删除看不见它们")
+            if not lines:
+                return
+            self._store.save_ledger_digest({**current, "at": int(time())})
+            self._notifier.notify(
+                "strm",
+                "库里有新情况",
+                lines + ["去侧栏的「115 轻量助手」看清单，筛一下就知道是哪几部。"],
+            )
+        except Exception as err:  # noqa: BLE001
+            # 通知失败不该影响巡检本身
+            logger.error(f"【库况】通知失败：{safe_error_text(err)}")
+
+    @staticmethod
+    def _bytes_text(value: int) -> str:
+        """和界面同一套写法：数字与单位之间留一个空格。"""
+        left = float(value or 0)
+        for unit in ("B", "KB", "MB", "GB"):
+            if left < 1024:
+                return f"{left:.0f} {unit}" if unit == "B" else f"{left:.1f} {unit}"
+            left /= 1024
+        return f"{left:.1f} TB"
+
+    # ── STRM 库体检 ────────────────────────────────────────────────────
+
+    def library_drop(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """删掉指定的本地 STRM 文件并清掉对应记录。**网盘一个文件都不动。**
+
+        只允许删配置里那些 STRM 输出目录之下、以 ``.strm`` 结尾的文件 —— 少了这道闸门，
+        这个接口就是个任意文件删除器。
+        """
+        data = payload or {}
+        raw_paths = data.get("paths")
+        if isinstance(raw_paths, str):
+            raw_paths = [raw_paths]
+        if not isinstance(raw_paths, list) or not raw_paths:
+            return _error("没有要清理的文件")
+
+        config = self._store.get_config()
+        roots: list[Path] = []
+        for mapping in config.get("strm_mappings") or []:
+            if not isinstance(mapping, dict):
+                continue
+            value = str(mapping.get("target_dir") or "").strip()
+            if not value:
+                continue
+            try:
+                roots.append(Path(value).expanduser().resolve())
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if not roots:
+            return _error("还没有配置 STRM 输出目录，没有可清理的范围")
+
+        records = self._store.get_strm_records()
+        by_path = {
+            str(record.get("path") or ""): key
+            for key, record in records.items()
+            if isinstance(record, dict)
+        }
+        removed = 0
+        dropped = 0
+        refused = 0
+        for raw in raw_paths[:2000]:
+            try:
+                target = Path(str(raw)).expanduser().resolve()
+            except (OSError, RuntimeError, ValueError):
+                refused += 1
+                continue
+            if target.suffix.lower() != ".strm" or not any(
+                self._path_within(target, root) for root in roots
+            ):
+                refused += 1
+                continue
+            try:
+                if target.is_file():
+                    target.unlink()
+                    removed += 1
+            except OSError as err:
+                logger.warning(f"【库体检】删不掉 {target}：{safe_error_text(err)}")
+                continue
+            key = by_path.get(str(target)) or by_path.get(str(raw))
+            if key and records.pop(key, None) is not None:
+                dropped += 1
+        if dropped:
+            self._store.save_strm_records(records)
+        logger.info(
+            f"【库体检】清理完成：删掉 {removed} 个 STRM，清掉 {dropped} 条记录，"
+            f"拒绝 {refused} 个越界路径，网盘上的文件一个都没动"
+        )
+        message = f"删掉 {removed} 个 STRM，清掉 {dropped} 条记录，网盘上的文件一个都没动"
+        if refused:
+            message += f"；{refused} 个路径不在 STRM 输出目录里，已拒绝"
+        return _ok({"removed": removed, "dropped": dropped, "refused": refused}, message=message)
+
+    def source_drop(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """删掉本地**源文件**（上传通道源目录里的媒体文件）。网盘和 STRM 都不动。
+
+        和 :meth:`library_drop` 的闸门是对称的：那个只放行 STRM 输出目录下的 ``.strm``，
+        这个只放行上传通道源目录下、后缀在媒体扩展名里的文件。
+
+        **上传记录保留不删。** 记录只表示「这个文件传过」，把它删掉的话文件哪天又被放回来
+        就会被当成新文件重传一次 —— 那不是删源文件的人想要的。
+
+        这是三个删除动作里**唯一不可撤回**的一个：本地文件系统没有回收站。
+        """
+        data = payload or {}
+        raw_paths = data.get("paths")
+        if isinstance(raw_paths, str):
+            raw_paths = [raw_paths]
+        if not isinstance(raw_paths, list) or not raw_paths:
+            return _error("没有要删的源文件")
+
+        config = self._store.get_config()
+        roots: list[Path] = []
+        for mapping in config.get("upload_mappings") or []:
+            if not isinstance(mapping, dict):
+                continue
+            value = str(mapping.get("source") or "").strip()
+            if not value:
+                continue
+            try:
+                roots.append(Path(value).expanduser().resolve())
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if not roots:
+            return _error("还没有配置上传通道源目录，没有可删的范围")
+        suffixes = {
+            str(value).lower()
+            for value in parse_extensions(
+                config.get("upload_media_extensions", ""), DEFAULT_MEDIA_EXTENSIONS
+            )
+            if str(value).strip()
+        }
+
+        removed = 0
+        freed = 0
+        refused = 0
+        for raw in raw_paths[:2000]:
+            try:
+                target = Path(str(raw)).expanduser().resolve()
+            except (OSError, RuntimeError, ValueError):
+                refused += 1
+                continue
+            if target.suffix.lower() not in suffixes or not any(
+                self._path_within(target, root) for root in roots
+            ):
+                refused += 1
+                continue
+            try:
+                if not target.is_file():
+                    continue
+                size = target.stat().st_size
+                target.unlink()
+            except OSError as err:
+                logger.warning(f"【源文件】删不掉 {target}：{safe_error_text(err)}")
+                continue
+            removed += 1
+            freed += int(size or 0)
+        logger.info(
+            f"【源文件】删掉 {removed} 个本地源文件，腾出 {freed} 字节，"
+            f"拒绝 {refused} 个越界路径，网盘与 STRM 都没动"
+        )
+        message = f"删掉 {removed} 个本地源文件，网盘与 STRM 都没动"
+        if refused:
+            message += f"；{refused} 个路径不在上传通道源目录里，已拒绝"
+        return _ok({"removed": removed, "freed": freed, "refused": refused}, message=message)
+
+    @staticmethod
+    def _path_within(target: Path, root: Path) -> bool:
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return False
+        return True
+
+    #: 一次最多回多少字节日志。前端按秒轮询，回大了纯属浪费。
+    _LOG_TAIL_MAX_BYTES = 64 * 1024
+
+    def log_tail(self, offset: int = 0, limit: int = 0) -> Dict[str, Any]:
+        """插件日志的尾部，供任务台实时看。
+
+        ``offset`` 传上一次返回的 ``next_offset``，就只拿新增的那几行。三种边界：
+        第一次进来（offset 给 0）从尾部往前截一段；日志被轮转截短过（offset 超过文件
+        长度）从头重来并告知前端清屏；这一段里连一个换行都没有就什么都不回，等下一轮。
+        """
+        # 日志文件按插件目录名命名（见宿主 app/log.py），所以从目录名反查，改名不会失联
+        path = Path(settings.LOG_PATH) / "plugins" / f"{Path(__file__).resolve().parent.name}.log"
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return _ok({"lines": [], "next_offset": 0, "size": 0, "missing": True})
+
+        cap = max(4096, min(int(limit or self._LOG_TAIL_MAX_BYTES), self._LOG_TAIL_MAX_BYTES))
+        start = int(offset or 0)
+        rotated = start > size
+        seeked = False
+        if start <= 0 or rotated:
+            start = max(0, size - cap)
+            seeked = start > 0
+        want = min(cap, size - start)
+        if want <= 0:
+            return _ok({"lines": [], "next_offset": size, "size": size, "rotated": rotated})
+
+        try:
+            with path.open("rb") as handle:
+                handle.seek(start)
+                raw = handle.read(want)
+        except OSError as err:
+            return _error(f"读不到插件日志：{safe_error_text(err)}")
+
+        # 只认到最后一个换行为止：末尾那行可能还没写完，留给下一轮
+        cut = raw.rfind(b"\n")
+        if cut < 0:
+            return _ok({"lines": [], "next_offset": start, "size": size, "rotated": rotated})
+        lines = raw[: cut + 1].decode("utf-8", errors="ignore").splitlines()
+        # 自己跳到尾部时，第一行大概率是从中间切进去的半截
+        if seeked and lines:
+            lines = lines[1:]
+        return _ok(
+            {
+                "lines": lines[-400:],
+                "next_offset": start + cut + 1,
+                "size": size,
+                "rotated": rotated,
+            }
+        )
 
     def _pending_sweep_text(self) -> str:
         """运行台用：有没有一批删除在等当前任务结束。没有就返回空串。"""
@@ -1796,8 +2538,17 @@ class Api:
             parts.append(f"第{season}季 第{range_text}集")
         return "，".join(parts)
 
-    def run_upload(self, incremental: bool = True, moviepilot_url: str = "") -> Dict[str, Any]:
+    def run_upload(
+        self,
+        incremental: bool = True,
+        moviepilot_url: str = "",
+        mappings: Optional[list[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """``mappings`` 给了就只传这些。DirectoryUploader 自己从 config 里读通道，
+        所以收窄要落在传给它的那份 config 上。"""
         config = self._store.get_config()
+        if mappings is not None:
+            config = {**config, "upload_mappings": mappings}
         mappings = [mapping for mapping in config.get("upload_mappings") or [] if mapping.get("enabled", True)]
         logger.info(f"【目录上传】开始执行，模式：{'增量' if incremental else '全量'}，有效映射：{len(mappings)}")
         try:
@@ -2353,6 +3104,7 @@ class Api:
                     )
                     return _error(f"115 数据任务正在运行{detail}，请稍后重试")
             self._running.add(kind)
+            self._running_since[kind] = time()
         def run() -> None:
             try:
                 target()
@@ -2361,14 +3113,19 @@ class Api:
             finally:
                 with self._lock:
                     self._running.discard(kind)
+                    self._running_since.pop(kind, None)
                 if cloud_lock_acquired:
                     self._cloud_task_lock.release()
-                # 锁已释放，这时候才轮得到排队中的反向删除。放在 finally 里是因为
-                # 任务异常终止同样要让排队的删除跑起来，不然事件就永远压在队列里。
+                # 锁已释放，这时候才轮得到排队中的反向删除与实时上传。放在 finally
+                # 里是因为任务异常终止同样要让排队的任务跑起来，不然事件就永远压在队列里。
                 try:
                     self._drain_pending_sweep()
                 except Exception as err:  # noqa: BLE001
                     logger.error(f"【STRM反向删除】补跑排队任务失败：{safe_error_text(err)}")
+                try:
+                    self._drain_pending_upload()
+                except Exception as err:  # noqa: BLE001
+                    logger.error(f"【目录上传】补跑排队任务失败：{safe_error_text(err)}")
 
         thread = threading.Thread(target=run, name=f"p115liteassistant-{kind}", daemon=True)
         try:
@@ -2376,6 +3133,7 @@ class Api:
         except Exception as err:  # noqa: BLE001
             with self._lock:
                 self._running.discard(kind)
+                self._running_since.pop(kind, None)
             if cloud_lock_acquired:
                 self._cloud_task_lock.release()
             logger.error(f"【{label}】任务启动失败：{safe_error_text(err)}")

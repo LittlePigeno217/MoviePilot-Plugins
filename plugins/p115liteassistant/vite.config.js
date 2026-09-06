@@ -9,6 +9,9 @@ export default defineConfig({
       name: 'P115LiteAssistant',
       filename: 'remoteEntry.js',
       exposes: {
+        // 侧栏全页入口。宿主按 AppPage{Pascal(navKey)} -> AppPage -> Page 的顺序找，
+        // nav_key 用 main 时直接命中 AppPage，不需要后缀。
+        './AppPage': './src/components/AppPage.vue',
         './Page': './src/components/Page.vue',
         './Config': './src/components/Config.vue',
       },

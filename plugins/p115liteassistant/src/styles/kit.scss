@@ -304,14 +304,55 @@
 }
 
 // ── Vuetify 局部收敛（命名空间内提权，不与宿主打架）────────────────
-.p115 .v-btn {
+//
+// 按钮只有两档高度，且**图标跟着标签的字号走**。Vuetify 的默认按钮是给 40px 高的西文界面
+// 设计的：36px 高、带 uppercase 字距、图标比 12px 的中文标签大一圈。密排中文表格里那样
+// 一混，同一行会出现 20 / 28 / 36 三种高度和三种图标大小 —— 那就是「比例不对劲」。
+//
+//   小档 22px  只用在表格行内
+//   常档 28px  其余全部（面板头、吸顶条、弹窗、菜单）
+//
+// 选择器要带上 .p115-portal：弹窗和菜单被 teleport 到 body，不在 .p115 里面。
+.p115 .v-btn,
+.p115-portal .v-btn {
   text-transform: none;
   letter-spacing: 0;
+  border-radius: var(--p115-radius-sm);
+}
+
+.p115 .v-btn--size-x-small,
+.p115-portal .v-btn--size-x-small {
+  --v-btn-height: 22px;
+  font-size: 11px;
+  padding-inline: 8px;
 }
 
 .p115 .v-btn--size-small,
-.p115 .v-btn--size-default {
-  border-radius: var(--p115-radius-sm);
+.p115-portal .v-btn--size-small,
+.p115 .v-btn--size-default,
+.p115-portal .v-btn--size-default {
+  --v-btn-height: 28px;
+  font-size: 12px;
+  padding-inline: 11px;
+}
+
+// 图标只比标签大一点点，不是大一圈
+.p115 .v-btn .v-icon,
+.p115-portal .v-btn .v-icon {
+  font-size: 15px;
+}
+
+.p115 .v-btn--size-x-small .v-icon,
+.p115-portal .v-btn--size-x-small .v-icon {
+  font-size: 13px;
+}
+
+// 纯图标按钮压成正方形，不然它比带字的按钮宽一截
+.p115 .v-btn--icon.v-btn--size-small,
+.p115-portal .v-btn--icon.v-btn--size-small {
+  --v-btn-height: 28px;
+  width: 28px;
+  padding-inline: 0;
 }
 
 .p115 .v-switch .v-label,

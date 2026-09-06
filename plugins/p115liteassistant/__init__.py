@@ -15,13 +15,14 @@ from .life_monitor import LifeMonitor
 from .notify import Notifier
 from .store import Store
 from .strm_watch import StrmDeleteWatcher
+from .upload_watch import UploadWatcher
 
 
 class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
-    plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到。"
+    plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到；侧栏有一份媒体清单，一部电影一行、一季剧一行地管入库、做种与删除。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.2.9"
+    plugin_version = "1.3.0"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -59,6 +60,12 @@ class P115LiteAssistant(_PluginBase):
             self._store.get_config,
             self._trigger_strm_sweep,
         )
+        # 本地源目录的实时监听：媒体/侧车文件出现 -> 触发增量上传。不丢事件，
+        # 抢不到 115 数据任务锁时由 api.queue_upload 排队，任务结束自动补跑。
+        self._upload_watch = UploadWatcher(
+            self._store.get_config,
+            self._api.queue_upload,
+        )
 
     def init_plugin(self, config: dict | None = None) -> None:
         if config:
@@ -67,6 +74,7 @@ class P115LiteAssistant(_PluginBase):
         self._client_signature = None
         self._sync_life_monitor()
         self._sync_strm_watch()
+        self._sync_upload_watch()
 
     def _moviepilot_url(self) -> str:
         return str(self._store.get_config().get("moviepilot_address") or "").strip().rstrip("/")
@@ -114,6 +122,22 @@ class P115LiteAssistant(_PluginBase):
             and config.get("strm_delete_watch")
         ):
             self._strm_watch.start()
+
+    def _sync_upload_watch(self) -> None:
+        """按配置启停本地源目录实时监听。
+
+        插件启用且有可用的上传源目录时监听；配置或目录变了就整体重建。
+        """
+        config = self._store.get_config()
+        self._upload_watch.stop()
+        has_source = any(
+            isinstance(mapping, dict)
+            and mapping.get("enabled", True)
+            and str(mapping.get("source") or "").strip()
+            for mapping in config.get("upload_mappings") or []
+        )
+        if config.get("enabled") and has_source:
+            self._upload_watch.start()
 
     def _get_client(self) -> U115Client:
         config = self._store.get_config()
@@ -166,6 +190,25 @@ class P115LiteAssistant(_PluginBase):
     def get_page(self) -> Optional[List[dict]]:
         return []
 
+    def get_sidebar_nav(self) -> List[Dict[str, Any]]:
+        """侧栏全页入口。
+
+        宿主只聚合「已启用 + vue 渲染」的插件（``app/core/plugin.py`` 的
+        ``get_plugin_sidebar_nav``），所以插件停用时这一项会自己消失，不用另加判断。
+        ``section`` 只认 start / discovery / subscribe / organize / system，
+        ``permission`` 只认 subscribe / discovery / search / manage / admin。
+        """
+        return [
+            {
+                "nav_key": "main",
+                "title": "115 轻量助手",
+                "icon": "mdi-cloud-sync-outline",
+                "section": "organize",
+                "permission": "manage",
+                "order": self.plugin_order,
+            }
+        ]
+
     def get_api(self) -> List[Dict[str, Any]]:
         return [
             {"path": "/config", "endpoint": self._api.get_config, "methods": ["GET"], "auth": "bear", "summary": "读取配置"},
@@ -184,6 +227,20 @@ class P115LiteAssistant(_PluginBase):
             {"path": "/checkin", "endpoint": self._api.run_checkin, "methods": ["POST"], "auth": "bear", "summary": "执行 115 签到"},
             {"path": "/test-notify", "endpoint": self._api.test_notify, "methods": ["POST"], "auth": "bear", "summary": "发送测试通知（走 MoviePilot 完整通知管道）"},
             {"path": "/history", "endpoint": self._api.history, "methods": ["GET"], "auth": "bear", "summary": "读取执行历史"},
+            {"path": "/logs/tail", "endpoint": self._api.log_tail, "methods": ["GET"], "auth": "bear", "summary": "读插件日志尾部（任务台实时看）"},
+            # 文件管理台：不建通道跑一次
+            {"path": "/task/strm-once", "endpoint": self._api.task_strm_once, "methods": ["POST"], "auth": "bear", "summary": "给指定 115 目录生成一批 STRM"},
+            {"path": "/task/upload-once", "endpoint": self._api.task_upload_once, "methods": ["POST"], "auth": "bear", "summary": "把指定本地目录传到指定 115 目录"},
+            # STRM 库体检
+            {"path": "/ledger", "endpoint": self._api.media_ledger, "methods": ["GET"], "auth": "bear", "summary": "媒体清单（一部电影一行、一季剧一行）"},
+            {"path": "/ledger/verify", "endpoint": self._api.ledger_verify, "methods": ["POST"], "auth": "bear", "summary": "核对网盘（按预算，撞限流即停）"},
+            {"path": "/library/drop", "endpoint": self._api.library_drop, "methods": ["POST"], "auth": "bear", "summary": "删掉指定的本地 STRM 与记录"},
+            {"path": "/source/drop", "endpoint": self._api.source_drop, "methods": ["POST"], "auth": "bear", "summary": "删掉指定的本地源文件（不可撤回）"},
+            # 网盘管理
+            {"path": "/disk/list", "endpoint": self._api.disk_list, "methods": ["GET"], "auth": "bear", "summary": "列 115 目录（含文件）"},
+            {"path": "/disk/mkdir", "endpoint": self._api.disk_mkdir, "methods": ["POST"], "auth": "bear", "summary": "在 115 上新建目录"},
+            {"path": "/disk/rename", "endpoint": self._api.disk_rename, "methods": ["POST"], "auth": "bear", "summary": "在 115 上改名"},
+            {"path": "/disk/delete", "endpoint": self._api.disk_delete, "methods": ["POST"], "auth": "bear", "summary": "在 115 上删除（进回收站）"},
             {
                 "path": "/redirect",
                 "endpoint": self._api.redirect,
@@ -237,6 +294,7 @@ class P115LiteAssistant(_PluginBase):
     def stop_service(self) -> None:
         self._life_monitor.stop()
         self._strm_watch.stop()
+        self._upload_watch.stop()
         for job_id in self._JOB_IDS:
             try:
                 Scheduler().remove_plugin_job(job_id)

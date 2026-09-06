@@ -560,6 +560,12 @@ class U115Client:
             if access_limit_state is not None
             else self.new_access_limit_state()
         )
+        # 同名多版本去重：同一源路径下 115 允许存在多个同名文件（不同 fid/pc/size，
+        # 例如不同来源的同名电影）。它们折叠成同一条 rel_path 会让 STRM 同步把
+        # 后出现的版本当成“冲突”静默丢弃。这里对重复 rel_path 追加 “ (n)”
+        # 序号，让每个版本都有唯一的 rel_path / 输出路径，各自生成 .strm。
+        seen_rel_paths: set[str] = set()
+        rel_path_version: dict[str, int] = {}
 
         def fetch_directory(current_cid: str) -> list[Dict[str, Any]]:
             if scan_abort.is_set():
@@ -597,6 +603,17 @@ class U115Client:
                                 seen_directories.add(child_cid)
                                 pending.append((child_cid, rel_path))
                             continue
+                        # 同名多版本：同一个 rel_path 再次出现时给名字加 “ (n)” 序号。
+                        # 目录不参与（目录 cid 唯一，重复目录会被 seen_directories 挡住）。
+                        if rel_path in seen_rel_paths:
+                            version = rel_path_version.get(rel_path, 1) + 1
+                            rel_path_version[rel_path] = version
+                            stem = f"{name} ({version})"
+                            rel_path = (
+                                f"{prefix}/{stem}" if prefix else stem
+                            )
+                        else:
+                            seen_rel_paths.add(rel_path)
                         yield {
                             "fileid": self._item_id(raw),
                             "parent_id": str(_current_cid),
@@ -1199,6 +1216,49 @@ class U115Client:
             seen.add(numeric)
             normalized.append(numeric)
         return normalized
+
+    def rename_item(self, file_id: str | int, name: str) -> None:
+        """改名。
+
+        开放接口就能做（``/open/ufile/update``），参考实现 DDSRem 的 ``u115_open.rename``
+        用的是同一个端点。它那边还会在开放接口与 cookie 的 ``fs_rename`` / ``fs_rename_app``
+        之间随机三选一来分散限流；我们暂时只走开放接口，改名不是高频操作。
+        """
+        target = str(file_id).strip()
+        new_name = str(name).strip()
+        if not target:
+            raise ValueError("要改名的文件 ID 不能为空")
+        if not new_name:
+            raise ValueError("新名字不能为空")
+        if "/" in new_name or new_name in (".", ".."):
+            raise ValueError("名字里不能带路径分隔符")
+        self._request(
+            "POST",
+            "/open/ufile/update",
+            data={"file_id": int(target), "file_name": new_name},
+            headers={"User-Agent": self.ios_user_agent},
+        )
+
+    def create_child_dir(self, parent_id: str | int, name: str) -> Dict[str, Any]:
+        """在指定目录下建一个子目录，返回 115 给的响应数据。
+
+        和 :meth:`ensure_remote_dir` 的区别：那个按**路径**逐级补齐，这个只在一个已知的
+        父目录 ID 下建一层 —— 网盘管理器手上拿的就是 ID，不必再绕回路径。
+        """
+        parent = str(parent_id).strip() or "0"
+        new_name = str(name).strip()
+        if not new_name:
+            raise ValueError("目录名不能为空")
+        if "/" in new_name or new_name in (".", ".."):
+            raise ValueError("目录名里不能带路径分隔符")
+        payload = self._request(
+            "POST",
+            "/open/folder/add",
+            data={"pid": int(parent), "file_name": new_name},
+            headers={"User-Agent": self.ios_user_agent},
+        )
+        data = self._response_data(payload)
+        return data if isinstance(data, dict) else {}
 
     def delete_file(self, file_id: str | int | Iterable[str | int], mode: str = "") -> None:
         """把 115 上的文件或目录删进回收站（可在 115 侧人工还原）。

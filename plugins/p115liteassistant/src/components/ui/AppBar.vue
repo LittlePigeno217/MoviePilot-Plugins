@@ -11,6 +11,8 @@ defineProps({
   showSwitch: { type: Boolean, default: true },
   busy: { type: Boolean, default: false },
   showRefresh: { type: Boolean, default: false },
+  // 全页入口是一条路由，不是弹窗，没有「关闭」这回事
+  showClose: { type: Boolean, default: true },
 })
 const emit = defineEmits(['switch', 'close', 'refresh'])
 </script>
@@ -31,6 +33,8 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
     </span>
 
     <div class="bar__tools">
+      <!-- 额外的工具按钮由使用方塞进来，标题栏自己不认识它们 -->
+      <slot name="tools" />
       <v-btn
         v-if="showRefresh"
         icon="mdi-refresh"
@@ -48,7 +52,14 @@ const emit = defineEmits(['switch', 'close', 'refresh'])
         :aria-label="view === '运行台' ? '前往设置' : '前往运行台'"
         @click="emit('switch')"
       />
-      <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="emit('close')" />
+      <v-btn
+        v-if="showClose"
+        icon="mdi-close"
+        variant="text"
+        size="small"
+        aria-label="关闭"
+        @click="emit('close')"
+      />
     </div>
   </header>
 </template>

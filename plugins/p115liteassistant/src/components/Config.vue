@@ -12,6 +12,9 @@ const props = defineProps({
   initialConfig: { type: Object, default: () => ({}) },
   api: { type: [Object, Function], default: null },
   saving: { type: Boolean, default: false },
+  // 全页入口（侧栏）传 true：只用来收掉「关闭」按钮，设置页的排版本身不改 ——
+  // 它已经是导轨 + 面板两栏，限宽交给外面的全页外壳做（见 AppPage.vue）。
+  wide: { type: Boolean, default: false },
 })
 const emit = defineEmits(['save', 'close', 'switch', 'layout'])
 
@@ -157,6 +160,7 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
     <AppBar
       view="设置"
       :online="connected"
+      :show-close="!wide"
       :busy="busy"
       show-refresh
       @refresh="reload"

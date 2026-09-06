@@ -185,3 +185,4 @@ bound method，内存态（锁、任务集、探针）全是僵尸的，还会�
 - 测试约定与运行方式：[../tests/README.md](../tests/README.md)
 - 插件开发模板：[../templates/README.md](../templates/README.md)
 - 插件目录说明：[../plugins/README.md](../plugins/README.md)
+- 115 接口清单：[research/115-api.md](research/115-api.md) —— 开放接口与 cookie 两条链路各能做什么，对照 DDSRem-Dev 参考实现
