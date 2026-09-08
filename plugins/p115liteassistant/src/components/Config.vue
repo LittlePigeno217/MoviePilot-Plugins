@@ -35,6 +35,11 @@ const redirectModes = [
   { title: 'Cookie 取链', value: 'cookie' },
   { title: 'Open API 取链', value: 'open' },
 ]
+const conflictPolicies = [
+  { title: '挂到清单等我处理', value: 'ask' },
+  { title: '自动采用远端文件', value: 'adopt' },
+  { title: '自动删远端并重传', value: 'reupload' },
+]
 const sections = computed(() => [
   { key: 'link', icon: 'mdi-link-variant', label: '连接', note: connected.value ? '已授权' : '待授权' },
   { key: 'strm', icon: 'mdi-transit-connection-variant', label: 'STRM 通道', note: `${config.strm_mappings.length} 条` },
@@ -405,6 +410,17 @@ onMounted(() => emit('layout', { maxWidth: '58rem' }))
                   density="compact"
                   hide-details
                   label="上传成功后删除本地源文件"
+                />
+              </div>
+              <div class="p115-fields mt-3">
+                <v-select
+                  v-model="config.upload_conflict_policy"
+                  :items="conflictPolicies"
+                  label="上传身份冲突的处理方式"
+                  hint="上传记录和 115 上同路径的文件对不上时（远端曾被删除重传过）怎么办：采用远端=认现在的网盘文件；重传覆盖=删掉网盘那份（进回收站）重新上传"
+                  persistent-hint
+                  variant="outlined"
+                  density="compact"
                 />
               </div>
               <div class="p115-fields mt-3">

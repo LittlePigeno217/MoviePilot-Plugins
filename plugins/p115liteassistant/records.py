@@ -16,6 +16,26 @@ class IncrementalRecordStore:
         stat = path.stat()
         return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
 
+    @staticmethod
+    def _path_key(path: Path | str) -> str:
+        """只用于比较的路径键；不改持久化内容，兼容分隔符和 Windows 短路径。"""
+        raw = str(path)
+        try:
+            raw = str(Path(raw).expanduser().resolve(strict=False))
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return raw.replace("\\", "/").casefold()
+
+    def _stored_key(self, path: Path | str) -> str | None:
+        raw = str(path)
+        if raw in self._records:
+            return raw
+        wanted = self._path_key(raw)
+        return next(
+            (key for key in self._records if self._path_key(key) == wanted),
+            None,
+        )
+
     def has_changed(
         self,
         path: Path,
@@ -23,7 +43,7 @@ class IncrementalRecordStore:
         metadata: Dict[str, Any] | None = None,
     ) -> bool:
         current = self._fingerprint(path)
-        previous = self._records.get(str(path))
+        previous = self._records.get(self._stored_key(path) or "")
         if not previous or any(previous.get(key) != value for key, value in current.items()):
             return True
         if target is not None and previous.get("target") != target:
@@ -45,14 +65,21 @@ class IncrementalRecordStore:
         }
 
     def update_metadata(self, path: Path, metadata: Dict[str, Any]) -> None:
-        record = self._records.get(str(path))
+        key = self._stored_key(path)
+        record = self._records.get(key or "")
         if record is None:
             raise KeyError(f"上传记录不存在: {path}")
         record.update(metadata)
 
     def get(self, path: Path) -> Dict[str, Any]:
-        record = self._records.get(str(path))
+        record = self._records.get(self._stored_key(path) or "")
         return dict(record) if record else {}
+
+    def remove(self, path: Path) -> None:
+        """删掉一条上传记录（重传覆盖场景：远端清了，记录也得清）。"""
+        key = self._stored_key(path)
+        if key is not None:
+            self._records.pop(key, None)
 
     def to_dict(self) -> Dict[str, Dict[str, Any]]:
         return dict(self._records)

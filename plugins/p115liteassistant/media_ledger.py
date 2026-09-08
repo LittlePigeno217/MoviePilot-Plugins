@@ -112,27 +112,38 @@ def locate(raw_path: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def _path_key(value: Any) -> str:
+    """生成跨平台比较键，不改变展示或持久化时使用的原路径。"""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        raw = str(Path(raw).expanduser().resolve(strict=False))
+    except (OSError, RuntimeError, ValueError):
+        pass
+    return raw.replace("\\", "/").rstrip("/").casefold()
+
+
 def seed_count(local_paths: Iterable[str], content_paths: Set[str]) -> int:
     """这些本地文件里有几个正被某个种子占着。
 
     种子的内容路径可能就是这个文件，也可能是它上面的某一层目录（整季一个种子），
     所以要顺着父目录往上找。
     """
-    if not content_paths:
+    contents = {_path_key(path) for path in content_paths if _path_key(path)}
+    if not contents:
         return 0
     hits = 0
     for raw in local_paths or ():
-        value = str(raw or "")
+        value = _path_key(raw)
         if not value:
             continue
-        if value in content_paths:
+        if value in contents:
             hits += 1
             continue
-        try:
-            candidate = Path(value)
-        except (OSError, ValueError):
-            continue
-        if any(str(parent) in content_paths for parent in candidate.parents):
+        parts = value.split("/")
+        parents = {"/".join(parts[:index]) or "/" for index in range(1, len(parts))}
+        if parents & contents:
             hits += 1
     return hits
 
@@ -162,6 +173,8 @@ def _blank_row(spot: Dict[str, Any]) -> Dict[str, Any]:
         "span": "",
         "strm_gone": 0,
         "flags": [],
+        # 上传身份冲突（记录说 A、网盘躺着 B）。一行可能挂多个文件，逐条给行内菜单处理。
+        "conflicts": [],
         # 三处各自的清单，对应三个删除动作
         "strm_paths": [],
         "source_paths": [],
@@ -222,6 +235,8 @@ def _finish(
             flags.append("strm_gone")
         if duplicate_tokens & set(row["pickcodes"]):
             flags.append("duplicate")
+        if row["conflicts"]:
+            flags.append("record_conflict")
         # 已经传上网盘、本地源文件还占着地方 —— 这一条正是「删除源文件」要处理的
         if row["in_library"] == "yes" and row["source_uploaded"]:
             flags.append("source_left")
@@ -250,6 +265,7 @@ def build_ledger(
     upload_records: Dict[str, Any],
     pending_paths: set[str],
     media_extensions: Iterable[str],
+    upload_conflicts: Optional[Dict[str, Dict[str, Any]]] = None,
     untracked: Iterable[Dict[str, Any]] = (),
     seeding_paths: Optional[Set[str]] = None,
     seeding_identities: Optional[Dict[str, int]] = None,
@@ -323,9 +339,14 @@ def build_ledger(
     #    传过的也要收进来 —— 「删除源文件」管的正是「已经传上去、本地还占着地方」那批。
     suffixes = {str(value).lower() for value in media_extensions if str(value).strip()}
     uploaded = {
-        str(path)
+        _path_key(path)
         for path, record in (upload_records or {}).items()
         if isinstance(record, dict) and str(record.get("uploaded_at") or "").strip()
+    }
+    conflicts_by_path = {
+        _path_key(path): item
+        for path, item in (upload_conflicts or {}).items()
+        if isinstance(item, dict)
     }
     for index, mapping in enumerate(upload_mappings or []):
         if not isinstance(mapping, dict):
@@ -359,7 +380,19 @@ def build_ledger(
             row = bucket(spot)
             row["source_paths"].append(resolved)
             row["source_size"] += size
-            if resolved in uploaded:
+            conflict = conflicts_by_path.get(_path_key(resolved))
+            if isinstance(conflict, dict):
+                # 上传记录与网盘身份对不上的文件，把分歧挂到它所属的那一行，
+                # 行上的「冲突」菜单就是处理入口 —— 不另立一块处理台。
+                row["conflicts"].append(
+                    {
+                        "path": resolved,
+                        "target": str(conflict.get("target") or ""),
+                        "reason": str(conflict.get("reason") or ""),
+                        "first_seen": str(conflict.get("first_seen") or ""),
+                    }
+                )
+            if _path_key(resolved) in uploaded:
                 row["source_uploaded"] += 1
             else:
                 row["source_pending"] += 1
@@ -391,7 +424,7 @@ def build_ledger(
             row["episodes"].append(spot["episode"])
         if not row["channel"]:
             row["channel_id"] = "untracked"
-            row["channel"] = "记录外"
+            row["channel"] = "记录缺失"
         if "untracked" not in row["flags"]:
             row["flags"].append("untracked")
 

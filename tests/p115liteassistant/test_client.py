@@ -1636,11 +1636,33 @@ class U115ClientTest(unittest.TestCase):
 
     def test_refresh_http_429_does_not_fall_back_to_cookie_auth(self):
         class LimitedRefreshSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.refresh_attempts = 0
+
             def request(self, method, url, **kwargs):
                 self.requests.append((method, url, kwargs))
-                if url.endswith("/open/refreshToken"):
+                if url.endswith("/open/user/info"):
+                    if kwargs.get("headers", {}).get("Authorization") == "Bearer fresh-token":
+                        return FakeResponse({"code": 0, "data": {"user_id": "1"}})
                     request = httpx.Request(method, url)
-                    return httpx.Response(429, request=request)
+                    return httpx.Response(401, request=request)
+                if url.endswith("/open/refreshToken"):
+                    self.refresh_attempts += 1
+                    if self.refresh_attempts < 3:
+                        request = httpx.Request(method, url)
+                        return httpx.Response(429, request=request)
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "state": True,
+                            "data": {
+                                "access_token": "fresh-token",
+                                "refresh_token": "fresh-refresh",
+                                "expires_in": 7200,
+                            },
+                        }
+                    )
                 raise AssertionError(f"unexpected request: {method} {url}")
 
         session = LimitedRefreshSession()
@@ -1654,13 +1676,16 @@ class U115ClientTest(unittest.TestCase):
             },
             session=session,
         )
-        client.http_rate_limit_attempts = 1
 
-        with self.assertRaises(U115AccessLimitError):
+        with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
             client.ensure_upload_ready()
 
-        self.assertEqual(len(session.requests), 1)
-        self.assertTrue(session.requests[0][1].endswith("/open/refreshToken"))
+        refresh_calls = [
+            call for call in session.requests if call[1].endswith("/open/refreshToken")
+        ]
+        self.assertEqual(len(refresh_calls), 3)
+        # 429 不占重试次数，按 X-RateLimit-Reset 默认值 + 5 秒等待后重试
+        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [65.0, 65.0])
 
     def test_cookie_open_authorization_propagates_access_limit_payload(self):
         class LimitedAuthorizationSession(FakeSession):
@@ -1877,7 +1902,7 @@ class U115ClientTest(unittest.TestCase):
 
         self.assertEqual(len(session.requests), 1)
 
-    def test_http_429_retries_get_with_reset_header_and_bound(self):
+    def test_http_429_retries_get_with_reset_header_without_bound(self):
         class RateLimitSession(FakeSession):
             def __init__(self):
                 super().__init__()
@@ -1887,26 +1912,30 @@ class U115ClientTest(unittest.TestCase):
                 self.requests.append((method, url, kwargs))
                 self.attempts += 1
                 request = httpx.Request(method, url)
-                return httpx.Response(
-                    429,
-                    headers={"X-RateLimit-Reset": "2"},
-                    request=request,
-                )
+                if self.attempts <= 5:
+                    return httpx.Response(
+                        429,
+                        headers={"X-RateLimit-Reset": "2"},
+                        request=request,
+                    )
+                return FakeResponse({"state": True, "code": 0, "data": {"ok": True}})
 
         session = RateLimitSession()
         client = U115Client(session=session)
-        client.read_retry_attempts = 3
 
         with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
-            with self.assertRaises(U115AccessLimitError):
-                client._request_url(
-                    "GET",
-                    "https://example.invalid/rate-limit",
-                    require_auth=False,
-                )
+            payload = client._request_url(
+                "GET",
+                "https://example.invalid/rate-limit",
+                require_auth=False,
+            )
 
-        self.assertEqual(session.attempts, 3)
-        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [7.0, 7.0])
+        self.assertTrue(payload["state"])
+        # 429 不占 transient 重试次数，与参考实现一致地一直重试
+        self.assertEqual(session.attempts, 6)
+        self.assertEqual(
+            [call.args[0] for call in sleeper.call_args_list], [7.0] * 5
+        )
 
     def test_http_429_retries_post_with_reset_header_and_bound(self):
         class RateLimitSession(FakeSession):
@@ -1927,7 +1956,6 @@ class U115ClientTest(unittest.TestCase):
 
         session = RateLimitSession()
         client = U115Client(session=session)
-        client.http_rate_limit_attempts = 3
 
         with patch("app.plugins.p115liteassistant.client.time.sleep") as sleeper:
             payload = client._request_url(
@@ -1965,7 +1993,7 @@ class U115ClientTest(unittest.TestCase):
 
         self.assertTrue(payload["state"])
         self.assertEqual(session.attempts, 3)
-        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [1.0, 2.0])
+        self.assertEqual([call.args[0] for call in sleeper.call_args_list], [2.0, 4.0])
 
     def test_open_access_limit_retries_using_upstream_delay(self):
         class AccessLimitSession(FakeSession):
@@ -2028,11 +2056,13 @@ class U115ClientTest(unittest.TestCase):
 
         session = RateLimitSession()
         client = U115Client(tokens={"access_token": "token"}, session=session)
-        client.read_retry_attempts = 1
-        client.http_rate_limit_attempts = 1
 
-        with self.assertRaises(U115AccessLimitError):
-            client.get_dir_list("0")
+        # 共享限流状态（并发任务）下，首个 429 立刻中止整个任务
+        with self.assertRaisesRegex(U115AccessLimitError, "HTTP 429"):
+            client.run_with_access_limit_state(
+                client.new_access_limit_state(),
+                lambda: client.get_dir_list("0"),
+            )
 
         self.assertEqual(len(session.requests), 1)
 

@@ -175,7 +175,7 @@ const FAKE_AUDIT = {
     },
     {
       key: 'untracked',
-      title: '记录外的 STRM',
+      title: '记录里没有的 STRM',
       hint: '输出目录里有、记录里没有。反向删除看不见它们，本地删了不会联动网盘。',
       count: 3,
       rows: [
@@ -255,7 +255,7 @@ const FAKE_LEDGER = {
     },
     {
       id: 'movie|手工放的||', kind: 'movie', title: '手工放的', year: '', season: null,
-      channel: '记录外', channel_id: 'untracked', in_library: 'unknown', files: 1, size: 78,
+      channel: '记录缺失', channel_id: 'untracked', in_library: 'unknown', files: 1, size: 78,
       folder: '/strm/电影/手工放的', cloud_folder: '', source_folder: '',
       episodes: [], missing: [], span: '', strm_gone: 0, flags: ['untracked'],
       strm_paths: ['/strm/电影/手工放的/某片.strm'], source_paths: [], file_ids: [], pickcodes: [],

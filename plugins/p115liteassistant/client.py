@@ -71,12 +71,16 @@ class U115Client:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20D502 UDown/38.0.2"
     )
-    read_retry_attempts = 3
-    read_retry_delay = 1.0
+    # 限流方案严格对齐 DDSRem-Dev/MoviePilot-Plugins 的 p115strmhelper
+    # （helper/strm/open.py 与 utils/limiter.py）：访问上限固定 70 秒重试
+    # （open_access_limit_*）；HTTP 429 读 X-RateLimit-Reset 睡完重试、不占
+    # 重试次数；其它临时 HTTP 错误指数退避 2,4,8,16,32（5 次重试）；目录
+    # 遍历 qps=5、下载取链 qps=1。
+    read_retry_attempts = 6
+    read_retry_delay = 2.0
     transient_http_statuses = frozenset({408, 425, 429, 500, 502, 503, 504})
     rate_limit_default_delay = 60.0
     rate_limit_delay_padding = 5.0
-    http_rate_limit_attempts = 3
     open_access_limit_attempts = 6
     open_access_limit_delay = 70.0
     upload_request_timeout = 120.0
@@ -84,7 +88,7 @@ class U115Client:
     upload_part_retry_delay = 1.0
     download_endpoint = "/open/ufile/downurl"
     download_request_interval = 1.0
-    directory_request_interval = 1 / 3
+    directory_request_interval = 1 / 5
     directory_scan_workers = 6
     directory_scan_prefetch = 12
     delete_batch_size = 200
@@ -1712,9 +1716,8 @@ class U115Client:
         transient_attempts = (
             max(1, int(self.read_retry_attempts)) if method in {"GET", "HEAD"} else 1
         )
-        rate_limit_attempts = max(1, int(self.http_rate_limit_attempts))
-        total_attempts = max(transient_attempts, rate_limit_attempts)
-        for attempt in range(1, total_attempts + 1):
+        attempt = 0
+        while True:
             try:
                 self._raise_if_shared_access_limited()
                 response = self.session.request(method, url, **kwargs)
@@ -1740,29 +1743,27 @@ class U115Client:
             except httpx.HTTPStatusError as err:
                 status_code = err.response.status_code
                 if status_code == 429:
+                    # 参考实现同款：429 意味着请求没被执行，读 X-RateLimit-Reset
+                    # 睡完就重试，不占 transient 重试次数；共享限流状态（并发
+                    # 任务）下仍按「立刻中止」处理。
                     limit_error = U115AccessLimitError(
                         "115 并发任务返回 HTTP 429，已停止本次任务"
                     )
                     if self._mark_shared_access_limited(limit_error):
                         raise limit_error from err
                     self._raise_if_shared_access_limited()
-                if status_code == 429 and attempt >= rate_limit_attempts:
-                    raise U115AccessLimitError(
-                        "115 返回 HTTP 429，访问上限重试已耗尽"
-                    ) from err
-                if status_code == 429:
-                    delay = self._http_status_retry_delay(err, attempt)
+                    delay = self._http_status_retry_delay(err, 1)
                     logger.info(
-                        f"【115 HTTP】请求返回临时状态 {status_code}，"
-                        f"等待 {delay:g} 秒后重试（{attempt}/{rate_limit_attempts - 1}）"
+                        f"【115 HTTP】请求返回 429，等待 {delay:g} 秒后重试"
                     )
                     self._wait_for_request_retry(delay)
                     continue
                 if (
                     status_code not in self.transient_http_statuses
-                    or attempt >= transient_attempts
+                    or attempt >= transient_attempts - 1
                 ):
                     raise
+                attempt += 1
                 delay = self._http_status_retry_delay(err, attempt)
                 logger.info(
                     f"【115 HTTP】请求返回临时状态 {status_code}，"
@@ -1770,12 +1771,12 @@ class U115Client:
                 )
                 self._wait_for_request_retry(delay)
             except (httpx.HTTPError, ValueError):
-                if attempt >= transient_attempts:
+                if attempt >= transient_attempts - 1:
                     raise
+                attempt += 1
                 self._wait_for_request_retry(
                     max(0.0, float(self.read_retry_delay)) * attempt
                 )
-        raise U115ApiError("115 请求失败")
 
     def _http_status_retry_delay(
         self,

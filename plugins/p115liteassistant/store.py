@@ -38,6 +38,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "upload_include_sidecars": True,
     "upload_generate_strm": False,
     "upload_delete_source": False,
+    # 上传身份冲突的默认处理：ask 挂清单等拍板 / adopt 采用远端 / reupload 删远端重传
+    "upload_conflict_policy": "ask",
     "upload_media_extensions": ".mp4,.mkv,.ts,.iso,.rmvb,.avi,.mov,.mpeg,.mpg,.wmv,.3gp,.asf,.m4v,.flv,.m2ts,.tp,.f4v",
     "upload_sidecar_extensions": ".nfo,.jpg,.jpeg,.png,.webp,.srt,.ass,.ssa,.sup",
     "checkin_enabled": False,
@@ -55,6 +57,7 @@ class Store:
     _CONFIG_KEY = "p115liteassistant_config"
     _STRM_RECORDS_KEY = "p115liteassistant_strm_records"
     _UPLOAD_RECORDS_KEY = "p115liteassistant_upload_records"
+    _UPLOAD_CONFLICTS_KEY = "p115liteassistant_upload_conflicts"
     _HISTORY_KEY = "p115liteassistant_history"
     _CHECKIN_SCHEDULE_KEY = "p115liteassistant_checkin_schedule"
     _REDIRECT_SECRET_KEY = "p115liteassistant_redirect_secret"
@@ -244,6 +247,14 @@ class Store:
 
     def save_upload_records(self, records: IncrementalRecordStore) -> None:
         self._plugin.save_data(self._UPLOAD_RECORDS_KEY, records.to_dict())
+
+    def get_upload_conflicts(self) -> Dict[str, Dict[str, Any]]:
+        """待用户处理的上传身份冲突（本地路径 → 冲突详情）。"""
+        conflicts = self._plugin.get_data(self._UPLOAD_CONFLICTS_KEY) or {}
+        return deepcopy(conflicts) if isinstance(conflicts, dict) else {}
+
+    def save_upload_conflicts(self, conflicts: Dict[str, Dict[str, Any]]) -> None:
+        self._plugin.save_data(self._UPLOAD_CONFLICTS_KEY, deepcopy(conflicts))
 
     def get_recent_uploaded_media(
         self,

@@ -135,6 +135,40 @@ class BuildLedgerTest(unittest.TestCase):
         self.assertEqual(show["source_pending"], 1)
         self.assertEqual(show["upload_target"], "/影视/某剧 (2024)/Season 01")
 
+    def test_upload_conflict_flags_the_row(self):
+        """上传身份冲突要长在它所属的那一行上：标记进 flags，明细进 conflicts。"""
+        with TemporaryDirectory() as raw:
+            source = Path(raw) / "inbox"
+            (source / "沙丘 第二部 (2024)").mkdir(parents=True)
+            conflicted = source / "沙丘 第二部 (2024)" / "沙丘 第二部 (2024) - 2160p.mkv"
+            conflicted.write_bytes(b"x" * 10)
+
+            rows = build_ledger(
+                records={},
+                strm_mappings=[],
+                upload_mappings=[{"id": "u1", "source": str(source), "target": "/影视"}],
+                upload_records={},
+                pending_paths=set(),
+                media_extensions=[".mkv"],
+                upload_conflicts={
+                    str(conflicted): {
+                        "path": str(conflicted),
+                        "target": "/影视/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.mkv",
+                        "reason": "上传记录对不上网盘文件",
+                        "first_seen": "2026-09-07 06:00:00",
+                    }
+                },
+            )
+
+        self.assertEqual(len(rows), 1)
+        dune = rows[0]
+        self.assertIn("record_conflict", dune["flags"])
+        self.assertEqual(len(dune["conflicts"]), 1)
+        self.assertEqual(
+            dune["conflicts"][0]["reason"], "上传记录对不上网盘文件"
+        )
+        self.assertEqual(dune["conflicts"][0]["target"], "/影视/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.mkv")
+
     def test_missing_strm_file_is_counted(self):
         rows = build_ledger(
             records={"m1:a": {"path": "/strm/电影/不存在 (2024)/a.strm", "file_id": "1", "size": 1}},

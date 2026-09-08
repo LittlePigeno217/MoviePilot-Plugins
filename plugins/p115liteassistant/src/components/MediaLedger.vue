@@ -2,7 +2,7 @@
 /**
  * 媒体清单 —— 一部电影一行，一季剧一行。
  *
- * 这一个分区取代了原来的「体检」：重复、季集不全、记录外、取不到链、等你确认删除，全都变成
+ * 这一个分区取代了原来的「体检」：重复、季集不全、记录缺失、取不到链、等你确认，全都变成
  * 行上的标记，靠筛选挑出来，而不是五个各自独立的问题清单。
  *
  * 口径：以网盘为库。在网盘上的算已入库；上传通道源目录里还没传上去的算未入库；输出目录里
@@ -18,6 +18,7 @@ import ReviewQueue from './ui/ReviewQueue.vue'
 import { pluginGet, pluginPost } from '../plugin.js'
 import { ago, bytes } from '../format.js'
 import {
+  FLAG_HINTS,
   FLAG_LABELS,
   SORTS,
   buildGroups,
@@ -30,7 +31,7 @@ const props = defineProps({
   api: { type: [Object, Function], default: null },
   busy: { type: Boolean, default: false },
   reloadToken: { type: Number, default: 0 },
-  // 等你确认删除的批次。由外壳读 /status 拿到再传进来，清单不必自己再问一遍。
+  // 「等你确认」删除的批次。由外壳读 /status 拿到再传进来，清单不必自己再问一遍。
   pending: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['notice', 'done'])
@@ -114,7 +115,7 @@ const pickedRows = computed(() => visible.value.filter(row => picked.value.has(r
 const pickedSize = computed(() => pickedRows.value.reduce((sum, row) => sum + Number(row.size || 0), 0))
 const pickedFiles = computed(() => pickedRows.value.reduce((sum, row) => sum + Number(row.files || 0), 0))
 /**
- * 顶上那行总计。**跟着当前筛选走**，不是全库固定值 —— 筛到「源文件还占地方」就直接看见
+ * 顶上那行总计。**跟着当前筛选走**，不是全库固定值 —— 筛到「源文件可删」就直接看见
  * 这一筛能腾出多少空间，那才是这行数字存在的理由。没筛的时候它就是全库。
  *
  * 「可回收」只算已经传上网盘、本地源文件还占着地方的那部分：那是唯一一次点击就能腾出来的。
@@ -233,16 +234,109 @@ const TARGETS = {
     where: '上传通道源目录里的媒体文件',
     undo: '删了就没了 —— 本地文件系统没有回收站。网盘与 STRM 都不动。',
     count: row => (row.source_paths || []).length,
-    // 还在做种的删了就掉种，有 H&R 的站会出事 —— 所以这里是锁，不是点了才报错
-    locked: row => Boolean(row.seeding),
-    lockedWhy: row => `有 ${row.seeds} 个种子还在做这部片，删了可能掉种`,
+    // 只有确认已经在网盘、身份无冲突、且不在做种的源文件才能删。
+    locked: row => Boolean(row.seeding)
+      || row.in_library !== 'yes'
+      || row.cloud_state === 'no'
+      || (row.conflicts || []).length > 0,
+    lockedWhy: row => {
+      if ((row.conflicts || []).length) return '先处理上传身份冲突'
+      if (row.seeding) return `有 ${row.seeds} 个种子正在做种，先去下载器停种`
+      if (row.cloud_state === 'no') return '网盘文件确认已不在，不能删除唯一的本地源文件'
+      return '还没确认上传到网盘，不能删除本地源文件'
+    },
   },
   cloud: {
-    title: '删除网盘文件',
+    title: '仅删除网盘文件',
     where: '115 上的文件',
-    undo: '进 115 回收站，能在 115 上还原。',
+    undo: '网盘文件进入 115 回收站，能在 115 上还原；本地 STRM 保留。',
     count: row => (row.file_ids || []).length,
+    locked: row => row.cloud_state === 'no'
+      || (row.conflicts || []).length > 0
+      || (row.flags || []).includes('pending_delete'),
+    lockedWhy: row => {
+      if ((row.conflicts || []).length) return '先处理上传身份冲突'
+      if ((row.flags || []).includes('pending_delete')) return '已经进入确认队列，请在上方确认'
+      return '网盘文件确认已不在，无需重复删除'
+    },
   },
+  cloud_strm: {
+    title: '删除网盘文件和 STRM',
+    where: '115 网盘文件与本地 STRM',
+    undo: '网盘文件进入 115 回收站，能在 115 上还原；本地 STRM 与记录会一并删除，重新同步可以恢复。',
+    count: row => (row.file_ids || []).length,
+    available: row => (row.file_ids || []).length > 0 && (row.strm_paths || []).length > 0,
+    locked: row => row.cloud_state === 'no'
+      || (row.conflicts || []).length > 0
+      || (row.flags || []).includes('pending_delete'),
+    lockedWhy: row => {
+      if ((row.conflicts || []).length) return '先处理上传身份冲突'
+      if ((row.flags || []).includes('pending_delete')) return '已经进入确认队列，请在上方确认'
+      return '网盘文件确认已不在，无需重复删除'
+    },
+  },
+}
+
+function primaryAction(row) {
+  if ((row.conflicts || []).length) {
+    return { kind: 'conflict', label: `处理冲突 ${row.conflicts.length}`, tone: 'hold' }
+  }
+  if ((row.flags || []).includes('pending_delete')) {
+    return { kind: 'review', label: '等待确认', disabled: true, why: '请在页面上方的确认队列处理' }
+  }
+  if (row.in_library === 'no' && row.upload_target) {
+    return { kind: 'upload', label: '上传到网盘' }
+  }
+  if (row.strm_gone && row.cloud_state !== 'no') {
+    return { kind: 'resync', label: '重新生成 STRM' }
+  }
+  if (Number(row.source_uploaded || 0) > 0) {
+    const spec = TARGETS.source
+    return {
+      kind: 'source',
+      label: spec.locked(row) ? '源文件不可删' : '回收源文件',
+      disabled: spec.locked(row),
+      why: spec.locked(row) ? spec.lockedWhy(row) : '已在网盘，可删除本地源文件腾出空间',
+    }
+  }
+  if (row.cloud_state === 'no' && (row.source_paths || []).length) {
+    return { kind: 'upload', label: '重新上传' }
+  }
+  return null
+}
+
+function runPrimary(row) {
+  const action = primaryAction(row)
+  if (!action || action.disabled) return
+  if (action.kind === 'upload' || action.kind === 'resync') {
+    act(action.kind, row)
+  } else if (action.kind === 'source') {
+    ask('source', row)
+  }
+}
+
+// 冲突处理不走 ask() 确认弹窗：三个选项统一写成「动作 + 结果」，后果在同一行说完。
+// 再套一层弹窗就是把同一个决定问两遍。「以本地为准」的兜底是 115 回收站。
+async function resolveConflict(row, action) {
+  if (acting.value) return
+  const paths = (row.conflicts || []).map(item => item.path).filter(Boolean)
+  if (!paths.length) return
+  acting.value = `conflict:${row.id}:${action}`
+  try {
+    const result = await pluginPost(props.api, '/upload/conflicts/resolve', {
+      paths,
+      action,
+    })
+    emit('notice', { text: result.message || '已处理', kind: result.success ? 'success' : 'error' })
+    if (result.success) {
+      emit('done')
+      await load()
+    }
+  } catch (error) {
+    emit('notice', { text: error?.message || '操作失败', kind: 'error' })
+  } finally {
+    acting.value = ''
+  }
 }
 
 async function act(kind, targets, options = {}) {
@@ -268,11 +362,13 @@ async function act(kind, targets, options = {}) {
       result = await pluginPost(props.api, '/source/drop', {
         paths: list.flatMap(row => row.source_paths || []),
       })
-    } else {
+    } else if (kind === 'cloud' || kind === 'cloud_strm') {
       result = await pluginPost(props.api, '/disk/delete', {
         file_ids: list.flatMap(row => row.file_ids || []),
-        also_local: Boolean(options.alsoLocal),
+        also_local: kind === 'cloud_strm' || Boolean(options.alsoLocal),
       })
+    } else {
+      throw new Error('未知的操作方式')
     }
     emit('notice', { text: result.message || '已完成', kind: result.success ? 'success' : 'error' })
     if (result.success) {
@@ -292,13 +388,15 @@ const alsoLocal = ref(false)
 
 function ask(kind, targets) {
   const spec = TARGETS[kind]
-  const wanted = [].concat(targets || pickedRows.value).filter(row => spec.count(row) > 0)
+  const wanted = [].concat(targets || pickedRows.value).filter(row =>
+    spec.count(row) > 0 && (spec.available?.(row) ?? true),
+  )
   // 锁住的行直接剔出去，并在弹窗里说清剔掉了几行、为什么
   const locked = wanted.filter(row => spec.locked?.(row))
   const list = wanted.filter(row => !spec.locked?.(row))
   if (!list.length) {
     emit('notice', {
-      text: locked.length ? '选中的都还在做种，删了可能掉种。先去下载器里停种。' : '选中的这些没有可删的东西',
+      text: locked.length ? TARGETS[kind].lockedWhy(locked[0]) : '选中的这些没有可操作的文件',
       kind: 'error',
     })
     return
@@ -319,7 +417,7 @@ function ask(kind, targets) {
 /** 这一行在哪几个地方有东西，就给哪几个删除动作；锁住的那个照样列出来但点不动。 */
 function targetsOf(row) {
   return Object.entries(TARGETS)
-    .filter(([, spec]) => spec.count(row) > 0)
+    .filter(([, spec]) => spec.count(row) > 0 && (spec.available?.(row) ?? true))
     .map(([kind, spec]) => ({
       kind,
       title: spec.title,
@@ -340,7 +438,7 @@ onMounted(load)
   <div class="ml">
     <!--
       审阅账本放在最前面：本地没了、网盘还在、删不删 —— 这是整个插件里最要紧的决定，
-      有事等人的时候它该第一个被看见，而不是等你想起来去筛「等你确认删除」。
+      有事等人的时候它该第一个被看见，而不是等你想起来去筛「等你确认」。
       和插件列表那张卡片用的是同一个组件。
     -->
     <ReviewQueue
@@ -366,12 +464,12 @@ onMounted(load)
       </div>
 
       <div class="p115-panel__body">
-        <p v-if="failed" class="ml__err">清单没算出来。点「重新聚合」再试一次。</p>
+        <p v-if="failed" class="ml__err">清单没算出来。点右上角的「刷新清单」再试一次。</p>
         <p v-else-if="!report" class="p115-probe">正在聚合…</p>
 
         <template v-else>
           <div class="ml__head-grid">
-          <!-- 总计跟着筛选走，所以筛一下就知道那一筛的账 -->
+          <!-- 总计跟着筛选走，并固定放在筛选区上方，先看账再缩小范围 -->
           <div class="ml__totals">
             <span class="ml__total">
               <i class="p115-label">已入库</i>
@@ -390,42 +488,41 @@ onMounted(load)
               <b>{{ totals.gone }} 部</b>
             </span>
             <span class="ml__total" :class="{ 'ml__total--hold': pendingFileTotal > 0 }">
-              <i class="p115-label">等你确认删除</i>
+              <i class="p115-label">等你确认</i>
               <b>{{ pendingFileTotal }} 个文件</b>
             </span>
           </div>
 
           <!--
-            没有组标题：每个筛码自己说清自己是什么（「电影」「已入库」「季集不全」）。
-            单选组画成连体的分段控件、多选组是分开的丸子 —— 形状说明「这一组只能选一个」还是
-            「可以叠加」。组名交给 aria-label，读屏还听得到。
-          -->
-          <!--
-            没有组标题：每个筛码自己说清自己是什么（「电影」「已入库」「季集不全」）。
-            单选组画成连体的分段控件、多选组是分开的丸子 —— 形状说明「这一组只能选一个」还是
-            「可以叠加」。组名交给 aria-label，读屏还听得到。
+            每一行都带固定组名，选项只表达取值。这样「全部」状态、动态通道和异常多选
+            都不会混在一起；单选仍是连体控件，多选仍用独立丸子。
           -->
           <nav v-show="showFilters" class="ml__filters" aria-label="清单筛选">
             <div
               v-for="group in groups"
               :key="group.id"
-              class="ml__options"
-              :class="group.multi ? 'ml__options--loose' : 'ml__options--joined'"
-              role="group"
-              :aria-label="group.label"
+              class="ml__filter-row"
             >
-              <button
-                v-for="option in group.options"
-                :key="option.id"
-                type="button"
-                class="ml__option"
-                :class="[{ 'ml__option--on': isOn(group, option) }, option.tone ? `ml__option--${option.tone}` : '']"
-                :aria-pressed="isOn(group, option)"
-                :title="`${group.label}：${option.label}`"
-                @click="choose(group, option)"
+              <span class="ml__filter-label">{{ group.label }}</span>
+              <div
+                class="ml__options"
+                :class="group.multi ? 'ml__options--loose' : 'ml__options--joined'"
+                role="group"
+                :aria-label="group.label"
               >
-                {{ option.label }}<span>{{ option.count }}</span>
-              </button>
+                <button
+                  v-for="option in group.options"
+                  :key="option.id"
+                  type="button"
+                  class="ml__option"
+                  :class="[{ 'ml__option--on': isOn(group, option) }, option.tone ? `ml__option--${option.tone}` : '']"
+                  :aria-pressed="isOn(group, option)"
+                  :title="group.id === 'flags' ? (FLAG_HINTS[option.id] || option.label) : `${group.label}：${option.label}`"
+                  @click="choose(group, option)"
+                >
+                  <span class="ml__option-text">{{ option.label }}</span><span class="ml__option-count">{{ option.count }}</span>
+                </button>
+              </div>
             </div>
           </nav>
           </div>
@@ -434,7 +531,7 @@ onMounted(load)
     </section>
 
     <!--
-      吸顶条：385 行的清单里，筛选面板会滚出视野，而「现在筛的是什么、筛出多少条、按什么排」
+      吸顶条：几百行的清单里，筛选面板会滚出视野，而「现在筛的是什么、筛出多少条、按什么排」
       恰恰是边扫边要看的。所以这一条单独吸在标题栏底下，和上面那块筛选面板分工不同 ——
       面板给的是「有哪些选项、各有多少」，这条给的是「当前状态」。
     -->
@@ -484,11 +581,11 @@ onMounted(load)
         :title="report.cloud_note"
         @click="verify"
       >
-        {{ verifying ? '核对中…' : pickedRows.length ? `核对选中的 ${pickedRows.length} 行` : '核对网盘' }}
+        {{ verifying ? '核对中…' : pickedRows.length ? `核对选中的 ${pickedRows.length} 部` : '核对网盘' }}
       </button>
 
       <span class="ml__result">
-        <strong>{{ visible.length }}</strong> / {{ rows.length }} 条
+        <strong>{{ visible.length }}</strong> / {{ rows.length }} 部
       </span>
       </div>
 
@@ -530,7 +627,7 @@ onMounted(load)
           <span class="ml__num">操作</span>
         </div>
 
-        <p v-if="loading" class="ml__state">正在聚合…</p>
+        <p v-if="loading" class="p115-probe ml__state">正在聚合…</p>
         <p v-else-if="!visible.length" class="p115-empty">没有符合条件的媒体。取消几个筛选或换个关键词。</p>
 
         <article v-for="row in visible" v-else :key="row.id" class="ml__row" :class="{ 'ml__row--on': picked.has(row.id) }">
@@ -570,14 +667,15 @@ onMounted(load)
               v-for="flag in row.flags.slice(0, 2)"
               :key="flag"
               class="p115-pill"
-              :class="flag === 'pending_delete' ? 'p115-pill--hold' : 'p115-pill--warn'"
+              :class="flag === 'pending_delete' || flag === 'record_conflict' ? 'p115-pill--hold' : 'p115-pill--warn'"
+              :title="FLAG_HINTS[flag] || FLAG_LABELS[flag]"
             >
               {{ FLAG_LABELS[flag] || flag }}
             </span>
             <span
               v-if="row.flags.length > 2"
               class="p115-pill"
-              :title="row.flags.map(flag => FLAG_LABELS[flag] || flag).join('、')"
+              :title="row.flags.slice(2).map(flag => `${FLAG_LABELS[flag] || flag}：${FLAG_HINTS[flag] || ''}`).join(' / ')"
             >+{{ row.flags.length - 2 }}</span>
           </div>
 
@@ -586,38 +684,30 @@ onMounted(load)
             <span v-if="row.kind === 'tv' && row.span">
               集 {{ row.span }}<template v-if="row.missing.length"> · 缺 {{ row.missing.join('、') }}</template>
             </span>
-            <span v-else-if="row.strm_gone">少了 {{ row.strm_gone }} 个 STRM</span>
+            <span v-else-if="row.strm_gone">缺 {{ row.strm_gone }} 个 STRM</span>
           </div>
 
           <div class="ml__cell ml__num">
             <strong class="ml__size p115-mono">{{ bytes(row.size) || '—' }}</strong>
           </div>
 
-          <!-- 主动作按状态给一个，三个删除动作收进菜单：一行摆四个按钮就没法扫了 -->
+          <!-- 主动作由这一行当前最需要处理的状态决定；其余可用动作放进菜单。 -->
           <div class="ml__acts">
             <v-btn
-              v-if="row.in_library === 'no' && row.upload_target"
+              v-if="primaryAction(row) && primaryAction(row).kind !== 'conflict'"
               variant="outlined"
               size="x-small"
-              :disabled="busy || Boolean(acting)"
-              @click="act('upload', row)"
+              :disabled="busy || Boolean(acting) || primaryAction(row).disabled"
+              :title="primaryAction(row).why || primaryAction(row).label"
+              @click="runPrimary(row)"
             >
-              上传
-            </v-btn>
-            <v-btn
-              v-else-if="row.strm_gone"
-              variant="outlined"
-              size="x-small"
-              :disabled="busy || Boolean(acting)"
-              @click="act('resync', row)"
-            >
-              同步
+              {{ primaryAction(row).label }}
             </v-btn>
 
             <v-menu v-if="targetsOf(row).length" location="bottom end">
               <!--
-                触发器写成有字的按钮而不是一个「⋯」图标：388 行的表格里，
-                只靠一个字形说明「这儿藏着三个删除动作」太弱，而且 text 变体的
+                触发器写成有字的按钮而不是一个「⋯」图标：几百行的表格里，
+                只靠一个字形说明「这儿藏着删除动作」太弱，而且 text 变体的
                 纯图标按钮在没有图标字体时是完全不可见的。
               -->
               <template #activator="{ props: menu }">
@@ -640,9 +730,52 @@ onMounted(load)
                   @click="ask(item.kind, row)"
                 >
                   <span class="ml__menu-item" :class="{ 'ml__menu-item--locked': item.locked }">
-                    {{ item.title }}<b>{{ item.locked ? item.why : `${item.count} 个` }}</b>
+                    {{ item.title }}<b>{{ item.locked ? item.why : `${item.count} 个可操作` }}</b>
                   </span>
                 </v-list-item>
+              </v-list>
+            </v-menu>
+
+            <!--
+              冲突菜单：这一行的上传记录和网盘对不上时才出现。三个动作各说各的
+              后果，比塞进删除菜单里强 —— 那边问的是「删哪儿」，这边问的是「认哪份」。
+            -->
+            <v-menu v-if="(row.conflicts || []).length" location="bottom end">
+              <template #activator="{ props: menu }">
+                <v-btn
+                  v-bind="menu"
+                  size="x-small"
+                  append-icon="mdi-menu-down"
+                  class="ml__conflict-btn"
+                  :color="primaryAction(row)?.kind === 'conflict' ? 'warning' : undefined"
+                  :variant="primaryAction(row)?.kind === 'conflict' ? 'flat' : 'outlined'"
+                  :disabled="Boolean(acting)"
+                >
+                  {{ primaryAction(row)?.kind === 'conflict' ? '处理冲突' : '冲突' }} {{ row.conflicts.length }}
+                </v-btn>
+              </template>
+              <v-list density="compact" class="p115 p115-portal ml__menu">
+                <v-list-item
+                  class="ml__conflict-head"
+                  title="选择保留哪一份"
+                  :subtitle="`网盘文件与上传记录不一致 · ${row.conflicts.length} 个文件`"
+                />
+                <v-divider />
+                <v-list-item
+                  title="以网盘为准"
+                  subtitle="保留网盘文件，更新本地记录，并重新生成 STRM"
+                  @click="resolveConflict(row, 'adopt')"
+                />
+                <v-list-item
+                  title="以本地为准"
+                  subtitle="网盘文件移入 115 回收站，再重新上传本地文件"
+                  @click="resolveConflict(row, 'reupload')"
+                />
+                <v-list-item
+                  title="暂不处理"
+                  subtitle="不改文件和记录；下次发现仍不一致时会再次提示"
+                  @click="resolveConflict(row, 'dismiss')"
+                />
               </v-list>
             </v-menu>
           </div>
@@ -668,7 +801,7 @@ onMounted(load)
 
             <label v-if="confirm.kind === 'cloud'" class="ml__also">
               <input v-model="alsoLocal" type="checkbox">
-              同时删掉本地的 STRM 与记录（不勾的话本地那份会变成死链）
+              同时删除本地 STRM 与记录
             </label>
 
             <ul class="ml__targets">
@@ -687,7 +820,7 @@ onMounted(load)
               要删得先去下载器里停种。
             </p>
             <p v-if="confirm.blocked.length" class="ml__warn">
-              其中 {{ confirm.blocked.length }} 部正挂在「等你确认删除」的队列里。这里删掉之后那些批次会在下一轮巡检时自行失效。
+              其中 {{ confirm.blocked.length }} 部正挂在「等你确认」的队列里。这里删掉之后那些批次会在下一轮巡检时自行失效。
             </p>
             <p class="ml__estimate">
               这份账按刚才那份清单算的。中间跑过同步或上传的话，先回去点「刷新清单」。
@@ -723,24 +856,11 @@ onMounted(load)
   color: rgb(var(--v-theme-error));
 }
 
-// 总计与筛选并排：一列摞一列在宽屏上白占两百多像素高，头部矮一半清单就早两百像素出现
+// 统计卡片固定在筛选上方：先读总账，再用下面的筛选缩小范围
 .ml__head-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px 20px;
-}
-
-@media (min-width: 1200px) {
-  .ml__head-grid {
-    grid-template-columns: minmax(0, 1fr) 21rem;
-    align-items: start;
-  }
-
-  // 宽屏下总计竖着摞在右边一栏，正好和左边六行筛选等高
-  .ml__totals {
-    grid-template-columns: minmax(0, 1fr) !important;
-    order: 2;
-  }
+  gap: 12px;
 }
 
 // 读数格照规范：内边距 14px 14px 12px，值 15px|700，条 gap 12，minmax(150px, 1fr)
@@ -837,7 +957,7 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px 14px 11px;
+  padding: 14px 14px 12px;
   border: 1px solid var(--p115-hairline);
   border-radius: var(--p115-radius-sm);
   background: var(--p115-well);
@@ -870,13 +990,6 @@ onMounted(load)
 .ml__total--act b { color: rgb(var(--v-theme-success)); }
 .ml__total--bad b { color: rgb(var(--v-theme-error)); }
 .ml__total--hold b { color: var(--p115-hold); }
-
-.ml__toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
 
 // 搜索框限宽：查询词都很短，铺满 1300px 只是把筛选组挤下去
 .ml__search {
@@ -946,32 +1059,42 @@ onMounted(load)
 }
 
 // ── 筛选组 ──────────────────────────────────────────────────────
-//
-// 一组一行。没有组标题，所以行本身就是分组：一行读完是一个维度，不必在 18px 的间距里
-// 猜哪几个筛码是一伙的。行与行之间一条极淡的分隔线，比纯留白更说明「这是另一组」。
+// 固定标签列 + 选项列：每一行只表达一个维度，动态通道再多也不会和下一组混在一起。
 .ml__filters {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   padding: 4px 14px;
   border: 1px solid var(--p115-hairline);
   border-radius: var(--p115-radius-sm);
   background: var(--p115-well);
 }
 
-.ml__filters > .ml__options {
+.ml__filter-row {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
   width: 100%;
   padding: 8px 0;
 }
 
-// 用 hairline 不用 faint：3% 的极淡线在这儿根本看不见，那这条分隔就白写了
-.ml__filters > .ml__options + .ml__options {
+.ml__filter-row + .ml__filter-row {
   border-top: 1px solid var(--p115-hairline);
+}
+
+.ml__filter-label {
+  padding: 7px 0 0 2px;
+  color: var(--p115-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .ml__options {
   display: flex;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 // 连体 = 这一组里只能选一个；分开的丸子 = 可以叠加。形状本身就是规则说明。
@@ -1023,9 +1146,21 @@ onMounted(load)
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.ml__option span {
+.ml__option-text {
+  white-space: nowrap;
+}
+
+.ml__option-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--p115-faint);
   color: var(--p115-muted);
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1048,7 +1183,8 @@ onMounted(load)
   border-color: var(--p115-accent);
 }
 
-.ml__option--on span {
+.ml__option--on .ml__option-count {
+  background: var(--p115-accent-soft);
   color: var(--p115-accent);
 }
 
@@ -1059,7 +1195,8 @@ onMounted(load)
   color: rgb(var(--v-theme-warning));
 }
 
-.ml__option--warning.ml__option--on span {
+.ml__option--warning.ml__option--on .ml__option-count {
+  background: rgba(var(--v-theme-warning), 0.16);
   color: rgb(var(--v-theme-warning));
 }
 
@@ -1069,7 +1206,8 @@ onMounted(load)
   color: var(--p115-hold);
 }
 
-.ml__option--hold.ml__option--on span {
+.ml__option--hold.ml__option--on .ml__option-count {
+  background: var(--p115-hold-soft);
   color: var(--p115-hold);
 }
 
@@ -1097,7 +1235,7 @@ onMounted(load)
   z-index: 1;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
   color: var(--p115-muted);
   background: var(--p115-paper);
   border-bottom: 1px solid var(--p115-hairline);
@@ -1213,13 +1351,6 @@ onMounted(load)
   flex-wrap: wrap;
   gap: 4px;
   justify-content: flex-end;
-}
-
-.ml__state {
-  margin: 0;
-  padding: 14px 18px;
-  font-size: 12px;
-  color: var(--p115-muted);
 }
 
 // ── 勾选段与确认 ────────────────────────────────────────────────
@@ -1343,6 +1474,20 @@ onMounted(load)
   color: rgb(var(--v-theme-warning));
 }
 
+.ml__conflict-head {
+  pointer-events: none;
+}
+
+.ml__conflict-head :deep(.v-list-item-title) {
+  font-weight: 700;
+  color: var(--p115-ink);
+}
+
+.ml__conflict-head :deep(.v-list-item-subtitle) {
+  opacity: 1;
+  color: var(--p115-muted);
+}
+
 .ml__targets {
   margin: 0;
   padding: 0;
@@ -1424,12 +1569,17 @@ onMounted(load)
     justify-content: flex-start;
   }
 
-  .ml__toolbar {
-    flex-wrap: wrap;
-  }
-
   .ml__search {
     flex: 1 1 12rem;
+  }
+
+  .ml__filter-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .ml__filter-label {
+    padding-top: 0;
   }
 }
 </style>

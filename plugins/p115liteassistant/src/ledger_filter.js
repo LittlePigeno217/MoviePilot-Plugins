@@ -10,13 +10,29 @@
  */
 
 export const FLAG_LABELS = {
-  pending_delete: '等你确认删除',
+  pending_delete: '等你确认',
+  record_conflict: '对不上网盘',
+  source_left: '源文件可删',
   season_gap: '季集不全',
-  strm_gone: 'STRM 缺一部分',
-  duplicate: '重复生成',
-  untracked: '记录外',
-  unlinkable: '取不到链',
-  source_left: '源文件还占地方',
+  strm_gone: 'STRM 缺失',
+  duplicate: '重复 STRM',
+  untracked: '记录缺失',
+  unlinkable: '取链失败',
+}
+
+/**
+ * 标记的完整解释，悬停时说。筛码一律四字，四字装不下的因果放这里 ——
+ * 标签负责「是哪一类」，提示负责「为什么、意味着什么」。
+ */
+export const FLAG_HINTS = {
+  pending_delete: '本地 STRM 没了，网盘文件还在，等你决定删不删网盘那份',
+  record_conflict: '上传记录对不上网盘文件，网盘上这个位置的文件曾被替换',
+  season_gap: '这一季中间缺了几集',
+  strm_gone: '本地 STRM 少了几个',
+  duplicate: '同一部片生成了多份 STRM',
+  untracked: '输出目录里有 STRM，但记录里没有它',
+  unlinkable: '拿不到这个文件的下载链接',
+  source_left: '已传上网盘，本地源文件可以删掉腾地方',
 }
 
 export const LIBRARY_LABELS = {
@@ -26,7 +42,7 @@ export const LIBRARY_LABELS = {
 }
 
 export function createFilterState() {
-  return { kind: 'all', library: 'all', channel: 'all', cloud: 'all', flags: [] }
+  return { kind: 'all', library: 'all', channel: 'all', cloud: 'all', seeding: 'all', flags: [] }
 }
 
 /**
@@ -42,7 +58,7 @@ export function buildGroups(channels = [], options = {}) {
   const groups = [
     {
       id: 'kind',
-      label: '资源类型',
+      label: '媒体类型',
       multi: false,
       options: [
         { id: 'movie', label: '电影' },
@@ -54,25 +70,26 @@ export function buildGroups(channels = [], options = {}) {
       label: '入库状态',
       multi: false,
       options: [
-        { id: 'yes', label: '已入库' },
-        { id: 'no', label: '未入库' },
-        { id: 'unknown', label: '判不出来' },
+        { id: 'yes', label: '已在网盘' },
+        { id: 'no', label: '本地待传' },
+        { id: 'unknown', label: '状态未知' },
       ],
     },
     {
       id: 'channel',
-      label: '通道',
+      label: '来源通道',
       multi: false,
       options: channels.map(channel => ({ id: channel.id, label: channel.label })),
     },
     {
       id: 'flags',
-      label: '待处理 / 质量',
+      label: '需要处理',
       multi: true,
       options: Object.entries(FLAG_LABELS).map(([id, label]) => ({
         id,
         label,
-        tone: id === 'pending_delete' ? 'hold' : 'warning',
+        // 两类「有事等人」的标记用 hold 色：它们不是质量问题，是在等一个决定
+        tone: id === 'pending_delete' || id === 'record_conflict' ? 'hold' : 'warning',
       })),
     },
   ]
@@ -84,20 +101,20 @@ export function buildGroups(channels = [], options = {}) {
       label: '网盘状态',
       multi: false,
       options: [
-        { id: 'yes', label: '网盘还在' },
-        { id: 'no', label: '网盘上没了', tone: 'warning' },
-        { id: 'unchecked', label: '还没核对' },
+        { id: 'yes', label: '确认在网盘' },
+        { id: 'no', label: '确认已不在', tone: 'warning' },
+        { id: 'unchecked', label: '尚未核对' },
       ],
     })
   }
   if (options.hasSeeding) {
     groups.splice(3, 0, {
       id: 'seeding',
-      label: '做种约束',
+      label: '做种状态',
       multi: false,
       options: [
-        { id: 'seeding', label: '还在做种', tone: 'warning' },
-        { id: 'free', label: '没在做种' },
+        { id: 'seeding', label: '正在做种', tone: 'warning' },
+        { id: 'free', label: '未在做种' },
       ],
     })
   }

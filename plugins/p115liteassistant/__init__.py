@@ -224,6 +224,8 @@ class P115LiteAssistant(_PluginBase):
             {"path": "/strm/sweep/confirm", "endpoint": self._api.confirm_strm_delete, "methods": ["POST"], "auth": "bear", "summary": "确认执行一个反向删除批次"},
             {"path": "/strm/sweep/dismiss", "endpoint": self._api.dismiss_strm_delete, "methods": ["POST"], "auth": "bear", "summary": "驳回一个反向删除批次"},
             {"path": "/upload", "endpoint": self._api.trigger_upload, "methods": ["POST"], "auth": "bear", "summary": "开始目录上传"},
+            {"path": "/upload/conflicts", "endpoint": self._api.upload_conflicts, "methods": ["GET"], "auth": "bear", "summary": "读取待处理的上传身份冲突"},
+            {"path": "/upload/conflicts/resolve", "endpoint": self._api.resolve_upload_conflicts, "methods": ["POST"], "auth": "bear", "summary": "处理上传身份冲突"},
             {"path": "/checkin", "endpoint": self._api.run_checkin, "methods": ["POST"], "auth": "bear", "summary": "执行 115 签到"},
             {"path": "/test-notify", "endpoint": self._api.test_notify, "methods": ["POST"], "auth": "bear", "summary": "发送测试通知（走 MoviePilot 完整通知管道）"},
             {"path": "/history", "endpoint": self._api.history, "methods": ["GET"], "auth": "bear", "summary": "读取执行历史"},

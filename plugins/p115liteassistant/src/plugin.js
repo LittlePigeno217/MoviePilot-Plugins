@@ -34,6 +34,7 @@ export const DEFAULT_CONFIG = {
   upload_include_sidecars: true,
   upload_generate_strm: false,
   upload_delete_source: false,
+  upload_conflict_policy: 'ask',
   upload_media_extensions: '.mp4,.mkv,.ts,.iso,.rmvb,.avi,.mov,.mpeg,.mpg,.wmv,.3gp,.asf,.m4v,.flv,.m2ts,.tp,.f4v',
   upload_sidecar_extensions: '.nfo,.jpg,.jpeg,.png,.webp,.srt,.ass,.ssa,.sup',
   checkin_enabled: false,

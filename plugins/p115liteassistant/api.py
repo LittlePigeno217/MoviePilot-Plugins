@@ -107,6 +107,9 @@ class Api:
         # 实时上传监听触发的“待补跑”标记：_start("upload") 抢不到锁的事件记在这里，
         # 等当前 115 任务结束由 _drain_pending_upload 补跑一次增量上传，不丢事件。
         self._pending_upload = False
+        # 通知去重：上传（开着“生成 STRM”）发出的入库卡片已经覆盖了同一批媒体的
+        # STRM 变化，随后的 STRM 同步不该再发一张。这里记抑制窗的截止时刻（monotonic）。
+        self._strm_notify_quiet_until = 0.0
         self._lock = threading.Lock()
         self._cloud_task_lock = threading.Lock()
         self._checkin_lock = threading.Lock()
@@ -365,6 +368,19 @@ class Api:
                     self._strm_watch_status and self._strm_watch_status()
                 ),
                 "pending_sweep": self._pending_sweep_text(),
+                "pending_conflicts": sorted(
+                    (
+                        {
+                            "path": str(item.get("path") or ""),
+                            "target": str(item.get("target") or ""),
+                            "reason": str(item.get("reason") or ""),
+                            "first_seen": str(item.get("first_seen") or ""),
+                        }
+                        for item in self._store.get_upload_conflicts().values()
+                        if isinstance(item, dict)
+                    ),
+                    key=lambda item: item["first_seen"],
+                ),
                 "pending_deletes": [
                     {
                         "id": str(batch.get("id") or ""),
@@ -958,6 +974,7 @@ class Api:
                 if isinstance(mapping, dict) and mapping.get("enabled", True)
             ],
             upload_records=self._store.get_upload_records().to_dict(),
+            upload_conflicts=self._store.get_upload_conflicts(),
             pending_paths=pending_paths,
             media_extensions=parse_extensions(
                 config.get("upload_media_extensions", ""), DEFAULT_MEDIA_EXTENSIONS
@@ -1129,7 +1146,7 @@ class Api:
                     f"源文件还占着 {self._bytes_text(current['source_left'])}，这些片已经传上网盘了"
                 )
             if current["untracked"] > int(previous.get("untracked") or 0):
-                lines.append(f"记录外的 STRM {current['untracked']} 部，反向删除看不见它们")
+                lines.append(f"记录里没有的 STRM {current['untracked']} 部，反向删除看不见它们")
             if not lines:
                 return
             self._store.save_ledger_digest({**current, "at": int(time())})
@@ -1760,6 +1777,98 @@ class Api:
             return _error("批次不存在或已处理")
         return _ok(message=f"已忽略 {dropped} 个批次，网盘上的文件一个都没动")
 
+    # ── 上传身份冲突：记录说 A、远端躺着 B，让用户拍板 ─────────────────────
+    #
+    # 配置里的 ``upload_conflict_policy`` 管自动处理（adopt/reupload）；``ask``
+    # 策略下冲突挂到这里，两个动作各自动一块：采用远端只改记录不碰网盘，
+    # 重传覆盖先删远端（进回收站）再清记录。「先不管」只摘条目，下一轮增量
+    # 还会发现，这不是 bug 是诚实的兜底。
+
+    _CONFLICT_ACTION_LABELS = {"adopt": "采用远端", "reupload": "重传覆盖", "dismiss": "先不管"}
+
+    def upload_conflicts(self) -> Dict[str, Any]:
+        """待处理的上传身份冲突清单。"""
+        conflicts = self._store.get_upload_conflicts()
+        items = sorted(
+            (item for item in conflicts.values() if isinstance(item, dict)),
+            key=lambda item: str(item.get("first_seen") or ""),
+        )
+        return _ok(
+            {
+                "policy": str(self._store.get_config().get("upload_conflict_policy") or "ask"),
+                "count": len(items),
+                "items": [
+                    {
+                        "path": str(item.get("path") or ""),
+                        "target": str(item.get("target") or ""),
+                        "reason": str(item.get("reason") or ""),
+                        "recorded_pickcode": str(item.get("recorded_pickcode") or ""),
+                        "remote_pickcode": str(item.get("remote_pickcode") or ""),
+                        "recorded_size": item.get("recorded_size"),
+                        "first_seen": str(item.get("first_seen") or ""),
+                        "last_seen": str(item.get("last_seen") or ""),
+                    }
+                    for item in items
+                ],
+            }
+        )
+
+    def resolve_upload_conflicts(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """处理清单里挂着的身份冲突。``action``: adopt | reupload | dismiss。"""
+        payload = payload or {}
+        action = str(payload.get("action") or "").strip()
+        if action not in self._CONFLICT_ACTION_LABELS:
+            return _error("未知的处理方式")
+        paths = [
+            str(value or "").strip()
+            for value in (payload.get("paths") or [])
+            if str(value or "").strip()
+        ]
+        if not paths:
+            return _error("没有选择要处理的冲突")
+        conflicts = self._store.get_upload_conflicts()
+        records = self._store.get_upload_records()
+        resolved: list[str] = []
+        failed: list[Dict[str, str]] = []
+        for path in paths:
+            conflict = conflicts.get(path)
+            if not isinstance(conflict, dict):
+                failed.append({"path": path, "message": "冲突不存在或已处理"})
+                continue
+            target = str(conflict.get("target") or "")
+            try:
+                if action == "adopt":
+                    if not records.get(Path(path)):
+                        raise ValueError("上传记录不存在，无法采用远端")
+                    remote_pickcode = str(conflict.get("remote_pickcode") or "")
+                    if not remote_pickcode:
+                        raise ValueError("冲突里没有远端 Pickcode，请用重传覆盖或等下一轮上传")
+                    records.update_metadata(Path(path), {"pickcode": remote_pickcode})
+                elif action == "reupload":
+                    file_item = self._client_provider().get_item(target) or {}
+                    file_id = str(file_item.get("fileid") or "")
+                    if file_id:
+                        self._client_provider().delete_file(file_id)
+                    records.remove(Path(path))
+                # dismiss 不需要任何动作：只把条目摘掉
+            except Exception as err:  # noqa: BLE001
+                failed.append({"path": path, "message": safe_error_text(err)})
+                continue
+            conflicts.pop(path, None)
+            resolved.append(path)
+        self._store.save_upload_records(records)
+        self._store.save_upload_conflicts(conflicts)
+        label = self._CONFLICT_ACTION_LABELS[action]
+        if failed:
+            return _ok(
+                data={"resolved": resolved, "failed": failed},
+                message=f"{label}完成 {len(resolved)} 个，{len(failed)} 个没成",
+            )
+        return _ok(
+            data={"resolved": resolved, "failed": []},
+            message=f"已按「{label}」处理 {len(resolved)} 个冲突",
+        )
+
     # ── 飞书卡片的排版零件 ──────────────────────────────────────────────────
     #
     # 卡片和纯文本走的是同一份信息架构：一行结论、一行读数、一份清单。卡片多的只是
@@ -1823,6 +1932,15 @@ class Api:
         """
         if not self._notifier.is_enabled("strm"):
             return
+        quiet_remaining = self._strm_notify_quiet_until - monotonic()
+        if quiet_remaining > 0:
+            # 上传（开着“生成 STRM”）刚发过同一批入库的卡片，这里不再叠一张；
+            # 独立于上传的 STRM 变化在窗口过后照常通知。
+            logger.info(
+                f"【STRM同步】入库已由上传通道通知，STRM 通知抑制 "
+                f"{int(quiet_remaining / 60) + 1} 分钟内生效"
+            )
+            return
         failed = int(totals.get("errors") or 0)
         meta = (
             f"{'增量' if incremental else '全量'} · {len(entries)} 个映射"
@@ -1882,6 +2000,20 @@ class Api:
 
     # 通知里最多逐行列几条映射，再多就折叠 —— 锁屏上看不完那么长
     NOTIFY_ROW_LIMIT = 8
+    # 上传卡片发出后，STRM 同步的重复入库通知抑制多久。要盖过生活监控的事件
+    # 防抖加一轮同步的时差，太短压不住，太长会吞掉真正独立的 STRM 动态。
+    STRM_NOTIFY_QUIET_SECONDS = 30 * 60
+
+    def _arm_strm_notify_suppression(self) -> None:
+        """上传通道发出入库通知后，给 STRM 通道上一段静默窗。
+
+        只在上传任务自己生成 STRM（``upload_generate_strm``）时才需要 —— 那种
+        配置下两张卡说的是同一批入库。没开生成就各通知各的，STRM 卡是唯一一张。
+        """
+        if not self._store.get_config().get("upload_generate_strm"):
+            return
+        self._strm_notify_quiet_until = monotonic() + self.STRM_NOTIFY_QUIET_SECONDS
+
     # 附在行尾的原因截断到这么长
     NOTIFY_NOTE_LIMIT = 24
     # 短于这个长度的分句不算「说完了一句话」，截断时会接着往下取
@@ -2576,6 +2708,7 @@ class Api:
             f"生成 STRM {int(entry.get('strm_generated') or 0)}，"
             f"跳过 {int(entry.get('skipped') or 0)}，删除 {int(entry.get('deleted') or 0)}，"
             f"延后 {int(entry.get('deferred') or 0)}，"
+            f"冲突 {int(entry.get('conflicts') or 0)}，"
             f"失败 {int(entry.get('errors') or 0)}，耗时 {int(entry.get('duration_ms') or 0)}ms"
         )
         log_result = logger.warning if int(entry.get("errors") or 0) else logger.info
@@ -2599,6 +2732,9 @@ class Api:
         per_file = [d for d in per_file if d.get("method") in ("upload", "instant")]
         if not per_file and not errors:
             return
+        # 卡片确定要发了：开着“生成 STRM”的上传已经把同一批入库说完了，
+        # 给 STRM 通道上一段静默窗，免得生活监控触发的同步再叠一张卡。
+        self._arm_strm_notify_suppression()
 
         # 逐文件查询整理历史，附带识别结果
         transfer_meta_by_path: dict[str, dict] = {}

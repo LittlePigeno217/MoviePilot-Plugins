@@ -24,6 +24,21 @@ from .strm import (
 )
 
 
+class UploadIdentityConflict(ValueError):
+    """上传记录与远端文件身份对不上（如 Pickcode 不一致）。
+
+    这不是失败，是**需要人拍板的分歧**：远端同路径上躺着另一个文件。丢进清单
+    （``upload_conflicts``）让用户选「采用远端 / 重传覆盖 / 先不管」，不带任何
+    动作地反复报失败只会训练用户无视通知。
+    """
+
+    def __init__(self, message: str, local_path: str = "", target: str = "", **extra: Any):
+        super().__init__(message)
+        self.local_path = local_path
+        self.target = target
+        self.extra = extra
+
+
 class DirectoryUploader:
     def __init__(
         self,
@@ -477,7 +492,15 @@ class DirectoryUploader:
         remote_pickcode = str((file_item or {}).get("pickcode") or "")
         if recorded_pickcode:
             if recorded_pickcode != remote_pickcode:
-                raise ValueError("上传记录 Pickcode 与当前远端文件不一致")
+                raise UploadIdentityConflict(
+                    "上传记录对不上网盘文件（网盘上这个位置的文件曾被替换）",
+                    local_path=str(local_path),
+                    target=str(target_path),
+                    recorded_pickcode=recorded_pickcode,
+                    remote_pickcode=remote_pickcode,
+                    recorded_size=record.get("size"),
+                    recorded_uploaded_at=record.get("uploaded_at") or "",
+                )
             return {}
 
         if not remote_pickcode:
@@ -537,6 +560,97 @@ class DirectoryUploader:
             migration["pickcode_identity_fileid"] = remote_fileid
         return migration
 
+    #: 身份冲突处理策略的取值：ask 挂清单等拍板，adopt 认远端，reupload 删远端重传。
+    CONFLICT_POLICIES = ("ask", "adopt", "reupload")
+
+    def _conflict_policy(self) -> str:
+        policy = str(self._config.get("upload_conflict_policy") or "ask").strip()
+        return policy if policy in self.CONFLICT_POLICIES else "ask"
+
+    def _handle_upload_conflict(self, err: UploadIdentityConflict, records) -> None:
+        """按用户配置的默认策略处理一条身份冲突。
+
+        - ``ask``：挂到清单（``upload_conflicts``）等用户拍板；已挂着的只刷新
+          ``last_seen``，用户没拍板的事不该每轮都当作新闻。
+        - ``adopt``：远端是权威 —— 把记录的 Pickcode 改成远端现状，下轮增量会
+          发现 STRM 内容过期并自动重生成。
+        - ``reupload``：本地是权威 —— 删掉远端那份（进 115 回收站）、清掉本地
+          记录，下轮增量重新上传。
+
+        自动处理出岔子（限流、授权、远端够不着）时不硬扛，也不断任务：
+        统一退回 ``ask`` 语义挂清单，事不能丢，下轮再按策略来。
+        """
+        key = str(err.local_path or "")
+        policy = self._conflict_policy()
+        try:
+            if policy == "adopt" and key:
+                records.update_metadata(
+                    Path(key), {"pickcode": str(err.extra.get("remote_pickcode") or "")}
+                )
+                logger.warning(
+                    f"【目录上传】身份冲突已按默认策略采用远端：{err.target}，"
+                    "下一轮增量会自动重新生成 STRM"
+                )
+                return
+            if policy == "reupload" and key and err.target:
+                file_item = self._client.get_item(err.target) or {}
+                file_id = str(file_item.get("fileid") or "")
+                if file_id:
+                    self._client.delete_file(file_id)
+                records.remove(Path(key))
+                logger.warning(
+                    f"【目录上传】身份冲突已按默认策略删除远端并重传：{err.target}"
+                    "（远端文件进了 115 回收站，下一轮增量重新上传）"
+                )
+                return
+        except Exception as handler_err:  # noqa: BLE001
+            logger.error(
+                f"【目录上传】身份冲突自动处理失败，改为挂清单：{err.target}，"
+                f"原因：{safe_error_text(handler_err)}"
+            )
+        is_new = self._record_upload_conflict(err)
+        if is_new:
+            logger.warning(
+                f"【目录上传】发现上传身份冲突，已挂到清单待处理：{err.target}，"
+                f"原因：{safe_error_text(err)}"
+            )
+
+    def _record_upload_conflict(self, err: UploadIdentityConflict) -> bool:
+        """把一条身份冲突挂到清单（``upload_conflicts``）。返回是否为新发现。
+
+        已挂着的冲突只刷新 ``last_seen`` —— 用户还没拍板的事不该每轮都当作新闻。
+        顺手清掉本地文件已经消失的旧冲突：文件都没了，分歧自然不存在。
+        """
+        key = str(err.local_path or "")
+        if not key:
+            return False
+        conflicts = self._store.get_upload_conflicts()
+        now = datetime.now().isoformat(timespec="seconds")
+        is_new = key not in conflicts
+        entry = dict(conflicts.get(key) or {})
+        entry.update(
+            {
+                "path": key,
+                "target": str(err.target or ""),
+                "reason": str(err),
+                "recorded_pickcode": str(err.extra.get("recorded_pickcode") or ""),
+                "remote_pickcode": str(err.extra.get("remote_pickcode") or ""),
+                "recorded_size": err.extra.get("recorded_size"),
+                "recorded_uploaded_at": str(err.extra.get("recorded_uploaded_at") or ""),
+                "last_seen": now,
+            }
+        )
+        if is_new:
+            entry["first_seen"] = now
+        conflicts[key] = entry
+        alive = {
+            path: item
+            for path, item in conflicts.items()
+            if path == key or Path(path).exists()
+        }
+        self._store.save_upload_conflicts(alive)
+        return is_new
+
     def _resolve_and_validate_uploaded_identity(
         self,
         records,
@@ -590,6 +704,7 @@ class DirectoryUploader:
             "skipped": 0,
             "deleted": 0,
             "deferred": 0,
+            "conflicts": 0,
             "errors": 0,
         }
         errors = []
@@ -670,6 +785,10 @@ class DirectoryUploader:
                         }
                     )
                     break
+                except UploadIdentityConflict as err:
+                    # 记录与远端身份对不上：按用户配置的策略处理，不算失败也不发失败卡。
+                    counts["conflicts"] += 1
+                    self._handle_upload_conflict(err, records)
                 except Exception as err:  # noqa: BLE001
                     counts["strm_errors"] += 1
                     counts["errors"] += 1

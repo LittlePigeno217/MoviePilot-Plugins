@@ -137,9 +137,8 @@ class ApiReliabilityTest(unittest.TestCase):
         first = self.api.browse_115("0")
         second = self.api.browse_115("0")
 
-        self.assertTrue(first["success"])
-        self.assertEqual([item["name"] for item in first["data"]["items"]], ["Alpha", "Zeta"])
-        self.assertEqual(second["data"], first["data"])
+        self.assertEqual([item["name"] for item in first["items"]], ["Alpha", "Zeta"])
+        self.assertEqual(second["items"], first["items"])
         self.assertEqual(self.client.browse_calls, 1)
 
     def test_config_save_cannot_replace_internal_tokens(self):

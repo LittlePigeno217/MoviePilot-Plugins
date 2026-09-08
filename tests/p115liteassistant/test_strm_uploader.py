@@ -38,6 +38,7 @@ class FakeStore:
     def __init__(self, config=None):
         self.strm_records = {}
         self.upload_records = IncrementalRecordStore()
+        self.conflicts = {}
         self.config = dict(config or {})
 
     def get_config(self):
@@ -55,6 +56,12 @@ class FakeStore:
 
     def get_upload_records(self):
         return self.upload_records
+
+    def get_upload_conflicts(self):
+        return dict(self.conflicts)
+
+    def save_upload_conflicts(self, conflicts):
+        self.conflicts = dict(conflicts)
 
     def save_upload_records(self, records):
         self.upload_records = records
@@ -1759,11 +1766,16 @@ class StrmAndUploaderTest(unittest.TestCase):
                 "https://moviepilot.example",
             ).run(incremental=True)
 
-            self.assertEqual(result["strm_errors"], 1)
+            # 新契约：身份对不上是「冲突」不是「失败」——挂清单等拍板，不算 strm_errors
+            self.assertEqual(result["conflicts"], 1)
+            self.assertEqual(result["strm_errors"], 0)
+            self.assertEqual(result["errors"], 0)
             self.assertEqual(client.uploaded, [])
             self.assertTrue(movie.is_file())
             self.assertFalse((output / "Film.strm").exists())
-            self.assertIn("Pickcode 与当前远端文件不一致", result["errors_detail"][0]["message"])
+            queued = next(iter(store.conflicts.values()))
+            self.assertEqual(queued["remote_pickcode"], "qrstuvwxyzabcdefg")
+            self.assertEqual(queued["target"], "/Cloud/Film.mkv")
 
     def test_directory_uploader_revalidates_remote_pickcode_before_incremental_skip(self):
         class ReplacedRemoteClient(FakeUploadClient):
@@ -1818,11 +1830,12 @@ class StrmAndUploaderTest(unittest.TestCase):
             result = uploader.run(incremental=True)
 
             self.assertEqual(result["skipped"], 1)
-            self.assertEqual(result["strm_errors"], 1)
+            self.assertEqual(result["conflicts"], 1)
+            self.assertEqual(result["strm_errors"], 0)
             self.assertEqual(result["strm_generated"], 0)
             self.assertEqual(client.uploaded, [])
             self.assertIn(VALID_PICKCODE, generated.read_text(encoding="utf-8"))
-            self.assertIn("Pickcode 与当前远端文件不一致", result["errors_detail"][0]["message"])
+            self.assertIn("对不上网盘文件", next(iter(store.conflicts.values()))["reason"])
 
     def test_directory_uploader_keeps_source_when_strm_generation_fails(self):
         class MissingItemClient(FakeUploadClient):
