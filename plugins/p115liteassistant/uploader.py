@@ -14,13 +14,18 @@ from .log_utils import safe_error_text
 from .resilience import retry_call
 from .strm import (
     STRM_URL_FORMAT_VERSION,
+    CloudIdentity,
+    CommitJournal,
+    MaterializeRequest,
+    RecordClaims,
+    SessionReservations,
+    StrmMaterializer,
     build_strm_content,
     normalize_pickcode,
     strm_file_matches,
     strm_conflict_output_path,
     strm_source_file_name,
     uploaded_strm_path,
-    write_uploaded_strm,
 )
 
 
@@ -47,6 +52,7 @@ class DirectoryUploader:
         config: Dict[str, Any],
         moviepilot_url: str = "",
         poster_search=None,
+        journal: CommitJournal | None = None,
     ):
         self._client = client
         self._store = store
@@ -64,6 +70,10 @@ class DirectoryUploader:
             DEFAULT_SIDECAR_EXTENSIONS,
         )
         self._strm_outputs: Dict[Path, Path] = {}
+        self._strm_reservations = SessionReservations()
+        if journal is None:
+            raise ValueError("DirectoryUploader 必须注入插件唯一 CommitJournal")
+        self._journal = journal
 
     def _iter_files(self) -> Iterator[Tuple[Path, str, str, Path, str]]:
         include_sidecars = bool(self._config.get("upload_include_sidecars", True))
@@ -354,27 +364,110 @@ class DirectoryUploader:
                         }
                     )
 
+    def _upload_owner_id(self, source_root: Path) -> str:
+        resolved_source = source_root.expanduser().resolve()
+        for mapping in self._config.get("upload_mappings", []):
+            if not isinstance(mapping, dict) or not mapping.get("enabled", True):
+                continue
+            source_value = str(mapping.get("source") or "").strip()
+            if not source_value:
+                continue
+            if Path(source_value).expanduser().resolve() == resolved_source:
+                return str(mapping.get("id") or resolved_source)
+        return str(resolved_source)
+
     def _generate_strm_after_upload(
         self,
+        records,
         file_item: Dict[str, Any] | None,
         local_path: Path,
         source_root: Path,
         strm_target: str,
-    ) -> Path:
+    ):
         if not self._moviepilot_url:
             raise ValueError("请先配置媒体服务器可访问的 MoviePilot 地址")
-        pickcode = str((file_item or {}).get("pickcode") or "")
-        output = write_uploaded_strm(
-            local_path=local_path,
-            source_root=source_root,
-            target_root=Path(strm_target),
-            pickcode=pickcode,
-            moviepilot_url=self._moviepilot_url,
-            redirect_secret=self._redirect_secret,
-            output=self._strm_output_for(local_path, source_root, strm_target),
+        pickcode = normalize_pickcode(str((file_item or {}).get("pickcode") or ""))
+        target_root = Path(strm_target).expanduser().resolve()
+        output = self._strm_output_for(local_path, source_root, strm_target)
+        key = str(local_path.expanduser().resolve())
+        previous = records.get(local_path)
+        remote_path = str((file_item or {}).get("path") or previous.get("target") or "")
+        file_id = str(
+            (file_item or {}).get("fileid")
+            or (file_item or {}).get("file_id")
+            or previous.get("pickcode_identity_fileid")
+            or ""
         )
-        logger.info(f"【目录上传】生成 STRM 成功：{output}")
-        return output
+        content = build_strm_content(
+            self._moviepilot_url,
+            pickcode,
+            self._redirect_secret,
+            local_path.name,
+        )
+        request = MaterializeRequest(
+            source_id=key,
+            container="upload",
+            key=key,
+            kind="strm",
+            target_root=target_root,
+            owner_id=self._upload_owner_id(source_root),
+            relative_path=local_path.relative_to(source_root).as_posix(),
+            output=output,
+            cloud_identity=CloudIdentity(
+                pickcode=pickcode,
+                file_id=file_id,
+                path=remote_path,
+            ),
+            fingerprint=(
+                f"v{STRM_URL_FORMAT_VERSION}:{pickcode}:{local_path.stat().st_size}:"
+                f"{self._moviepilot_url}"
+            ),
+            content=content,
+            pickcode=pickcode,
+            file_name=local_path.name,
+            producer="upload",
+        )
+        strm_records_getter = getattr(self._store, "get_strm_records", None)
+        strm_records = strm_records_getter() if callable(strm_records_getter) else {}
+        claims = RecordClaims.from_records(
+            strm_records,
+            records,
+            mapping_ids={
+                str(item.get("mapping_id") or "")
+                for item in (strm_records or {}).values()
+                if isinstance(item, dict) and item.get("mapping_id")
+            },
+            upload_mappings=self._config.get("upload_mappings", []),
+        )
+        materializer = StrmMaterializer(
+            self._store,
+            self._moviepilot_url,
+            self._redirect_secret,
+        )
+        decision = materializer.validate_collision(
+            request,
+            claims,
+            previous=previous,
+            excluded_claims=frozenset({("upload", key)}),
+        )
+        reservation = materializer.reserve(
+            request, decision, self._strm_reservations
+        )
+        decision = materializer.settle_relocation(
+            request,
+            decision,
+            reservation,
+            claims,
+            previous=previous,
+            same_container_only=True,
+        )
+        token = materializer.confirm(self._strm_reservations, reservation)
+        prepared = materializer.prepare(
+            request, claims, decision=decision, previous=previous,
+            incremental=True, reservation=token,
+            session_reservations=self._strm_reservations,
+        )
+        return materializer, prepared
 
     def _strm_record_metadata(self, strm_target: str) -> Dict[str, str]:
         signature = sha256(
@@ -448,13 +541,33 @@ class DirectoryUploader:
         errors: list[Dict[str, str]],
     ) -> bool:
         try:
-            self._generate_strm_after_upload(
-                file_item,
-                local_path,
-                source_root,
-                strm_target,
+            materializer, prepared = self._generate_strm_after_upload(
+                records, file_item, local_path, source_root, strm_target,
             )
-            records.update_metadata(local_path, record_metadata)
+            mutation = prepared.result.mutations[-1]
+            upload_after = {**dict(mutation.after or {}), **record_metadata}
+            persisted = self._store.get_upload_records()
+            persisted_before = (
+                persisted.get_by_key(mutation.key)
+                if hasattr(persisted, "get_by_key")
+                else dict(persisted).get(mutation.key)
+            )
+            upload_mutation = type(mutation)(
+                mutation.source_id, "upload", mutation.key,
+                persisted_before or None, upload_after, mutation.kind, mutation.reason,
+            )
+            prepared.result = type(prepared.result)(
+                prepared.result.action, prepared.result.output, prepared.result.fingerprint,
+                prepared.result.content_matched, prepared.result.collision, (upload_mutation,),
+            )
+            prepared.unit = type(prepared.unit)(
+                prepared.unit.id, (upload_mutation,), prepared.unit.file_ops, True
+            )
+            result = materializer.commit(prepared, self._journal)
+            # journal 已保存正式 upload container；刷新本地 view，防止批末旧快照覆盖。
+            refreshed = self._store.get_upload_records()
+            records._records = refreshed.to_dict() if hasattr(refreshed, "to_dict") else dict(refreshed)
+            logger.info(f"【目录上传】生成 STRM 成功：{result.output}")
             counts["strm_generated"] += 1
             return True
         except Exception as err:  # noqa: BLE001
@@ -680,6 +793,7 @@ class DirectoryUploader:
 
     def run(self, incremental: bool = True) -> Dict[str, Any]:
         started = monotonic()
+        self._strm_reservations = SessionReservations()
         clear_remote_dir_cache = getattr(self._client, "clear_remote_dir_cache", None)
         if callable(clear_remote_dir_cache):
             clear_remote_dir_cache()

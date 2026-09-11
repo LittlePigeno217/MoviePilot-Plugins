@@ -15,7 +15,7 @@ from app.plugins.p115liteassistant.reverse_delete import (
     ACTION_SKIPPED,
     DEFAULT_CONFIRM_THRESHOLD,
     STRM_DELETE_PENDING_MAX_BATCHES,
-    ReverseDeleter,
+    ReverseDeleter as ProductionReverseDeleter,
     associated_media_name,
     is_protected_cloud_dir,
     media_name_stem,
@@ -37,6 +37,14 @@ TOP_DIR_ID = "7000"
 MEDIA_DIR_ID = "7100"
 
 
+from tests.p115liteassistant.helpers import make_test_journal
+
+def ReverseDeleter(client_provider, store, *args, journal=None, **kwargs):
+    return ProductionReverseDeleter(
+        client_provider, store, journal or make_test_journal(store), *args, **kwargs
+    )
+
+
 class FakeStore:
     """只提供反向删除用到的那几个读写口。"""
 
@@ -56,6 +64,12 @@ class FakeStore:
     def save_strm_records(self, records):
         self.strm_records = {key: dict(value) for key, value in records.items()}
         self.saved_records += 1
+
+    def get_upload_records(self):
+        return {}
+
+    def save_upload_records(self, records):
+        pass
 
     def get_strm_delete_pending(self):
         return {key: dict(value) for key, value in self.pending.items()}
@@ -162,6 +176,22 @@ def anchor_strm(target_dir):
     keep = Path(target_dir) / "Keep.strm"
     keep.write_text("http://mp/keep\n", encoding="utf-8")
     return keep
+
+
+class UnifiedOutputPathTest(unittest.TestCase):
+    def test_unlink_local_output_accepts_unified_only_record(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "Film.nfo"
+            output.write_text("metadata\n", encoding="utf-8")
+            deleter = ReverseDeleter(lambda: FakeClient(), FakeStore())
+
+            removed = deleter._unlink_local_output(
+                {"output_path": str(output)}, Path(directory).resolve()
+            )
+
+            self.assertFalse(removed.may_drop_record)
+            self.assertIsNone(removed.unit)
+            self.assertTrue(output.exists())
 
 
 class PureHelperTest(unittest.TestCase):
@@ -1090,3 +1120,50 @@ class IndependentBatchTest(unittest.TestCase):
             covered = {item["path"] for b in store.pending.values() for item in b["items"]}
             self.assertEqual(len(covered), 2 + STRM_DELETE_PENDING_MAX_BATCHES)
             self.assertEqual(client.deleted, [])
+
+class ReverseJournalContractTest(unittest.TestCase):
+    def test_production_constructor_rejects_missing_journal(self):
+        with self.assertRaises(ValueError):
+            ProductionReverseDeleter(lambda: FakeClient(), FakeStore(), None)
+
+    def test_execute_failure_keeps_record(self):
+        with TemporaryDirectory() as directory:
+            anchor_strm(directory)
+            key, record = media_record(directory, "Film", "8001")
+            store = FakeStore(records={key: record})
+            client = FakeClient(listings={MEDIA_DIR_ID: [cloud_file("8001", "Film.mkv")]})
+            journal = make_test_journal(store)
+            journal.execute = lambda _unit: (_ for _ in ()).throw(OSError("disk"))
+            entry = ProductionReverseDeleter(lambda: client, store, journal).sweep(mapping_for(directory))
+            self.assertIn(key, store.strm_records)
+            self.assertGreaterEqual(entry["errors"], 1)
+
+
+    def test_already_gone_execute_failure_keeps_record_and_continues(self):
+        with TemporaryDirectory() as directory:
+            anchor_strm(directory)
+            failed_key, failed = media_record(directory, "Failed", "8001")
+            next_key, next_record = media_record(directory, "Next", "8002")
+            store = FakeStore(records={failed_key: failed, next_key: next_record})
+            client = FakeClient(listings={MEDIA_DIR_ID: []})
+            journal = make_test_journal(store)
+            real_execute = journal.execute
+            calls = 0
+
+            def fail_once(unit):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise OSError("disk")
+                real_execute(unit)
+
+            journal.execute = fail_once
+            entry = ProductionReverseDeleter(
+                lambda: client, store, journal
+            ).sweep(mapping_for(directory))
+
+            self.assertIn(failed_key, store.strm_records)
+            self.assertNotIn(next_key, store.strm_records)
+            self.assertEqual(entry["errors"], 1)
+            self.assertEqual(entry["records_dropped"], 1)
+            self.assertEqual(entry["already_gone"], 2)

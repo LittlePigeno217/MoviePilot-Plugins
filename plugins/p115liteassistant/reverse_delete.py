@@ -27,7 +27,13 @@ from .client import U115AccessLimitError, U115AuthError
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
 from .resilience import TtlCache, retry_call
-from .strm import normalize_cloud_path
+from .strm import (
+    CommitJournal,
+    RecordClaims,
+    RemoveResult,
+    StrmMaterializer,
+    normalize_cloud_path,
+)
 
 
 LOG_TAG = "【STRM反向删除】"
@@ -221,11 +227,15 @@ class ReverseDeleter:
         self,
         client_provider: Callable[[], Any],
         store: Any,
+        journal: CommitJournal,
         recent_deletes: Optional[TtlCache] = None,
         sleeper: Optional[Callable[[float], None]] = None,
     ):
+        if journal is None:
+            raise ValueError("ReverseDeleter 必须注入插件唯一 CommitJournal")
         self._client_provider = client_provider
         self._store = store
+        self._journal = journal
         #: 目录删除重试时的等待函数，单测注入空实现即可
         self._sleeper = sleeper or sleep
         #: 刚删过的 pickcode，供正向同步跳过重建；由调用方共享同一个实例
@@ -375,7 +385,7 @@ class ReverseDeleter:
         # 闸门 3：纯本地 stat 得出缺失集合
         missing: list[Dict[str, Any]] = []
         for record_key, record in media_records:
-            record_path = str(record.get("path") or "").strip()
+            record_path = str(record.get("output_path") or record.get("path") or "").strip()
             if not record_path:
                 continue
             try:
@@ -582,31 +592,66 @@ class ReverseDeleter:
                 result[name.lower()] = item_id
         return result
 
-    def _unlink_local_output(self, record: Dict[str, Any], target_dir: Path) -> bool:
-        """删掉记录留下的本地输出（严格限定在 target_dir 内）。
+    @staticmethod
+    def _record_output(record: Dict[str, Any]) -> str:
+        return str(record.get("output_path") or record.get("path") or "").strip()
 
-        云端副本都没了，本地那份刮削文件不会再被同步维护，留着只会让媒体服务器显示
-        一个点不开的条目。正向同步清理失效输出时也是这个语义。
-        """
-        record_path = str(record.get("path") or "").strip()
-        if not record_path:
-            return False
-        try:
-            resolved = Path(record_path).expanduser().resolve()
-            resolved.relative_to(target_dir)
-        except (OSError, RuntimeError, ValueError):
-            return False
-        if not resolved.exists():
-            return False
-        try:
-            resolved.unlink()
-        except OSError as err:
-            logger.warning(
-                f"{LOG_TAG}清理本地残留刮削文件失败：{resolved}，原因：{safe_error_text(err)}"
+    def _record_owner(
+        self, record_key: str, record: Dict[str, Any], records: Dict[str, Any]
+    ) -> str:
+        explicit = str(record.get("owner_id") or record.get("mapping_id") or "")
+        if explicit:
+            return explicit.removeprefix("strm:")
+        claim = self._record_claims(records).get(("strm", str(record_key)))
+        if claim is None or claim.owner_confidence == "ambiguous" or not claim.owner:
+            return ""
+        return claim.owner.removeprefix("strm:")
+
+    def _record_claims(self, records: Dict[str, Any]) -> RecordClaims:
+        upload_getter = getattr(self._store, "get_upload_records", None)
+        upload_records = upload_getter() if callable(upload_getter) else {}
+        config = self._store.get_config()
+        mapping_ids = {
+            str(mapping.get("id") or mapping.get("source_cid") or "default")
+            for mapping in config.get("strm_mappings") or []
+            if isinstance(mapping, dict)
+        }
+        mapping_ids.update(
+            str(record.get("mapping_id") or "")
+            for record in records.values()
+            if isinstance(record, dict) and record.get("mapping_id")
+        )
+        return RecordClaims.from_records(
+            records,
+            upload_records,
+            mapping_ids=mapping_ids,
+            upload_mappings=config.get("upload_mappings") or [],
+        )
+
+    def _unlink_local_output(
+        self,
+        record: Dict[str, Any],
+        target_dir: Path,
+        *,
+        record_key: str = "",
+        records: Dict[str, Any] | None = None,
+    ) -> RemoveResult:
+        """只准备 owned removal；执行与内存 pop 由调用方负责。"""
+
+        key = str(record_key or record.get("record_key") or "")
+        if not key:
+            return RemoveResult(
+                "ambiguous_legacy_owner", False,
+                "缺少真实记录 key，拒绝构造临时 owner",
             )
-            return False
-        logger.info(f"{LOG_TAG}清理本地残留刮削文件：{resolved}")
-        return True
+        all_records = records if records is not None else self._store.get_strm_records()
+        return StrmMaterializer(self._store).remove_if_owned(
+            record_ref=("strm", key),
+            record=record,
+            claims=self._record_claims(all_records),
+            target_root=target_dir,
+            expected_owner_id=self._record_owner(key, record, all_records),
+        )
 
     def _drop_records_for_cloud_ids(
         self,
@@ -626,9 +671,24 @@ class ReverseDeleter:
             file_id = str(record.get("file_id") or record.get("fileid") or "").strip()
             if not file_id or file_id not in cloud_ids:
                 continue
-            self._unlink_local_output(record, target_dir)
-            records.pop(key_text, None)
-            dropped += 1
+            removal = self._unlink_local_output(
+                record, target_dir, record_key=key_text, records=records
+            )
+            if removal.may_drop_record and removal.unit is not None:
+                try:
+                    self._journal.execute(removal.unit)
+                except Exception as err:  # noqa: BLE001
+                    logger.warning(
+                        f"{LOG_TAG}本地输出删除事务失败，保留记录：{key_text}，"
+                        f"原因：{err}"
+                    )
+                    continue
+                records.pop(key_text, None)
+                dropped += 1
+            else:
+                logger.warning(
+                    f"{LOG_TAG}本地输出删除被拒绝，保留记录：{key_text}，原因：{removal.reason}"
+                )
         return dropped
 
     def _drop_records_under_cloud_dir(
@@ -655,9 +715,24 @@ class ReverseDeleter:
             same_parent = bool(dir_id) and str(record.get("parent_id") or "").strip() == dir_id
             if not under_dir and not same_parent:
                 continue
-            self._unlink_local_output(record, target_dir)
-            records.pop(key_text, None)
-            dropped += 1
+            removal = self._unlink_local_output(
+                record, target_dir, record_key=key_text, records=records
+            )
+            if removal.may_drop_record and removal.unit is not None:
+                try:
+                    self._journal.execute(removal.unit)
+                except Exception as err:  # noqa: BLE001
+                    logger.warning(
+                        f"{LOG_TAG}本地输出删除事务失败，保留记录：{key_text}，"
+                        f"原因：{err}"
+                    )
+                    continue
+                records.pop(key_text, None)
+                dropped += 1
+            else:
+                logger.warning(
+                    f"{LOG_TAG}本地输出删除被拒绝，保留记录：{key_text}，原因：{removal.reason}"
+                )
         return dropped
 
     def _remember_deleted(self, record: Dict[str, Any]) -> None:
@@ -742,8 +817,24 @@ class ReverseDeleter:
                 file_id = name_to_id.get(name.lower(), "")
                 if not file_id:
                     # 云端本来就没有它了：上一轮删过、或用户直接在 115 侧删了
-                    if records.pop(target["record_key"], None) is not None:
-                        self._bump(counts, "records_dropped")
+                    record_key = str(target["record_key"])
+                    record = records.get(record_key)
+                    if isinstance(record, dict):
+                        removal = self._unlink_local_output(
+                            record, target_dir, record_key=record_key, records=records
+                        )
+                        if removal.may_drop_record and removal.unit is not None:
+                            try:
+                                self._journal.execute(removal.unit)
+                            except Exception as err:  # noqa: BLE001
+                                self._bump(counts, "errors")
+                                logger.warning(
+                                    f"{LOG_TAG}本地删除事务失败，保留记录："
+                                    f"{record_key}，原因：{err}"
+                                )
+                            else:
+                                records.pop(record_key, None)
+                                self._bump(counts, "records_dropped")
                     self._bump(counts, "already_gone")
                     logger.info(
                         f"{LOG_TAG}115 上已无此文件，只清理记录："
@@ -768,10 +859,24 @@ class ReverseDeleter:
             list(pending), f"媒体文件（{len(pending)} 个）", counts
         ):
             for file_id, target in pending.items():
-                record = records.pop(target["record_key"], None)
+                record_key = str(target["record_key"])
+                record = records.get(record_key)
                 if isinstance(record, dict):
-                    self._remember_deleted(record)
-                    self._bump(counts, "records_dropped")
+                    removal = self._unlink_local_output(
+                        record, target_dir, record_key=record_key, records=records
+                    )
+                    if removal.may_drop_record and removal.unit is not None:
+                        try:
+                            self._journal.execute(removal.unit)
+                        except Exception as err:  # noqa: BLE001
+                            self._bump(counts, "errors")
+                            logger.warning(
+                                f"{LOG_TAG}本地删除事务失败，保留记录：{record_key}，原因：{err}"
+                            )
+                        else:
+                            records.pop(record_key, None)
+                            self._remember_deleted(record)
+                            self._bump(counts, "records_dropped")
                 deleted_ids.add(file_id)
                 if target.get("name"):
                     deleted_names.add(str(target["name"]))
@@ -1175,17 +1280,9 @@ class ReverseDeleter:
                 logger.error(f"{LOG_TAG}{label}：{decision.reason}")
         else:
             logger.info(f"{LOG_TAG}{label}：{len(decision.targets)} 个本地 STRM 已删除，开始清理网盘")
-            try:
-                self.execute(mapping, records, decision.targets, counts)
-            finally:
-                # 云端已经删掉的东西必须落盘，哪怕是被访问上限打断的 ——
-                # 记录留着只会让下一轮对着已经不存在的文件再列一遍目录。
-                if self._records_signature(records) != before:
-                    self._store.save_strm_records(records)
-                    before = self._records_signature(records)
+            self.execute(mapping, records, decision.targets, counts)
 
-        if self._records_signature(records) != before:
-            self._store.save_strm_records(records)
+        # 删除记录均已与 unlink 位于同一 journal；不得再用内存快照全量双写。
         if counts["unidentified"]:
             logger.warning(
                 f"{LOG_TAG}{counts['unidentified']} 条记录的本地 STRM 已不存在，但拿不到可信的"

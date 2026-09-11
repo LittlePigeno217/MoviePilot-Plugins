@@ -7,13 +7,15 @@ from app.core.event import Event, eventmanager
 from app.log import logger
 from app.plugins import _PluginBase
 from app.scheduler import Scheduler
-from app.schemas.types import EventType
+from app.schemas.types import EventType, NotificationType
 
 from .api import Api
 from .client import U115Client
 from .life_monitor import LifeMonitor
+from .log_utils import safe_error_text
 from .notify import Notifier
 from .store import Store
+from .strm import CommitJournal, StrmRecoveryBlockedError
 from .strm_watch import StrmDeleteWatcher
 from .upload_watch import UploadWatcher
 
@@ -22,7 +24,7 @@ class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到；侧栏有一份媒体清单，一部电影一行、一季剧一行地管入库、做种与删除。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.3.0"
+    plugin_version = "1.3.1"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -34,6 +36,11 @@ class P115LiteAssistant(_PluginBase):
         self._store = Store(self)
         self._client: Optional[U115Client] = None
         self._client_signature: Optional[Tuple[str, ...]] = None
+        self._strm_journal = CommitJournal(
+            self._store, self.get_data_path() / "strm-journal"
+        )
+        self._strm_recovery_blocked = False
+        self._strm_recovery_alerted = False
         # 通知走宿主的 post_message，通道开关和消息类型都存在插件配置里
         self._notifier = Notifier(
             self._store.get_config,
@@ -47,6 +54,8 @@ class P115LiteAssistant(_PluginBase):
             life_monitor_status=self._is_life_monitor_running,
             notifier=self._notifier,
             strm_watch_status=self._is_strm_watch_running,
+            recover_strm_commits=self._recover_strm_commits,
+            journal=self._strm_journal,
         )
         self._life_monitor = LifeMonitor(
             self._get_client,
@@ -54,6 +63,8 @@ class P115LiteAssistant(_PluginBase):
             self._api.cloud_task_lock,
             self._moviepilot_url,
             recent_deletes=self._api.recent_deletes,
+            recover_strm_commits=self._recover_strm_commits,
+            journal=self._strm_journal,
         )
         # 本地 STRM 删除的实时监听：只上报路径，删不删由反向删除巡检判定
         self._strm_watch = StrmDeleteWatcher(
@@ -66,15 +77,94 @@ class P115LiteAssistant(_PluginBase):
             self._store.get_config,
             self._api.queue_upload,
         )
+        self._upload_watch_signature = self._upload_watch_config_signature(
+            self._store.get_config()
+        )
 
     def init_plugin(self, config: dict | None = None) -> None:
         if config:
             self._store.update_config(config)
         self._client = None
         self._client_signature = None
+        with self._api.cloud_task_lock:
+            try:
+                self._recover_strm_commits("插件启动")
+            except StrmRecoveryBlockedError:
+                self._strm_recovery_blocked = True
+                self._life_monitor.stop()
+                self._strm_watch.stop()
+                self._upload_watch.stop()
+                return
+            self._strm_recovery_blocked = False
+        self._migrate_legacy_allowlist_on_startup()
         self._sync_life_monitor()
         self._sync_strm_watch()
         self._sync_upload_watch()
+        self._upload_watch_signature = self._upload_watch_config_signature(
+            self._store.get_config()
+        )
+
+    def _recover_strm_commits(self, stage: str) -> list[str]:
+        """在云任务锁内恢复 journal；失败时告警并阻断输出任务。"""
+
+        try:
+            recovered = self._strm_journal.recover_all()
+        except Exception as err:  # noqa: BLE001
+            detail = safe_error_text(err)
+            self._strm_recovery_blocked = True
+            # 运行期恢复失败与启动期语义一致：立即停止所有会触碰输出的后台组件。
+            # 之后只能由保存配置时的锁内恢复成功来清除阻断并重新启动。
+            for component_name in ("_life_monitor", "_strm_watch", "_upload_watch"):
+                component = getattr(self, component_name, None)
+                if component is not None:
+                    try:
+                        component.stop()
+                    except Exception as stop_err:  # noqa: BLE001
+                        logger.error(
+                            f"【STRM恢复】停止 {component_name} 失败："
+                            f"{safe_error_text(stop_err)}"
+                        )
+            logger.error(f"【STRM恢复】{stage}失败，输出任务已阻断：{detail}")
+            if not self._strm_recovery_alerted:
+                delivered = False
+                try:
+                    self.post_message(
+                        mtype=NotificationType.Plugin,
+                        title=f"{self.plugin_name} · STRM 恢复失败",
+                        text=(
+                            f"阶段：{stage}\n原因：{detail}\n"
+                            "STRM/上传/反向删除已停止"
+                        ),
+                    )
+                    delivered = True
+                except Exception as notify_err:  # noqa: BLE001
+                    logger.error(
+                        "【STRM恢复】发送系统告警失败："
+                        f"{safe_error_text(notify_err)}"
+                    )
+                # 仅在宿主管道成功受理后去重；投递失败保留重试机会。
+                if delivered:
+                    self._strm_recovery_alerted = True
+            raise StrmRecoveryBlockedError(detail) from err
+        self._strm_recovery_alerted = False
+        if recovered:
+            logger.info(
+                f"【STRM恢复】{stage}完成：{', '.join(recovered)}"
+            )
+        return recovered
+
+    def _migrate_legacy_allowlist_on_startup(self) -> None:
+        try:
+            migrated, error = self._api.migrate_legacy_allowlist()
+            if error:
+                logger.error(f"【本地目录】启动迁移 allowlist 失败：{error}")
+            elif migrated:
+                logger.info("【本地目录】已从启用的旧映射自动迁移 allowlist")
+        except Exception as err:  # noqa: BLE001
+            logger.error(
+                "【本地目录】启动迁移 allowlist 异常，将在下次启动重试："
+                f"{safe_error_text(err)}"
+            )
 
     def _moviepilot_url(self) -> str:
         return str(self._store.get_config().get("moviepilot_address") or "").strip().rstrip("/")
@@ -94,10 +184,49 @@ class P115LiteAssistant(_PluginBase):
     def _on_config_saved(self) -> None:
         self._client = None
         self._client_signature = None
+        recovered_from_block = getattr(self, "_strm_recovery_blocked", False)
+        if recovered_from_block:
+            with self._api.cloud_task_lock:
+                try:
+                    self._recover_strm_commits("保存配置")
+                except StrmRecoveryBlockedError:
+                    self._strm_recovery_blocked = True
+                    self._life_monitor.stop()
+                    self._strm_watch.stop()
+                    self._upload_watch.stop()
+                    return
+                self._strm_recovery_blocked = False
         self._sync_life_monitor()
         self._sync_strm_watch()
+        config = self._store.get_config()
+        signature = self._upload_watch_config_signature(config)
+        if (
+            recovered_from_block
+            or signature != getattr(self, "_upload_watch_signature", None)
+        ):
+            self._sync_upload_watch()
+            self._upload_watch_signature = signature
+
+    @staticmethod
+    def _upload_watch_config_signature(config: Dict[str, Any]) -> tuple:
+        """只取 watcher 行为相关配置，避免保存无关字段时丢掉防抖状态。"""
+        mappings = tuple(
+            sorted(
+                (
+                    str(mapping.get("id") or ""),
+                    str(mapping.get("source") or "").strip(),
+                    bool(mapping.get("enabled", True)),
+                )
+                for mapping in config.get("upload_mappings") or []
+                if isinstance(mapping, dict)
+            )
+        )
+        return bool(config.get("enabled")), mappings
 
     def _sync_life_monitor(self) -> None:
+        if getattr(self, "_strm_recovery_blocked", False):
+            self._life_monitor.stop()
+            return
         config = self._store.get_config()
         mappings = [
             mapping
@@ -114,6 +243,9 @@ class P115LiteAssistant(_PluginBase):
 
         配置或目录变了就整体重建 —— 监听目录的增删改做增量 diff 收益不大、出错概率不小。
         """
+        if getattr(self, "_strm_recovery_blocked", False):
+            self._strm_watch.stop()
+            return
         config = self._store.get_config()
         self._strm_watch.stop()
         if (
@@ -128,6 +260,9 @@ class P115LiteAssistant(_PluginBase):
 
         插件启用且有可用的上传源目录时监听；配置或目录变了就整体重建。
         """
+        if getattr(self, "_strm_recovery_blocked", False):
+            self._upload_watch.stop()
+            return
         config = self._store.get_config()
         self._upload_watch.stop()
         has_source = any(
@@ -138,17 +273,20 @@ class P115LiteAssistant(_PluginBase):
         )
         if config.get("enabled") and has_source:
             self._upload_watch.start()
+        self._upload_watch_signature = self._upload_watch_config_signature(config)
 
     def _get_client(self) -> U115Client:
         config = self._store.get_config()
         client_type = str(config.get("login_client_type") or "")
-        signature = (str(config.get("cookie") or ""), client_type)
+        profile = str(config.get("rate_limit_profile") or "balanced").strip().lower()
+        signature = (str(config.get("cookie") or ""), client_type, profile)
         if self._client is None or self._client_signature != signature:
             self._client = U115Client(
                 cookie=signature[0],
                 tokens=config.get("tokens") or {},
                 client_type=signature[1],
                 token_saver=self._save_client_tokens,
+                rate_limit_profile=signature[2],
             )
             self._client_signature = signature
         return self._client
@@ -161,7 +299,7 @@ class P115LiteAssistant(_PluginBase):
 
     @eventmanager.register(EventType.TransferComplete)
     def upload_after_transfer_complete(self, event: Event) -> None:
-        """媒体整理完成后触发一次增量上传。"""
+        """媒体整理完成后按自动语义排队增量上传，忙时合并补跑。"""
         if not event.event_data:
             return
         config = self._store.get_config()
@@ -173,7 +311,7 @@ class P115LiteAssistant(_PluginBase):
         ):
             return
         logger.info("【目录上传】媒体整理完成，触发增量上传")
-        self._api.trigger_upload(True)
+        self._api.queue_upload(source="transfer")
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -232,6 +370,7 @@ class P115LiteAssistant(_PluginBase):
             {"path": "/logs/tail", "endpoint": self._api.log_tail, "methods": ["GET"], "auth": "bear", "summary": "读插件日志尾部（任务台实时看）"},
             # 文件管理台：不建通道跑一次
             {"path": "/task/strm-once", "endpoint": self._api.task_strm_once, "methods": ["POST"], "auth": "bear", "summary": "给指定 115 目录生成一批 STRM"},
+            {"path": "/task/gap-fill", "endpoint": self._api.task_gap_fill, "methods": ["POST"], "auth": "bear", "summary": "重新同步缺集媒体所属的 STRM 映射"},
             {"path": "/task/upload-once", "endpoint": self._api.task_upload_once, "methods": ["POST"], "auth": "bear", "summary": "把指定本地目录传到指定 115 目录"},
             # STRM 库体检
             {"path": "/ledger", "endpoint": self._api.media_ledger, "methods": ["GET"], "auth": "bear", "summary": "媒体清单（一部电影一行、一季剧一行）"},

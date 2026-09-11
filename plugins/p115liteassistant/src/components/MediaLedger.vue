@@ -216,13 +216,29 @@ function toggleVisible() {
 }
 
 /**
- * 三个删除动作对应三个地方，可撤回性各不相同，所以它们是三个动作而不是一个带参数的动作：
+ * 行/批量动作对应不同地方，可撤回性各不相同，所以它们是明确的动作而不是一个带参数的动作：
  *
+ *   gap    所属正式 STRM 通道 —— 只做增量同步，不下载、不删除
  *   strm   本地 .strm 与记录 —— 重跑一次同步就回来了
  *   source 本地源文件 —— **删了就没了**，本地文件系统没有回收站
- *   cloud  网盘文件 —— 进 115 回收站，能在 115 上还原；可以勾上顺带删本地 STRM
+ *   cloud  网盘文件 —— 进 115 回收站，能在 115 上还原
+ *   cloud_strm 网盘文件与本地 STRM —— 网盘可还原，本地 STRM 可重新同步
  */
 const TARGETS = {
+  gap: {
+    title: '补缺集',
+    where: '所属 STRM 通道',
+    undo: '只重新增量同步所属 STRM 通道，补生成本地漏掉的 STRM；不会下载剧集，也不会删除文件。',
+    unit: '集',
+    count: row => (row.missing || []).length,
+    available: row => (row.missing || []).length > 0,
+    locked: row => !row.channel_id
+      || row.channel_id === 'untracked'
+      || String(row.channel_id).startsWith('once:'),
+    lockedWhy: row => !row.channel_id
+      ? '这行没有关联通道，无法补跑'
+      : '这行没有关联可重跑的正式 STRM 通道',
+  },
   strm: {
     title: '删除 STRM 文件',
     where: '本地 STRM 与记录',
@@ -284,6 +300,15 @@ function primaryAction(row) {
   if ((row.flags || []).includes('pending_delete')) {
     return { kind: 'review', label: '等待确认', disabled: true, why: '请在页面上方的确认队列处理' }
   }
+  if ((row.missing || []).length) {
+    const spec = TARGETS.gap
+    return {
+      kind: 'gap',
+      label: spec.locked(row) ? '无法补缺' : `补缺集 ${row.missing.length}`,
+      disabled: spec.locked(row),
+      why: spec.locked(row) ? spec.lockedWhy(row) : spec.undo,
+    }
+  }
   if (row.in_library === 'no' && row.upload_target) {
     return { kind: 'upload', label: '上传到网盘' }
   }
@@ -308,7 +333,7 @@ function primaryAction(row) {
 function runPrimary(row) {
   const action = primaryAction(row)
   if (!action || action.disabled) return
-  if (action.kind === 'upload' || action.kind === 'resync') {
+  if (action.kind === 'gap' || action.kind === 'upload' || action.kind === 'resync') {
     act(action.kind, row)
   } else if (action.kind === 'source') {
     ask('source', row)
@@ -339,14 +364,18 @@ async function resolveConflict(row, action) {
   }
 }
 
-async function act(kind, targets, options = {}) {
+async function act(kind, targets) {
   if (acting.value) return
   const list = [].concat(targets).filter(Boolean)
   if (!list.length) return
   acting.value = kind
   try {
     let result
-    if (kind === 'resync') {
+    if (kind === 'gap') {
+      result = await pluginPost(props.api, '/task/gap-fill', {
+        row_ids: list.map(row => row.id),
+      })
+    } else if (kind === 'resync') {
       result = await pluginPost(props.api, '/strm/sync', { mapping_id: list[0].channel_id })
     } else if (kind === 'upload') {
       result = await pluginPost(props.api, '/task/upload-once', {
@@ -365,7 +394,7 @@ async function act(kind, targets, options = {}) {
     } else if (kind === 'cloud' || kind === 'cloud_strm') {
       result = await pluginPost(props.api, '/disk/delete', {
         file_ids: list.flatMap(row => row.file_ids || []),
-        also_local: kind === 'cloud_strm' || Boolean(options.alsoLocal),
+        also_local: kind === 'cloud_strm',
       })
     } else {
       throw new Error('未知的操作方式')
@@ -384,7 +413,10 @@ async function act(kind, targets, options = {}) {
   }
 }
 
-const alsoLocal = ref(false)
+function runTarget(item, rows) {
+  if (item.kind === 'gap') act(item.kind, rows)
+  else ask(item.kind, rows)
+}
 
 function ask(kind, targets) {
   const spec = TARGETS[kind]
@@ -401,31 +433,66 @@ function ask(kind, targets) {
     })
     return
   }
-  alsoLocal.value = false
+  const skippedReasons = Object.entries(
+    locked.reduce((groups, row) => {
+      const reason = spec.lockedWhy(row)
+      groups[reason] = (groups[reason] || 0) + 1
+      return groups
+    }, {}),
+  ).map(([reason, rows]) => ({ reason, rows }))
+
   confirm.value = {
     kind,
-    spec: TARGETS[kind],
+    spec,
     targets: list,
     rows: list.length,
-    files: list.reduce((sum, row) => sum + TARGETS[kind].count(row), 0),
+    files: list.reduce((sum, row) => sum + spec.count(row), 0),
     size: list.reduce((sum, row) => sum + Number(row.size || 0), 0),
     blocked: list.filter(row => (row.flags || []).includes('pending_delete')),
     skipped: locked.length,
+    skippedReasons,
   }
 }
 
-/** 这一行在哪几个地方有东西，就给哪几个删除动作；锁住的那个照样列出来但点不动。 */
-function targetsOf(row) {
-  return Object.entries(TARGETS)
-    .filter(([, spec]) => spec.count(row) > 0 && (spec.available?.(row) ?? true))
-    .map(([kind, spec]) => ({
+/** 汇总单行或多行的动作目标；适用但锁住的目标照样列出来并说明原因。 */
+function summarizeTargets(targets) {
+  const rows = [].concat(targets || []).filter(Boolean)
+  return Object.entries(TARGETS).flatMap(([kind, spec]) => {
+    const related = rows.filter(row =>
+      spec.count(row) > 0 && (spec.available?.(row) ?? true),
+    )
+    if (!related.length) return []
+
+    const operable = related.filter(row => !spec.locked?.(row))
+    const locked = related.filter(row => spec.locked?.(row))
+    const reasons = [...new Set(locked.map(row => spec.lockedWhy(row)).filter(Boolean))]
+    const count = related.reduce((sum, row) => sum + spec.count(row), 0)
+    const operableCount = operable.reduce((sum, row) => sum + spec.count(row), 0)
+    const why = reasons.join('；')
+    const unit = spec.unit || '个文件'
+
+    return [{
       kind,
       title: spec.title,
-      count: spec.count(row),
-      locked: Boolean(spec.locked?.(row)),
-      why: spec.locked?.(row) ? spec.lockedWhy(row) : '',
-    }))
+      rows: related.length,
+      count,
+      operableRows: operable.length,
+      operableCount,
+      lockedRows: locked.length,
+      locked: operable.length === 0,
+      why,
+      detail: operable.length
+        ? `${operable.length} 部 · ${operableCount} ${unit}可操作${locked.length ? ` · 跳过 ${locked.length} 部` : ''}`
+        : `${related.length} 部 · ${count} ${unit} · ${why}`,
+    }]
+  })
 }
+
+function targetsOf(row) {
+  return summarizeTargets(row)
+}
+
+const pickedTargets = computed(() => summarizeTargets(pickedRows.value))
 
 watch(() => props.reloadToken, value => {
   if (value) load()
@@ -589,10 +656,7 @@ onMounted(load)
       </span>
       </div>
 
-      <!--
-        勾选后的动作也留在这条吸顶里，不再往屏幕底下弹一个浮层：那东西会盖住清单最后几行，
-        而这条本来就一直在。三个动作删的是三个地方，措辞不合并。
-      -->
+      <!-- 勾选后的动作留在吸顶条里，并与单行菜单共用同一份动作目标汇总。 -->
       <div v-if="pickedRows.length" class="ml__sticky-pick">
         <span class="ml__picked">
           已选 <strong>{{ pickedRows.length }}</strong> 部 · {{ pickedFiles }} 个文件 ·
@@ -600,17 +664,35 @@ onMounted(load)
         </span>
         <button type="button" class="ml__jump" @click="picked = new Set()">取消勾选</button>
         <span class="ml__pick-acts">
-          <v-btn variant="outlined" size="x-small" :disabled="Boolean(acting)" @click="ask('strm')">
-            删 STRM
-          </v-btn>
-          <v-btn variant="outlined" size="x-small" :disabled="Boolean(acting)" @click="ask('source')">
-            删源文件
-          </v-btn>
-          <v-btn color="error" variant="flat" size="x-small" :disabled="Boolean(acting)" @click="ask('cloud')">
-            删网盘文件
-          </v-btn>
+          <v-menu v-if="pickedTargets.length" location="bottom end">
+            <template #activator="{ props: menu }">
+              <v-btn
+                v-bind="menu"
+                color="error"
+                variant="outlined"
+                size="x-small"
+                append-icon="mdi-menu-down"
+                :disabled="Boolean(acting)"
+              >
+                操作选中项
+              </v-btn>
+            </template>
+            <v-list density="compact" class="p115 p115-portal ml__menu">
+              <v-list-item
+                v-for="item in pickedTargets"
+                :key="item.kind"
+                :disabled="item.locked"
+                :title="item.why"
+                @click="runTarget(item, pickedRows)"
+              >
+                <span class="ml__menu-item" :class="{ 'ml__menu-item--locked': item.locked }">
+                  {{ item.title }}<b>{{ item.detail }}</b>
+                </span>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+          <span v-else class="ml__pick-empty">选中的这些没有可操作的项目</span>
         </span>
-        <span class="ml__pick-note">只有源文件删了找不回来。</span>
       </div>
     </div>
 
@@ -643,6 +725,7 @@ onMounted(load)
             </strong>
             <span class="ml__where" :title="row.cloud_folder || row.folder">
               <i v-if="libraryDate(row.library_at)" class="ml__when p115-mono">{{ libraryDate(row.library_at) }}</i>
+              <i v-else-if="row.in_library === 'yes'" class="ml__when">已入库</i>
               <i v-else class="ml__when">还没入库</i>
               · {{ row.kind === 'tv' ? '剧集' : '电影' }} · {{ row.channel }} ·
               <i class="p115-mono">{{ row.cloud_folder || row.folder }}</i>
@@ -707,7 +790,7 @@ onMounted(load)
             <v-menu v-if="targetsOf(row).length" location="bottom end">
               <!--
                 触发器写成有字的按钮而不是一个「⋯」图标：几百行的表格里，
-                只靠一个字形说明「这儿藏着删除动作」太弱，而且 text 变体的
+                只靠一个字形说明「这儿藏着操作」太弱，而且 text 变体的
                 纯图标按钮在没有图标字体时是完全不可见的。
               -->
               <template #activator="{ props: menu }">
@@ -718,7 +801,7 @@ onMounted(load)
                   append-icon="mdi-menu-down"
                   :disabled="Boolean(acting)"
                 >
-                  删除
+                  操作
                 </v-btn>
               </template>
               <v-list density="compact" class="p115 p115-portal ml__menu">
@@ -727,10 +810,10 @@ onMounted(load)
                   :key="item.kind"
                   :disabled="item.locked"
                   :title="item.why"
-                  @click="ask(item.kind, row)"
+                  @click="runTarget(item, row)"
                 >
                   <span class="ml__menu-item" :class="{ 'ml__menu-item--locked': item.locked }">
-                    {{ item.title }}<b>{{ item.locked ? item.why : `${item.count} 个可操作` }}</b>
+                    {{ item.title }}<b>{{ item.detail }}</b>
                   </span>
                 </v-list-item>
               </v-list>
@@ -799,11 +882,6 @@ onMounted(load)
               {{ confirm.spec.undo }}
             </p>
 
-            <label v-if="confirm.kind === 'cloud'" class="ml__also">
-              <input v-model="alsoLocal" type="checkbox">
-              同时删除本地 STRM 与记录
-            </label>
-
             <ul class="ml__targets">
               <li v-for="row in confirm.targets.slice(0, 10)" :key="row.id">
                 <span>{{ row.title }}</span>
@@ -814,11 +892,14 @@ onMounted(load)
               还有 {{ confirm.targets.length - 10 }} 部没列出来。
             </p>
 
-
-            <p v-if="confirm.skipped" class="ml__warn">
-              另有 {{ confirm.skipped }} 部还在做种，已经从这次删除里剔掉了 —— 删了可能掉种。
-              要删得先去下载器里停种。
-            </p>
+            <div v-if="confirm.skippedReasons.length" class="ml__warn">
+              <p>另有 {{ confirm.skipped }} 部不满足条件，已从这次操作中剔除：</p>
+              <ul>
+                <li v-for="item in confirm.skippedReasons" :key="item.reason">
+                  {{ item.reason }}：{{ item.rows }} 部
+                </li>
+              </ul>
+            </div>
             <p v-if="confirm.blocked.length" class="ml__warn">
               其中 {{ confirm.blocked.length }} 部正挂在「等你确认」的队列里。这里删掉之后那些批次会在下一轮巡检时自行失效。
             </p>
@@ -834,7 +915,7 @@ onMounted(load)
               :variant="confirm.kind === 'strm' ? 'outlined' : 'flat'"
               size="small"
               :loading="Boolean(acting)"
-              @click="act(confirm.kind, confirm.targets, { alsoLocal })"
+              @click="act(confirm.kind, confirm.targets)"
             >
               确认{{ confirm.spec.title }}
             </v-btn>
@@ -1390,8 +1471,7 @@ onMounted(load)
   flex-wrap: wrap;
 }
 
-.ml__pick-note {
-  margin-inline-start: auto;
+.ml__pick-empty {
   font-size: 11px;
   color: var(--p115-muted);
 }
@@ -1444,16 +1524,6 @@ onMounted(load)
 .ml__what--final {
   color: rgb(var(--v-theme-error));
   font-weight: 600;
-}
-
-.ml__also {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 0 12px;
-  font-size: 12px;
-  line-height: 1.6;
-  cursor: pointer;
 }
 
 .ml__menu-item {
@@ -1533,6 +1603,15 @@ onMounted(load)
   background: var(--p115-hold-soft);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.ml__warn p,
+.ml__warn ul {
+  margin: 0;
+}
+
+.ml__warn ul {
+  padding-inline-start: 18px;
 }
 
 .ml__dialog-foot {

@@ -264,6 +264,48 @@ const FAKE_LEDGER = {
   ],
 }
 
+const FAKE_CONFIG = {
+  enabled: true,
+  cookie: 'UID=fake; CID=fake; SEID=fake',
+  moviepilot_address: 'http://moviepilot.local:3000',
+  link_redirect_mode: 'cookie',
+  strm_incremental: true,
+  strm_download_sidecars: true,
+  strm_delete_cloud_on_missing: true,
+  strm_delete_sweep_cron: '15 */3 * * *',
+  strm_delete_watch: true,
+  strm_delete_confirm_threshold: 8,
+  strm_notify: true,
+  strm_notify_type: 'Organize',
+  strm_mappings: [
+    { id: 's1', enabled: true, source_cid: '31', source_path: '/影视/电影', target_dir: '/strm/电影' },
+    { id: 's2', enabled: true, source_cid: '32', source_path: '/影视/剧集', target_dir: '' },
+    { id: 's3', enabled: false, source_cid: '33', source_path: '/影视/动漫', target_dir: '/strm/动漫' },
+  ],
+  upload_mappings: [
+    { id: 'u1', enabled: true, source: '/watch/电影', target: '/影视/电影', strm_target: '/strm/电影' },
+  ],
+  upload_notify: true,
+  upload_notify_type: 'Download',
+  upload_include_sidecars: true,
+  upload_generate_strm: true,
+  upload_delete_source: false,
+  upload_conflict_policy: 'ask',
+  upload_media_extensions: '.mp4,.mkv,.ts,.iso,.avi,.mov',
+  upload_sidecar_extensions: '.nfo,.jpg,.jpeg,.png,.srt,.ass,.sup',
+  checkin_enabled: true,
+  checkin_time_range: '06:00-09:00',
+  checkin_notify: true,
+  checkin_notify_type: 'Plugin',
+  same_playback: true,
+  life_monitor_enabled: true,
+  notify_types: [
+    { title: '资源下载', value: 'Download' },
+    { title: '整理入库', value: 'Organize' },
+    { title: '插件', value: 'Plugin' },
+  ],
+}
+
 const wait = value => new Promise(resolve => setTimeout(() => resolve(value), LATENCY))
 
 const fakeApi = {
@@ -286,7 +328,7 @@ const fakeApi = {
     if (path.endsWith('/ledger')) return wait({ success: true, message: '', data: FAKE_LEDGER })
     if (path.endsWith('/library/audit')) return wait({ success: true, message: '', data: FAKE_AUDIT })
     if (path.endsWith('/disk/list')) return wait({ success: true, message: '', data: { cid: options?.params?.cid || '0', items: FAKE_DISK_ITEMS } })
-    if (path.endsWith('/config')) return wait({})
+    if (path.endsWith('/config')) return wait(structuredClone(FAKE_CONFIG))
     return wait({})
   },
   post: () => wait({ success: true, message: '已开始' }),

@@ -169,6 +169,52 @@ class BuildLedgerTest(unittest.TestCase):
         )
         self.assertEqual(dune["conflicts"][0]["target"], "/影视/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.mkv")
 
+    def test_keeps_all_strm_mapping_ids_for_same_media_row(self):
+        rows = build_ledger(
+            records={
+                "m1:a": {
+                    "path": "/strm-a/剧集/某剧 (2024)/Season 01/某剧 - S01E01.strm",
+                    "file_id": "1",
+                },
+                "m2:b": {
+                    "path": "/strm-b/剧集/某剧 (2024)/Season 01/某剧 - S01E03.strm",
+                    "mapping_id": "m2",
+                    "file_id": "2",
+                },
+            },
+            strm_mappings=[
+                {"id": "m1", "target_dir": "/strm-a"},
+                {"id": "m2", "target_dir": "/strm-b"},
+            ],
+            upload_mappings=[],
+            upload_records={},
+            pending_paths=set(),
+            media_extensions=[".mkv"],
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["channel_ids"], ["m1", "m2"])
+        self.assertEqual(rows[0]["channel_id"], "m1")
+        self.assertEqual(rows[0]["missing"], [2])
+
+    def test_legacy_once_mapping_id_with_colon_is_preserved(self):
+        rows = build_ledger(
+            records={
+                "once:99:a": {
+                    "path": "/strm/剧集/某剧 (2024)/Season 01/某剧 - S01E01.strm",
+                    "file_id": "1",
+                }
+            },
+            strm_mappings=[],
+            upload_mappings=[],
+            upload_records={},
+            pending_paths=set(),
+            media_extensions=[".mkv"],
+        )
+
+        self.assertEqual(rows[0]["channel_id"], "once:99")
+        self.assertEqual(rows[0]["channel_ids"], ["once:99"])
+
     def test_missing_strm_file_is_counted(self):
         rows = build_ledger(
             records={"m1:a": {"path": "/strm/电影/不存在 (2024)/a.strm", "file_id": "1", "size": 1}},
@@ -197,3 +243,121 @@ class BuildLedgerTest(unittest.TestCase):
         )
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["library_at"], 100)
+
+    def test_library_at_falls_back_to_upload_record_when_strm_mtime_missing(self):
+        """STRM 记录缺 mtime（旧版本写入/增量跳过），入库时间回退到上传记录的上传时刻。"""
+        with TemporaryDirectory() as raw:
+            source = Path(raw) / "inbox"
+            (source / "沙丘 第二部 (2024)").mkdir(parents=True)
+            uploaded = source / "沙丘 第二部 (2024)" / "沙丘 第二部 (2024) - 2160p.mkv"
+            uploaded.write_bytes(b"x" * 10)
+
+            rows = build_ledger(
+                records={
+                    # STRM 记录在网盘上（有 pickcode/file_id），但没有 mtime —— 旧数据就是这样的
+                    "m1:a": {
+                        "path": "/strm/电影/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.strm",
+                        "cloud_path": "/影视/电影/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.mkv",
+                        "file_id": "9001",
+                        "pickcode": "pc1",
+                        "size": 100,
+                    },
+                },
+                strm_mappings=[{"id": "m1", "target_dir": "/strm"}],
+                upload_mappings=[{"id": "u1", "source": str(source), "target": "/影视"}],
+                # 上传记录里记录着真正落到网盘的时刻（ISO 字符串）
+                upload_records={str(uploaded): {"uploaded_at": "2026-09-01T08:00:00"}},
+                pending_paths=set(),
+                media_extensions=[".mkv"],
+            )
+
+        self.assertEqual(len(rows), 1)
+        dune = rows[0]
+        self.assertEqual(dune["in_library"], "yes")
+        self.assertGreater(dune["library_at"], 0)
+        # 2026-09-01T08:00:00 本地时区 → epoch 秒
+        from datetime import datetime
+        self.assertEqual(
+            dune["library_at"],
+            int(datetime(2026, 9, 1, 8, 0, 0).timestamp()),
+        )
+
+    def test_library_at_stays_zero_without_any_source(self):
+        """没有任何 STRM mtime、也没有上传记录时，library_at 保持 0（前端显示还没入库）。"""
+        with TemporaryDirectory() as raw:
+            source = Path(raw) / "inbox"
+            (source / "某剧 (2024)" / "Season 01").mkdir(parents=True)
+            pending = source / "某剧 (2024)" / "Season 01" / "某剧 - S01E01.mkv"
+            pending.write_bytes(b"y" * 20)
+
+            rows = build_ledger(
+                records={},
+                strm_mappings=[],
+                upload_mappings=[{"id": "u1", "source": str(source), "target": "/影视"}],
+                upload_records={},
+                pending_paths=set(),
+                media_extensions=[".mkv"],
+            )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["in_library"], "no")
+        self.assertEqual(rows[0]["library_at"], 0)
+
+    def test_library_at_falls_back_to_upload_record_even_if_local_source_gone(self):
+        """本地源文件已删、只剩上传记录时，也要能从上传记录反查入库时间。"""
+        source_path = "/media/inbox/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.mkv"
+
+        rows = build_ledger(
+            records={
+                # STRM 记录在网盘上、缺 mtime（旧数据）；本地源目录可能已经不存在
+                "m1:a": {
+                    "path": "/strm/电影/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.strm",
+                    "cloud_path": "/影视/电影/沙丘 第二部 (2024)/沙丘 第二部 (2024) - 2160p.mkv",
+                    "file_id": "9001",
+                    "pickcode": "pc1",
+                    "size": 100,
+                },
+            },
+            strm_mappings=[{"id": "m1", "target_dir": "/strm"}],
+            upload_mappings=[{"id": "u1", "source": "/media/inbox", "target": "/影视"}],
+            # 本地源文件不存在，也能靠上传记录补全
+            upload_records={source_path: {"uploaded_at": "2026-09-01T08:00:00"}},
+            pending_paths=set(),
+            media_extensions=[".mkv"],
+        )
+
+        self.assertEqual(len(rows), 1)
+        dune = rows[0]
+        self.assertEqual(dune["in_library"], "yes")
+        self.assertGreater(dune["library_at"], 0)
+        from datetime import datetime
+        self.assertEqual(
+            dune["library_at"],
+            int(datetime(2026, 9, 1, 8, 0, 0).timestamp()),
+        )
+
+    def test_library_at_fallback_takes_earliest_upload_record(self):
+        """多集多文件时，上传记录兜底也取最早那一笔 —— 与 STRM mtime 口径一致。"""
+        records = {}
+        for idx, when in (("01", "2026-09-01T08:00:00"), ("02", "2026-09-02T08:00:00"), ("03", "2026-09-03T08:00:00")):
+            records[f"/media/inbox/某剧 (2024)/Season 01/某剧 - S01E{idx}.mkv"] = {"uploaded_at": when}
+
+        rows = build_ledger(
+            records={
+                "m1:a": {"path": "/strm/剧集/某剧 (2024)/Season 01/某剧 - S01E01.strm", "file_id": "1"},
+                "m1:b": {"path": "/strm/剧集/某剧 (2024)/Season 01/某剧 - S01E02.strm", "file_id": "2"},
+                "m1:c": {"path": "/strm/剧集/某剧 (2024)/Season 01/某剧 - S01E03.strm", "file_id": "3"},
+            },
+            strm_mappings=[{"id": "m1", "target_dir": "/strm"}],
+            upload_mappings=[{"id": "u1", "source": "/media/inbox", "target": "/影视"}],
+            upload_records=records,
+            pending_paths=set(),
+            media_extensions=[".mkv"],
+        )
+
+        self.assertEqual(len(rows), 1)
+        from datetime import datetime
+        self.assertEqual(
+            rows[0]["library_at"],
+            int(datetime(2026, 9, 1, 8, 0, 0).timestamp()),
+        )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from threading import Event, Lock, RLock, Thread, current_thread
-from time import monotonic, time
+from time import time
 from typing import Any, Callable, Dict, Iterable, Optional
 
 import httpx
@@ -15,16 +15,25 @@ from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, pa
 from .resilience import TtlCache
 from .strm import (
     STRM_URL_FORMAT_VERSION,
+    CloudIdentity,
+    CommitJournal,
+    CommitUnit,
+    FileOperation,
+    MaterializeRequest,
+    RecordMutation,
+    RecordClaims,
+    SessionReservations,
+    StrmMaterializer,
+    StrmRecoveryBlockedError,
     build_strm_content,
     build_strm_record,
     mapping_cloud_path,
     normalize_cloud_path,
     normalize_pickcode,
-    relocate_stem_conflict_output,
+    resolve_legacy_strm_owner,
     strm_conflict_output_path,
     strm_file_matches,
     strm_output_path,
-    write_strm_file,
 )
 
 
@@ -90,6 +99,8 @@ class LifeMonitor:
         cloud_task_lock: Optional[Lock] = None,
         moviepilot_url_provider: Optional[Callable[[], str]] = None,
         recent_deletes: Optional[TtlCache] = None,
+        recover_strm_commits: Callable[[str], list[str]] | None = None,
+        journal: CommitJournal | None = None,
     ):
         self._client_provider = client_provider
         self._store = store
@@ -97,6 +108,10 @@ class LifeMonitor:
         self._recent_deletes = recent_deletes
         self._cloud_task_lock = cloud_task_lock or Lock()
         self._moviepilot_url_provider = moviepilot_url_provider or (lambda: "")
+        self._recover_strm_commits = recover_strm_commits or (lambda _stage: [])
+        if journal is None:
+            raise ValueError("LifeMonitor 必须注入插件唯一 CommitJournal")
+        self._journal = journal
         self._stop_event = Event()
         self._thread: Optional[Thread] = None
         self._thread_lock = Lock()
@@ -218,12 +233,16 @@ class LifeMonitor:
                     life_enabled = True
                 if self._cloud_task_lock.acquire(blocking=False):
                     try:
+                        self._recover_strm_commits("生活监控轮询")
                         self.run_once()
                     finally:
                         self._cloud_task_lock.release()
                 else:
                     logger.debug("【115生活监控】115 数据任务正在运行，本轮延后")
                 self._stop_event.wait(self.POLL_INTERVAL)
+            except StrmRecoveryBlockedError as err:
+                logger.error(f"【115生活监控】STRM journal 恢复失败，本轮不推进游标：{err}")
+                self._stop_event.wait(self.ERROR_RETRY_INTERVAL)
             except (U115AuthError, U115ApiError, httpx.HTTPError) as err:
                 logger.error(f"【115生活监控】本轮处理失败：{err}")
                 self._stop_event.wait(self.ERROR_RETRY_INTERVAL)
@@ -319,20 +338,14 @@ class LifeMonitor:
         offset = 0
         limit = self.FIRST_EVENT_PAGE_SIZE if (from_time or from_id) else self.EVENT_PAGE_SIZE
         date = self._event_date(from_time)
-        last_request_at = 0.0
         seen_page_signatures: set[tuple[tuple[int, int], ...]] = set()
         while True:
-            if last_request_at:
-                delay = self.EVENT_PAGE_COOLDOWN - (monotonic() - last_request_at)
-                if delay > 0 and self._stop_event.wait(delay):
-                    raise LifeEventRetryError("115 生活监控已停止")
             result = client.get_life_events_page(
                 app=app,
                 offset=offset,
                 limit=limit,
                 date=date,
             )
-            last_request_at = monotonic()
             events = list(result.get("events") or [])
             pages.append(events)
             if not events:
@@ -767,8 +780,6 @@ class LifeMonitor:
             for key in media_keys:
                 self._remove_record(key, records)
             self._sync_sidecar(item, cloud_path, old_paths, records, item_id, suffix)
-            if media_keys:
-                self._store.save_strm_records(records)
             return
         old_keys = self._record_keys_for_item(
             records,
@@ -780,8 +791,6 @@ class LifeMonitor:
         if not mappings:
             for key in old_keys:
                 self._remove_record(key, records)
-            if old_keys:
-                self._store.save_strm_records(records)
             return
         try:
             pickcode = normalize_pickcode(str(item.get("pickcode") or item.get("pick_code") or ""))
@@ -802,7 +811,6 @@ class LifeMonitor:
         if old_keys:
             for key in old_keys - new_keys:
                 self._remove_record(key, records)
-        self._store.save_strm_records(records)
 
     def _sync_sidecar(
         self,
@@ -827,8 +835,6 @@ class LifeMonitor:
         if not config.get("strm_download_sidecars") or suffix not in extensions:
             for key in old_keys:
                 self._remove_record(key, records)
-            if old_keys:
-                self._store.save_strm_records(records)
             return
         try:
             pickcode = normalize_pickcode(str(item.get("pickcode") or item.get("pick_code") or ""))
@@ -841,12 +847,25 @@ class LifeMonitor:
             source_path = normalize_cloud_path(str(mapping.get("source_path") or "/"))
             relative = PurePosixPath(cloud_path).relative_to(PurePosixPath(source_path))
             record_key = f"{mapping_id}:sidecar:{relative.as_posix()}"
+            candidate_ids = {
+                self._mapping_id(candidate) for candidate in self._config_mappings()
+            }
             old_key = next(
                 (
                     key
                     for key in old_keys
-                    if str(records.get(key, {}).get("mapping_id") or key.split(":", 1)[0])
-                    == mapping_id
+                    if (
+                        lambda resolved: resolved.confidence != "ambiguous"
+                        and resolved.mapping_id == mapping_id
+                    )(
+                        resolve_legacy_strm_owner(
+                            str(key),
+                            candidate_ids,
+                            record_mapping_id=str(
+                                records.get(key, {}).get("mapping_id") or ""
+                            ),
+                        )
+                    )
                 ),
                 "",
             )
@@ -866,8 +885,138 @@ class LifeMonitor:
             new_keys.add(record_key)
         for key in old_keys - new_keys:
             self._remove_record(key, records)
-        if old_keys or new_keys:
-            self._store.save_strm_records(records)
+
+    def _record_claims(self, records: Dict[str, Dict[str, Any]]) -> RecordClaims:
+        upload_records_getter = getattr(self._store, "get_upload_records", None)
+        upload_records = (
+            upload_records_getter() if callable(upload_records_getter) else {}
+        )
+        config = self._store.get_config()
+        return RecordClaims.from_records(
+            records,
+            upload_records,
+            mapping_ids={self._mapping_id(mapping) for mapping in self._config_mappings()},
+            upload_mappings=config.get("upload_mappings") or [],
+        )
+
+    def _materialize_record(
+        self,
+        request: MaterializeRequest,
+        records: Dict[str, Dict[str, Any]],
+        previous: Optional[Dict[str, Any]],
+        *,
+        excluded_keys: Iterable[str] = (),
+        record_fields: Optional[Dict[str, Any]] = None,
+    ):
+        claims = self._record_claims(records)
+        materializer = StrmMaterializer(
+            self._store,
+            self._moviepilot_url_provider().strip().rstrip("/"),
+            self._store.get_redirect_secret(),
+        )
+        excluded = frozenset(
+            {("strm", str(key)) for key in excluded_keys if str(key)}
+            | {("strm", request.key)}
+        )
+        try:
+            collision_previous = previous
+            if previous and request.output is not None:
+                try:
+                    same_output = self._same_path(
+                        str(previous.get("output_path") or previous.get("path") or ""),
+                        request.output.resolve(),
+                    )
+                except (OSError, RuntimeError):
+                    same_output = False
+                if same_output and CloudIdentity.from_record(previous).file_id == request.cloud_identity.file_id:
+                    collision_previous = {
+                        **previous,
+                        "cloud_identity": request.cloud_identity.to_record(),
+                    }
+            reservations = SessionReservations()
+            decision = materializer.validate_collision(
+                request,
+                claims,
+                previous=collision_previous,
+                excluded_claims=excluded,
+            )
+            reservation = materializer.reserve(request, decision, reservations)
+            decision = materializer.settle_relocation(
+                request,
+                decision,
+                reservation,
+                claims,
+                previous=previous,
+                same_container_only=True,
+            )
+            token = materializer.confirm(reservations, reservation)
+            prepared = materializer.prepare(
+                request, claims, decision=decision, previous=previous,
+                incremental=True, reservation=token,
+                session_reservations=reservations,
+            )
+            if record_fields:
+                result_mutation = prepared.result.mutations[-1]
+                enriched_mutation = RecordMutation(
+                    result_mutation.source_id,
+                    result_mutation.container,
+                    result_mutation.key,
+                    result_mutation.before,
+                    {**dict(result_mutation.after or {}), **record_fields},
+                    result_mutation.kind,
+                    result_mutation.reason,
+                )
+                prepared.result = type(prepared.result)(
+                    prepared.result.action, prepared.result.output,
+                    prepared.result.fingerprint, prepared.result.content_matched,
+                    prepared.result.collision,
+                    (*prepared.result.mutations[:-1], enriched_mutation),
+                )
+                prepared.unit = type(prepared.unit)(
+                    prepared.unit.id,
+                    (*prepared.unit.mutations[:-1], enriched_mutation),
+                    prepared.unit.file_ops,
+                    True,
+                )
+            previous_key = next(
+                (
+                    str(key)
+                    for key in excluded_keys
+                    if str(key) != request.key
+                    and isinstance(records.get(str(key)), dict)
+                    and records.get(str(key)) is previous
+                ),
+                "",
+            )
+            if previous_key and request.key not in records:
+                result_mutation = prepared.result.mutations[-1]
+                old_mutation = RecordMutation(
+                    previous_key, "strm", previous_key, previous, None,
+                    result_mutation.kind, "renamed source",
+                )
+                new_mutation = RecordMutation(
+                    result_mutation.source_id, "strm", request.key, None,
+                    result_mutation.after, result_mutation.kind, result_mutation.reason,
+                )
+                prepared.result = type(prepared.result)(
+                    prepared.result.action, prepared.result.output,
+                    prepared.result.fingerprint, prepared.result.content_matched,
+                    prepared.result.collision, (old_mutation, new_mutation),
+                )
+                prepared.unit = type(prepared.unit)(
+                    prepared.unit.id, (old_mutation, new_mutation),
+                    prepared.unit.file_ops, True,
+                )
+            result = materializer.commit(prepared, self._journal)
+            records.clear()
+            records.update(self._store.get_strm_records())
+            return result
+        except Exception as err:  # noqa: BLE001
+            if isinstance(err, LifeEventRetryError):
+                raise
+            raise LifeEventRetryError(
+                f"统一物化失败，暂不消费事件：{request.output or request.relative_path}，原因：{err}"
+            ) from err
 
     def _upsert_sidecar_record(
         self,
@@ -918,24 +1067,7 @@ class LifeMonitor:
                     raise LifeEventRetryError(
                         f"附属文件输出路径已被其他记录占用，暂不消费事件：{output}"
                     )
-            if (
-                old_key == new_key
-                and isinstance(previous, dict)
-                and str(previous.get("fingerprint") or "") == fingerprint
-                and output.is_file()
-            ):
-                records[new_key] = build_strm_record(
-                    fingerprint=fingerprint,
-                    output=output,
-                    mapping=mapping,
-                    item={**item, "pickcode": pickcode},
-                    kind="sidecar",
-                    cloud_path=cloud_path,
-                )
-                return
-            output.parent.mkdir(parents=True, exist_ok=True)
-            self._client_provider().download_file(pickcode, output, create_parent=False)
-            records[new_key] = build_strm_record(
+            legacy = build_strm_record(
                 fingerprint=fingerprint,
                 output=output,
                 mapping=mapping,
@@ -943,6 +1075,36 @@ class LifeMonitor:
                 kind="sidecar",
                 cloud_path=cloud_path,
             )
+            request = MaterializeRequest(
+                source_id=new_key,
+                container="strm",
+                key=new_key,
+                kind="sidecar",
+                target_root=target_dir,
+                owner_id=self._mapping_id(mapping),
+                relative_path=PurePosixPath(cloud_path).name,
+                output=output,
+                cloud_identity=CloudIdentity(
+                    pickcode=pickcode,
+                    file_id=str(item.get("fileid") or item.get("file_id") or ""),
+                    path=cloud_path,
+                ),
+                fingerprint=fingerprint,
+                pickcode=pickcode,
+                size=None,
+                downloader=lambda code, temp: self._client_provider().download_file(
+                    code, temp, create_parent=False
+                ),
+                producer="life",
+            )
+            result = self._materialize_record(
+                request,
+                records,
+                previous if isinstance(previous, dict) else None,
+                excluded_keys=(old_key,),
+                record_fields=legacy,
+            )
+            records[new_key] = {**legacy, **dict(result.mutations[-1].after or {})}
             if old_key and old_key != new_key:
                 self._remove_record(old_key, records)
             logger.info(f"【115生活监控】回传附属文件：{cloud_path} -> {output}")
@@ -963,32 +1125,24 @@ class LifeMonitor:
         cloud_path: str,
         records: Dict[str, Dict[str, Any]],
     ) -> None:
+        """同容器 sidecar relocation 保留已有文件内容并更新正式记录。"""
+
         record = records.get(old_key)
         if not isinstance(record, dict):
             return
-        old_output_value = str(record.get("path") or "").strip()
-        if not old_output_value:
-            records.pop(old_key, None)
-            return
+        old_output_value = str(record.get("output_path") or record.get("path") or "").strip()
         old_target = self._target_dir_for_record(old_key, record)
         new_target = Path(str(mapping["target_dir"])).expanduser().resolve()
-        if old_target is None:
+        if not old_output_value or old_target is None:
             raise LifeEventRetryError(
-                f"无法确认附属文件所属目录，暂不消费事件：{old_output_value}"
+                f"无法确认附属文件所属目录，暂不消费事件：{old_output_value or old_key}"
             )
         try:
             old_output = Path(old_output_value).expanduser().resolve()
             old_output.relative_to(old_target)
             output = output.resolve()
             output.relative_to(new_target)
-            if old_output != output:
-                if output.exists():
-                    raise LifeEventRetryError(f"附属文件目标已存在，暂不覆盖：{output}")
-                output.parent.mkdir(parents=True, exist_ok=True)
-                if old_output.exists():
-                    old_output.replace(output)
-            records.pop(old_key, None)
-            records[new_key] = build_strm_record(
+            legacy = build_strm_record(
                 fingerprint=str(record.get("fingerprint") or ""),
                 output=output,
                 mapping=mapping,
@@ -996,6 +1150,31 @@ class LifeMonitor:
                 kind="sidecar",
                 cloud_path=cloud_path,
             )
+            after = {
+                **record, **legacy, "owner_id": self._mapping_id(mapping),
+                "output_path": str(output),
+                "producer": str(record.get("producer") or "life"),
+                "cloud_identity": CloudIdentity(
+                    pickcode=str(item.get("pickcode") or item.get("pick_code") or record.get("pickcode") or "").lower(),
+                    file_id=str(item.get("fileid") or item.get("file_id") or record.get("file_id") or ""),
+                    path=cloud_path,
+                ).to_record(),
+            }
+            mutations = (
+                RecordMutation(old_key, "strm", old_key, record, None, "sidecar", "relocate old"),
+                RecordMutation(new_key, "strm", new_key, records.get(new_key), after, "sidecar", "relocate new"),
+            )
+            materializer = StrmMaterializer(self._store)
+            if old_output == output:
+                unit = CommitUnit.create(mutations, journal_required=True)
+            else:
+                unit = materializer.prepare_relocation(
+                    old_output=old_output, new_output=output, target_root=new_target,
+                    mutations=mutations,
+                )
+            self._journal.execute(unit)
+            records.clear()
+            records.update(self._store.get_strm_records())
         except (OSError, RuntimeError, ValueError) as err:
             if isinstance(err, LifeEventRetryError):
                 raise
@@ -1041,6 +1220,17 @@ class LifeMonitor:
         rel_text = relative.as_posix()
         record_key = f"{mapping_id}:{rel_text}"
         previous = records.get(record_key)
+        if not isinstance(previous, dict):
+            previous = next(
+                (
+                    records.get(key)
+                    for key in old_keys
+                    if isinstance(records.get(key), dict)
+                    and str(records.get(key, {}).get("file_id") or "")
+                    == str(item.get("fileid") or item.get("file_id") or "")
+                ),
+                None,
+            )
         previous_path = (
             str(previous.get("path") or "").strip() if isinstance(previous, dict) else ""
         )
@@ -1071,16 +1261,9 @@ class LifeMonitor:
             except (OSError, RuntimeError):
                 logger.warning(f"【115生活监控】记录路径无法解析，保留旧记录：{record_path}")
                 return ""
-        candidate_mtime = self._item_mtime(item)
-        for key, record in existing:
-            if str(record.get("mapping_id") or key.split(":", 1)[0]) != mapping_id:
-                logger.error(f"【115生活监控】输出路径已被其他映射占用，跳过：{output}")
-                return ""
-            if int(record.get("mtime") or 0) >= candidate_mtime:
-                logger.debug(f"【115生活监控】输出冲突按 115 更新时间保留：{output}")
-                return ""
-        for key, _record in existing:
-            records.pop(key, None)
+        if existing:
+            logger.error(f"【115生活监控】输出路径已有其他 claim，暂不消费事件：{output}")
+            raise LifeEventRetryError(f"输出路径 claim 冲突：{output}")
 
         size = self._item_size(item)
         moviepilot_url = self._moviepilot_url_provider().strip().rstrip("/")
@@ -1091,14 +1274,41 @@ class LifeMonitor:
             self._store.get_redirect_secret(),
             str(item.get("name") or PurePosixPath(cloud_path).name),
         )
-        write_strm_file(output, content, target_dir)
-        records[record_key] = build_strm_record(
+        legacy = build_strm_record(
             fingerprint=fingerprint,
             output=output,
             mapping=mapping,
             item={**item, "pickcode": pickcode},
             cloud_path=cloud_path,
         )
+        request = MaterializeRequest(
+            source_id=record_key,
+            container="strm",
+            key=record_key,
+            kind="strm",
+            target_root=target_dir,
+            owner_id=mapping_id,
+            relative_path=rel_text,
+            output=output,
+            cloud_identity=CloudIdentity(
+                pickcode=pickcode,
+                file_id=str(item.get("fileid") or item.get("file_id") or ""),
+                path=cloud_path,
+            ),
+            fingerprint=fingerprint,
+            content=content,
+            pickcode=pickcode,
+            file_name=str(item.get("name") or PurePosixPath(cloud_path).name),
+            producer="life",
+        )
+        result = self._materialize_record(
+            request,
+            records,
+            previous if isinstance(previous, dict) else None,
+            excluded_keys=old_keys,
+            record_fields=legacy,
+        )
+        records[record_key] = {**legacy, **dict(result.mutations[-1].after or {})}
         if previous_path and not self._same_path(previous_path, resolved_output):
             self._cleanup_replaced_output(previous_path, target_dir, records)
         logger.info(f"【115生活监控】生成 STRM：{cloud_path} -> {output}")
@@ -1116,12 +1326,7 @@ class LifeMonitor:
         record_key: str,
         old_keys: set[str],
     ) -> Path:
-        """同目录同名不同格式的媒体各自使用带扩展名的 STRM 输出。
-
-        与全量同步保持一致：替换扩展名会让 ``A.MOV`` 与 ``A.mp4`` 抢占同一个
-        ``A.strm``，仅在裸名实际碰撞时改用 ``A.MOV.strm`` / ``A.mp4.strm``，
-        未受影响的文件保持原命名。
-        """
+        """同 stem 媒体都使用带原扩展名的输出，并迁移已有裸名 sibling。"""
 
         base_output = strm_output_path(media_output)
         output = base_output
@@ -1130,7 +1335,7 @@ class LifeMonitor:
                 continue
             if ":sidecar:" in str(key):
                 continue
-            if str(record.get("mapping_id") or str(key).split(":", 1)[0]) != mapping_id:
+            if str(record.get("mapping_id") or "") not in {"", mapping_id}:
                 continue
             sibling_cloud = str(record.get("cloud_path") or "").strip()
             if not sibling_cloud:
@@ -1145,18 +1350,24 @@ class LifeMonitor:
             if strm_output_path(sibling_media) != base_output:
                 continue
             output = strm_conflict_output_path(media_output)
-            record_path = str(record.get("path") or "").strip()
+            record_path = str(record.get("output_path") or record.get("path") or "").strip()
             if not record_path or not self._same_path(record_path, base_output.resolve()):
                 continue
             sibling_output = strm_conflict_output_path(sibling_media)
+            before = dict(record)
+            after = {**record, "path": str(sibling_output), "output_path": str(sibling_output)}
             try:
-                relocate_stem_conflict_output(base_output, sibling_output)
-            except OSError as err:
+                unit = StrmMaterializer(self._store).prepare_relocation(
+                    old_output=base_output, new_output=sibling_output, target_root=target_dir,
+                    mutations=(RecordMutation(key, "strm", key, before, after, "strm", "same stem relocation"),),
+                )
+                self._journal.execute(unit)
+            except Exception as err:
                 raise LifeEventRetryError(
                     f"重命名同名媒体输出失败，暂不消费事件："
                     f"{base_output} -> {sibling_output}，原因：{err}"
                 ) from err
-            record["path"] = str(sibling_output)
+            record.clear(); record.update(after)
             self._heal_relocated_strm(record, sibling_output, target_dir)
             logger.warning(
                 "【115生活监控】同目录存在同名不同格式的媒体，改用带扩展名的输出："
@@ -1191,12 +1402,39 @@ class LifeMonitor:
             return
         if strm_file_matches(output, expected):
             return
+        mapping_id = str(record.get("mapping_id") or "default")
+        cloud_path = str(record.get("cloud_path") or "")
+        source_path = next(
+            (
+                normalize_cloud_path(str(mapping.get("source_path") or "/"))
+                for mapping in self._config_mappings()
+                if self._mapping_id(mapping) == mapping_id
+            ),
+            "/",
+        )
         try:
-            write_strm_file(output, expected, target_dir)
-        except OSError as err:
-            raise LifeEventRetryError(
-                f"重建改名 STRM 失败，暂不消费事件：{output}，原因：{err}"
-            ) from err
+            heal_relative = PurePosixPath(cloud_path).relative_to(PurePosixPath(source_path)).as_posix()
+            heal_key = f"{mapping_id}:{heal_relative}"
+        except ValueError:
+            heal_key = f"{mapping_id}:heal:{cloud_path or output.name}"
+        request = MaterializeRequest(
+            source_id=heal_key,
+            container="strm",
+            key=heal_key,
+            kind="strm",
+            target_root=target_dir,
+            owner_id=mapping_id,
+            output=output,
+            cloud_identity=CloudIdentity.from_record(record),
+            fingerprint=str(record.get("fingerprint") or ""),
+            content=expected,
+            pickcode=pickcode,
+            file_name=name or PurePosixPath(cloud_path).name,
+            producer="life",
+        )
+        heal_records = {heal_key: record}
+        result = self._materialize_record(request, heal_records, record)
+        record.update(dict(result.mutations[-1].after or {}))
         logger.info(f"【115生活监控】重建改名后的 STRM 内容：{output}")
 
     def _cleanup_replaced_output(
@@ -1205,6 +1443,8 @@ class LifeMonitor:
         target_dir: Path,
         records: Dict[str, Dict[str, Any]],
     ) -> None:
+        """新记录落盘后清理已不再被任何记录引用的旧输出。"""
+
         try:
             stale = Path(previous_path).expanduser().resolve()
             stale.relative_to(target_dir)
@@ -1213,13 +1453,25 @@ class LifeMonitor:
             return
         if any(
             isinstance(record, dict)
-            and str(record.get("path") or "").strip()
-            and self._same_path(str(record.get("path")), stale)
+            and str(record.get("output_path") or record.get("path") or "").strip()
+            and self._same_path(
+                str(record.get("output_path") or record.get("path")), stale
+            )
             for record in records.values()
         ):
             return
         try:
-            stale.unlink(missing_ok=True)
+            if not stale.exists() and not stale.is_symlink():
+                return
+            if stale.is_symlink() or not stale.is_file():
+                logger.warning(f"【115生活监控】旧输出不是普通文件，保留：{stale}")
+                return
+            cleanup = CommitUnit.create(
+                (),
+                (FileOperation("unlink", stale, target_existed_before=True),),
+                journal_required=True,
+            )
+            self._journal.execute(cleanup)
             logger.debug(f"【115生活监控】清理旧输出 STRM：{stale}")
         except OSError as err:
             logger.warning(f"【115生活监控】清理旧输出 STRM 失败：{stale}，原因：{err}")
@@ -1285,7 +1537,6 @@ class LifeMonitor:
             return
         for key in keys:
             self._remove_record(key, records)
-        self._store.save_strm_records(records)
         for path in paths:
             self._forget_paths(path)
 
@@ -1303,7 +1554,6 @@ class LifeMonitor:
         exclude_prefix: str = "",
     ) -> None:
         records = self._store.get_strm_records()
-        changed = False
         for key, record in list(records.items()):
             if not isinstance(record, dict):
                 continue
@@ -1314,59 +1564,76 @@ class LifeMonitor:
                 continue
             if str(record.get("file_id") or "") in keep_ids:
                 continue
-            changed = self._remove_record(key, records) or changed
-        if changed:
-            self._store.save_strm_records(records)
+            self._remove_record(key, records)
 
     def _remove_record(self, key: str, records: Dict[str, Dict[str, Any]]) -> bool:
         record = records.get(key)
         if not isinstance(record, dict):
             return False
-        output_value = str(record.get("path") or "").strip()
-        if not output_value:
-            records.pop(key, None)
-            return True
+        output_value = str(record.get("output_path") or record.get("path") or "").strip()
         target_dir = self._target_dir_for_record(key, record)
         if target_dir is None:
             raise LifeEventRetryError(
-                f"无法确认 STRM 所属目录，暂不消费事件：{output_value}"
+                f"无法确认 STRM 所属目录，暂不消费事件：{output_value or key}"
+            )
+        mapping_id = self._record_owner_id(key, record)
+        materializer = StrmMaterializer(
+            self._store,
+            self._moviepilot_url_provider().strip().rstrip("/"),
+            self._store.get_redirect_secret(),
+        )
+        try:
+            removal = materializer.remove_if_owned(
+                record_ref=("strm", key),
+                record=record,
+                claims=self._record_claims(records),
+                target_root=target_dir,
+                expected_owner_id=mapping_id,
+            )
+        except Exception as err:  # noqa: BLE001
+            raise LifeEventRetryError(
+                f"删除 STRM 所有权判定失败，暂不消费事件："
+                f"{output_value or key}，原因：{err}"
+            ) from err
+        if not removal.may_drop_record:
+            raise LifeEventRetryError(
+                f"无法安全删除 STRM，暂不消费事件：{output_value or key}，"
+                f"判定：{removal.disposition}，原因：{removal.reason}"
+            )
+        if removal.unit is None:
+            raise LifeEventRetryError(
+                f"STRM 删除缺少事务单元，暂不消费事件：{output_value or key}"
             )
         try:
-            output = Path(output_value).expanduser().resolve()
-            output.relative_to(target_dir)
-            if any(
-                isinstance(other, dict)
-                and str(other.get("path") or "")
-                and self._same_path(str(other.get("path")), output)
-                for other_key, other in records.items()
-                if other_key != key
-            ):
-                records.pop(key, None)
-                return True
-            try:
-                output.unlink(missing_ok=True)
-            except OSError as err:
-                raise LifeEventRetryError(
-                    f"删除 STRM 失败，暂不消费事件：{output_value}，原因：{err}"
-                ) from err
-            records.pop(key, None)
-            logger.info(f"【115生活监控】删除 STRM：{output}")
-            return True
-        except (OSError, RuntimeError, ValueError) as err:
-            if isinstance(err, LifeEventRetryError):
-                raise
+            self._journal.execute(removal.unit)
+        except Exception as err:  # noqa: BLE001
             raise LifeEventRetryError(
-                f"删除 STRM 路径无效，暂不消费事件：{output_value}，原因：{err}"
+                f"STRM 删除事务失败，暂不消费事件：{output_value or key}，原因：{err}"
             ) from err
+        records.pop(key, None)
+        if removal.disposition == "shared_claim":
+            logger.info(
+                f"【115生活监控】STRM 仍被其他 owner 使用，仅移除当前记录：{output_value}"
+            )
+        else:
+            logger.info(f"【115生活监控】删除 STRM：{output_value}")
+        return True
+
+    def _record_owner_id(self, key: str, record: Dict[str, Any]) -> str:
+        explicit = str(record.get("owner_id") or record.get("mapping_id") or "")
+        if explicit:
+            return explicit.removeprefix("strm:")
+        claim = self._record_claims({key: record}).get(("strm", key))
+        if claim and claim.owner_confidence != "ambiguous":
+            return claim.owner.removeprefix("strm:")
+        raise LifeEventRetryError(f"无法唯一解析 legacy owner，暂不消费事件：{key}")
 
     def _target_dir_for_record(
         self,
         key: str,
         record: Dict[str, Any],
     ) -> Optional[Path]:
-        mapping_id = str(record.get("mapping_id") or "")
-        if not mapping_id:
-            mapping_id = str(key).split(":", 1)[0]
+        mapping_id = self._record_owner_id(key, record)
         config = self._store.get_config()
         for mapping in config.get("strm_mappings") or []:
             if not isinstance(mapping, dict) or not str(mapping.get("target_dir") or "").strip():

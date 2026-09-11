@@ -18,6 +18,35 @@ from .client import U115AccessLimitError, U115AuthError
 from .file_types import DEFAULT_MEDIA_EXTENSIONS, DEFAULT_SIDECAR_EXTENSIONS, parse_extensions
 from .log_utils import safe_error_text
 from .resilience import TtlCache, retry_call
+from .strm_core import (
+    CloudIdentity,
+    CollisionDecision,
+    CommitJournal,
+    CommitUnit,
+    PreparedMaterialization,
+    FileOperation,
+    LegacyOwnerResolution,
+    MaterializeRequest,
+    MaterializeResult,
+    OwnedRemovalRequest,
+    RecordClaim,
+    RecordClaims,
+    RecordMutation,
+    RemoveResult,
+    ReservationDecision,
+    ReservationToken,
+    SessionClaim,
+    SessionReservations,
+    SiblingCandidate,
+    StrmMaterializer,
+    StrmOwnershipConflict,
+    StrmRecoveryBlockedError,
+    build_record_mutation,
+    resolve_legacy_strm_owner,
+    resolve_legacy_upload_owner,
+    stable_materialization_order,
+    strm_journal_enabled,
+)
 
 
 MEDIA_EXTENSIONS = set(DEFAULT_MEDIA_EXTENSIONS)
@@ -143,23 +172,6 @@ def strm_conflict_output_path(media_path: Path) -> Path:
     return media_path.with_name(f"{media_path.name}.strm")
 
 
-def relocate_stem_conflict_output(base_output: Path, conflict_output: Path) -> bool:
-    """Move an already-written STRM aside once a same-stem sibling shows up.
-
-    The content is unchanged, so a rename is enough -- no re-download and no
-    second write. Returns ``False`` when there was nothing on disk to move
-    (a failed or not-yet-materialised write), which is not an error.
-    """
-
-    if base_output == conflict_output:
-        return False
-    try:
-        base_output.replace(conflict_output)
-    except FileNotFoundError:
-        return False
-    return True
-
-
 def normalize_cloud_path(path: str) -> str:
     normalized = PurePosixPath((path or "/").replace("\\", "/")).as_posix()
     if normalized == ".":
@@ -220,50 +232,11 @@ def build_strm_record(
     return record
 
 
-def _atomic_write_text(output: Path, content: str) -> None:
-    temp_output = output.with_name(f".{output.name}.{threading.get_ident()}.tmp")
-    try:
-        with temp_output.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
-        temp_output.replace(output)
-    finally:
-        temp_output.unlink(missing_ok=True)
-
-
-def write_strm_file(output: Path, content: str, target_dir: Path) -> None:
-    output.resolve().relative_to(target_dir)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(output, content)
-
-
 def uploaded_strm_path(local_path: Path, source_root: Path, target_root: Path) -> Path:
     source_root = source_root.resolve()
     target_root = target_root.expanduser().resolve()
     rel_path = local_path.resolve().relative_to(source_root)
     return strm_output_path(target_root.joinpath(*rel_path.parts))
-
-
-def write_uploaded_strm(
-    local_path: Path,
-    source_root: Path,
-    target_root: Path,
-    pickcode: str,
-    moviepilot_url: str,
-    redirect_secret: str,
-    output: Path | None = None,
-) -> Path:
-    pickcode = normalize_pickcode(pickcode)
-    target_root = target_root.expanduser().resolve()
-    if output is None:
-        output = uploaded_strm_path(local_path, source_root, target_root)
-    content = build_strm_content(moviepilot_url, pickcode, redirect_secret, local_path.name)
-    if output.is_file() and not strm_file_matches(output, content):
-        logger.warning(
-            "【STRM回传】覆盖内容不同的已存在 STRM："
-            f"{output}，来源：{local_path.name}"
-        )
-    write_strm_file(output, content, target_root)
-    return output
 
 
 class StrmGenerator:
@@ -276,6 +249,7 @@ class StrmGenerator:
         download_sidecars: bool = False,
         sidecar_extensions: str = "",
         recent_deletes: Optional[TtlCache] = None,
+        journal: CommitJournal | None = None,
     ):
         self._client = client
         self._store = store
@@ -289,6 +263,9 @@ class StrmGenerator:
         )
         #: 反向删除刚清掉的 pickcode，与 ReverseDeleter 共享同一个实例
         self._recent_deletes = recent_deletes
+        if journal is None:
+            raise ValueError("StrmGenerator 必须注入插件唯一 CommitJournal")
+        self._journal = journal
 
     def _recently_deleted(self, item: Dict[str, Any]) -> bool:
         """这个文件是不是刚被反向删除过。
@@ -314,6 +291,13 @@ class StrmGenerator:
     def _item_mtime(item: Dict[str, Any]) -> int:
         try:
             return int(float(item.get("mtime") or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _item_size(item: Dict[str, Any]) -> int:
+        try:
+            return max(0, int(float(item.get("size") or 0)))
         except (TypeError, ValueError):
             return 0
 
@@ -349,22 +333,6 @@ class StrmGenerator:
                 logger.warning(f"【STRM同步】记录路径无法解析，保留旧文件：{record_path}")
                 return True
         return False
-
-    @staticmethod
-    def _write_strm(
-        output: Path,
-        content: str,
-        target_dir: Path,
-        created_directories: set[Path],
-        directory_lock: threading.Lock,
-    ) -> None:
-        StrmGenerator._prepare_output_parent(
-            output,
-            target_dir,
-            created_directories,
-            directory_lock,
-        )
-        _atomic_write_text(output, content)
 
     @staticmethod
     def _prepare_output_parent(
@@ -419,7 +387,17 @@ class StrmGenerator:
             raise ValueError(f"STRM 输出目录不可用: {target_dir}")
 
         records = self._store.get_strm_records()
+        upload_records_getter = getattr(self._store, "get_upload_records", None)
+        upload_records = (
+            upload_records_getter() if callable(upload_records_getter) else {}
+        )
         initial_records = dict(records)
+        materializer = StrmMaterializer(
+            self._store,
+            self._moviepilot_url,
+            self._redirect_secret,
+        )
+        reservations = SessionReservations()
         counts = {
             "added": 0,
             "updated": 0,
@@ -469,10 +447,14 @@ class StrmGenerator:
         same_stem_conflicts: list[str] = []
         output_record_keys: Dict[Path, set[str]] = {}
         completed_count_by_output: Dict[Path, str] = {}
-        obsolete_outputs: set[Path] = set()
+        # record key -> 物化完成后才可清理的旧输出；保存旧 record 快照，
+        # 让 owned-remove 在记录被新路径覆盖后仍能验证旧文件所有权。
+        obsolete_outputs: Dict[str, tuple[Path, Dict[str, Any]]] = {}
         pending: Dict[
-            Future[None],
-            tuple[str, str, str, Dict[str, Any], str, Path, Dict[str, Any]],
+            Future[PreparedMaterialization],
+            tuple[
+                str, str, str, Dict[str, Any], str, Path, Dict[str, Any], ReservationToken
+            ],
         ] = {}
         processed = 0
         new_access_limit_state = getattr(self._client, "new_access_limit_state", None)
@@ -489,18 +471,19 @@ class StrmGenerator:
 
         def submit_write(
             executor: ThreadPoolExecutor,
-            operation: Callable[..., None],
+            operation: Callable[..., PreparedMaterialization],
             *args: Any,
-        ) -> Future[None]:
+            **kwargs: Any,
+        ) -> Future[PreparedMaterialization]:
             if access_limit_state is None:
-                return executor.submit(operation, *args)
+                return executor.submit(operation, *args, **kwargs)
             return executor.submit(
                 run_with_access_limit_state,
                 access_limit_state,
-                lambda: operation(*args),
+                lambda: operation(*args, **kwargs),
             )
 
-        def collect(done: set[Future[None]]) -> None:
+        def collect(done: set[Future[PreparedMaterialization]]) -> None:
             nonlocal processed
             for future in done:
                 (
@@ -511,24 +494,42 @@ class StrmGenerator:
                     rel_path_text,
                     output,
                     next_record,
+                    reservation_token,
                 ) = pending.pop(future)
                 processed += 1
                 try:
-                    future.result()
+                    prepared = future.result()
+                    result = materializer.commit(prepared, self._journal)
+                    mutation = result.mutations[-1]
+                    next_record = {**next_record, **dict(mutation.after or {})}
+                    output = result.output
                     if output in conflicting_outputs:
                         records.pop(record_key, None)
                         logger.debug(f"【STRM同步】丢弃存在路径冲突的输出：{output}")
                     else:
-                        previous_path = str(previous.get("path") or "").strip()
+                        was_existing_record = bool(initial_records.get(record_key))
+                        previous_path = str(
+                            (previous or {}).get("output_path")
+                            or (previous or {}).get("path")
+                            or ""
+                        ).strip()
                         if kind == "strm" and previous_path:
                             previous_output = Path(previous_path)
                             if previous_output != output:
-                                obsolete_outputs.add(previous_output)
+                                obsolete_outputs[record_key] = (
+                                    previous_output,
+                                    dict(previous),
+                                )
+                        records.clear()
+                        records.update(self._store.get_strm_records())
                         records[record_key] = next_record
-                        if kind == "sidecar":
+                        if result.action == "skipped":
+                            count_key = "skipped"
+                            logger.debug(f"【STRM同步】文件未变化，跳过：{rel_path_text}")
+                        elif kind == "sidecar":
                             count_key = "sidecars"
                         else:
-                            count_key = "updated" if previous else "added"
+                            count_key = "updated" if was_existing_record else "added"
                             logger.debug(
                                 f"【STRM同步】{'更新' if previous else '生成'} STRM 成功："
                                 f"{rel_path_text} -> {output}"
@@ -642,18 +643,43 @@ class StrmGenerator:
                             # The incumbent may still be queued; make sure its
                             # write landed before renaming it.
                             drain_pending()
+                            owner_record = self._store.get_strm_records().get(owner_record_key)
+                            if isinstance(owner_record, dict):
+                                records[owner_record_key] = dict(owner_record)
+                            if not isinstance(owner_record, dict):
+                                counts["errors"] += 1
+                                logger.error(
+                                    "【STRM同步】同名媒体 incumbent 记录不存在："
+                                    f"{owner_record_key}"
+                                )
+                                continue
+                            owner_after = {
+                                **owner_record,
+                                "path": str(owner_output),
+                                "output_path": str(owner_output),
+                            }
                             try:
-                                relocate_stem_conflict_output(base_output, owner_output)
-                            except OSError as err:
+                                relocation = materializer.prepare_relocation(
+                                    old_output=base_output,
+                                    new_output=owner_output,
+                                    target_root=target_dir,
+                                    mutations=(RecordMutation(
+                                        owner_record_key, "strm", owner_record_key,
+                                        owner_record, owner_after, "strm",
+                                        "same stem relocation",
+                                    ),),
+                                )
+                                self._journal.execute(relocation)
+                                records.clear()
+                                records.update(self._store.get_strm_records())
+                            except Exception as err:  # noqa: BLE001
                                 counts["errors"] += 1
                                 logger.error(
                                     "【STRM同步】重命名同名媒体输出失败："
                                     f"{base_output} -> {owner_output}，"
                                     f"原因：{safe_error_text(err)}"
                                 )
-                            owner_record = records.get(owner_record_key)
-                            if isinstance(owner_record, dict):
-                                owner_record["path"] = str(owner_output)
+                                continue
                             for bookkeeping in (
                                 claimed_outputs,
                                 claimed_record_keys,
@@ -663,7 +689,14 @@ class StrmGenerator:
                             ):
                                 if base_output in bookkeeping:
                                     bookkeeping[owner_output] = bookkeeping.pop(base_output)
-                            obsolete_outputs.add(base_output)
+                            # incumbent 记录已切换到扩展限定名；裸名若仍存在，
+                            # 后续按旧 record 快照走 owned-remove。
+                            owner_previous = initial_records.get(owner_record_key)
+                            if isinstance(owner_previous, dict):
+                                obsolete_outputs[owner_record_key] = (
+                                    base_output,
+                                    dict(owner_previous),
+                                )
                             relocated_bases.add(base_output)
                             base_output_owners.pop(base_output, None)
                             output = strm_conflict_output_path(media_output)
@@ -720,11 +753,49 @@ class StrmGenerator:
                     drain_pending()
                     seen_record_keys.discard(winner_record_key)
                     seen_record_keys.add(record_key)
+                    displaced_record = records.get(winner_record_key)
+                    if isinstance(displaced_record, dict):
+                        displaced_claims = RecordClaims.from_records(
+                            records,
+                            upload_records,
+                            mapping_ids={mapping_id},
+                            upload_mappings=(self._store.get_config().get("upload_mappings") or []),
+                        )
+                        removal = materializer.remove_if_owned(
+                            record_ref=("strm", winner_record_key),
+                            record=displaced_record,
+                            claims=displaced_claims,
+                            target_root=target_dir,
+                            expected_owner_id=mapping_id,
+                        )
+                        if not removal.may_drop_record or removal.unit is None:
+                            counts["errors"] += 1
+                            logger.error(
+                                "【STRM同步】无法安全替换同路径旧候选："
+                                f"{output}，原因：{removal.reason}"
+                            )
+                            continue
+                        try:
+                            if winner_record_key != record_key:
+                                self._journal.execute(removal.unit)
+                        except Exception as err:  # noqa: BLE001
+                            counts["errors"] += 1
+                            logger.error(
+                                "【STRM同步】替换旧候选事务失败："
+                                f"{output}，原因：{safe_error_text(err)}"
+                            )
+                            continue
                     records.pop(winner_record_key, None)
                     counts["skipped"] += 1
                     completed_key = completed_count_by_output.pop(output, "")
-                    if completed_key in counts and counts[completed_key] > 0:
-                        counts[completed_key] -= 1
+                    if winner_record_key != record_key:
+                        if completed_key in counts and counts[completed_key] > 0:
+                            counts[completed_key] -= 1
+                    else:
+                        # 同一个 record key 的较新云候选替换本轮 winner；先撤销旧候选计数。
+                        if completed_key in counts and counts[completed_key] > 0:
+                            counts[completed_key] -= 1
+                        initial_records.pop(record_key, None)
                     if output not in duplicate_logged_outputs:
                         duplicate_logged_outputs.add(output)
                         logger.warning(
@@ -774,43 +845,107 @@ class StrmGenerator:
                     kind=kind,
                     cloud_path=cloud_path,
                 )
-                previous = initial_records.get(record_key, {})
-                output_matches = (
-                    strm_file_matches(output, content)
-                    if kind == "strm"
-                    else output.is_file()
+                previous = records.get(record_key) or initial_records.get(record_key)
+                persisted_previous = self._store.get_strm_records().get(record_key)
+                if isinstance(persisted_previous, dict):
+                    previous = persisted_previous
+                    records[record_key] = dict(persisted_previous)
+                cloud_identity = CloudIdentity(
+                    pickcode=pickcode,
+                    file_id=str(item.get("fileid") or item.get("file_id") or ""),
+                    path=cloud_path,
                 )
-                if (
-                    self._incremental
-                    and previous.get("fingerprint") == fingerprint
-                    and self._record_path_matches(previous, output)
-                    and output_matches
-                ):
-                    records[record_key] = next_record
+                request = MaterializeRequest(
+                    source_id=record_key,
+                    container="strm",
+                    key=record_key,
+                    kind=kind,
+                    target_root=target_dir,
+                    owner_id=mapping_id,
+                    relative_path=rel_path_text,
+                    output=output,
+                    cloud_identity=cloud_identity,
+                    fingerprint=fingerprint,
+                    content=content if kind == "strm" else None,
+                    pickcode=pickcode,
+                    file_name=name,
+                    size=None,
+                    downloader=(
+                        lambda code, temp: retry_call(
+                            lambda: self._client.download_file(
+                                code, temp, create_parent=False
+                            ),
+                            attempts=3,
+                            delay=1.0,
+                            abort_on=(U115AccessLimitError, U115AuthError),
+                        )
+                        if kind == "sidecar"
+                        else None
+                    ),
+                    producer="generator",
+                )
+                claims = RecordClaims.from_records(
+                    records,
+                    upload_records,
+                    mapping_ids={
+                        str(record.get("mapping_id") or "")
+                        for record in records.values()
+                        if isinstance(record, dict) and record.get("mapping_id")
+                    }
+                    | {mapping_id},
+                    upload_mappings=(self._store.get_config().get("upload_mappings") or []),
+                )
+                collision_previous = previous
+                if previous and self._record_path_matches(previous, output):
+                    collision_previous = {
+                        **previous,
+                        "cloud_identity": cloud_identity.to_record(),
+                    }
+                decision = materializer.validate_collision(
+                    request,
+                    claims,
+                    previous=collision_previous,
+                    excluded_claims=frozenset({("strm", record_key)}),
+                )
+                request, decision = stable_materialization_order([(request, decision)])[0]
+                session_claim = SessionClaim(
+                    request.container,
+                    request.key,
+                    request.owner_id,
+                    request.cloud_identity,
+                    request.kind,
+                )
+                reservation = materializer.reserve(request, decision, reservations)
+                if not reservation.confirmed_candidate:
+                    counts["conflicts"] += 1
                     counts["skipped"] += 1
-                    completed_count_by_output[output] = "skipped"
-                    logger.debug(f"【STRM同步】文件未变化，跳过：{rel_path_text}")
                     continue
-                if kind == "strm":
-                    future = submit_write(
-                        executor,
-                        self._write_strm,
-                        output,
-                        content,
-                        target_dir,
-                        created_directories,
-                        directory_lock,
-                    )
-                else:
-                    future = submit_write(
-                        executor,
-                        self._download_sidecar,
-                        output,
-                        pickcode,
-                        target_dir,
-                        created_directories,
-                        directory_lock,
-                    )
+                decision = materializer.settle_relocation(
+                    request,
+                    decision,
+                    reservation,
+                    claims,
+                    previous=previous,
+                    same_container_only=True,
+                )
+                reservation_token = materializer.confirm(reservations, reservation)
+                self._prepare_output_parent(
+                    decision.output,
+                    target_dir,
+                    created_directories,
+                    directory_lock,
+                )
+                future = submit_write(
+                    executor,
+                    materializer.prepare,
+                    request,
+                    claims,
+                    decision=decision,
+                    previous=previous,
+                    incremental=self._incremental,
+                    reservation=reservation_token,
+                    session_reservations=reservations,
+                )
                 pending[future] = (
                     kind,
                     record_key,
@@ -819,70 +954,117 @@ class StrmGenerator:
                     rel_path_text,
                     output,
                     next_record,
+                    reservation_token,
                 )
                 if len(pending) >= STRM_WRITE_PREFETCH:
                     done, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)
                     collect(done)
             drain_pending()
         for conflicting_output in conflicting_outputs:
-            for record_key in output_record_keys.get(conflicting_output, set()):
-                records.pop(record_key, None)
-            count_key = completed_count_by_output.pop(conflicting_output, "")
-            if count_key and counts[count_key] > 0:
-                counts[count_key] -= 1
-            try:
-                resolved_output = conflicting_output.resolve()
-                resolved_output.relative_to(target_dir)
-                if self._record_claims_output(records, resolved_output):
-                    logger.debug(f"【STRM同步】冲突路径仍被其他记录使用，保留：{resolved_output}")
-                    continue
-                resolved_output.unlink(missing_ok=True)
-                logger.debug(f"【STRM同步】清理冲突 STRM：{resolved_output}")
-            except (OSError, RuntimeError, ValueError) as err:
+            logger.warning(
+                "【STRM同步】冲突输出缺少可验证 owner，保留文件与记录等待重试："
+                f"{conflicting_output}"
+            )
+        for obsolete_key, (obsolete_output, obsolete_record) in obsolete_outputs.items():
+            if not obsolete_output.exists() and not obsolete_output.is_symlink():
+                continue
+            cleanup_records = dict(records)
+            cleanup_records[obsolete_key] = obsolete_record
+            cleanup_claims = RecordClaims.from_records(
+                cleanup_records,
+                upload_records,
+                mapping_ids={mapping_id}
+                | {
+                    str(record.get("mapping_id") or "")
+                    for record in cleanup_records.values()
+                    if isinstance(record, dict) and record.get("mapping_id")
+                },
+                upload_mappings=(self._store.get_config().get("upload_mappings") or []),
+            )
+            removal = materializer.remove_if_owned(
+                record_ref=("strm", obsolete_key),
+                record=obsolete_record,
+                claims=cleanup_claims,
+                target_root=target_dir,
+                expected_owner_id=mapping_id,
+            )
+            if not removal.may_drop_record or removal.unit is None:
                 counts["errors"] += 1
-                logger.error(
-                    f"【STRM同步】清理冲突 STRM 失败：{conflicting_output}，"
-                    f"原因：{safe_error_text(err)}"
+                logger.warning(
+                    "【STRM同步】旧输出 ownership 无法确认，保留文件："
+                    f"{obsolete_output}，原因：{removal.reason}"
                 )
-        for obsolete_output in obsolete_outputs:
-            try:
-                resolved_output = obsolete_output.expanduser().resolve()
-                resolved_output.relative_to(target_dir)
-                if resolved_output in claimed_outputs or self._record_claims_output(
-                    records,
-                    resolved_output,
-                ):
-                    logger.debug(f"【STRM同步】旧路径仍被其他记录使用，保留：{resolved_output}")
-                    continue
-                resolved_output.unlink(missing_ok=True)
-                logger.debug(f"【STRM同步】清理旧版 STRM：{resolved_output}")
-            except (OSError, RuntimeError, ValueError) as err:
-                counts["errors"] += 1
-                logger.error(
-                    f"【STRM同步】清理旧版 STRM 失败：{obsolete_output}，原因：{safe_error_text(err)}"
-                )
-        stale_outputs: set[Path] = set()
+            else:
+                # 新输出的记录已经由物化 journal 提交；旧路径清理只提交 file op，
+                # 不能再用 obsolete before 删除同 key 的新记录。
+                cleanup_unit = CommitUnit.create((), removal.unit.file_ops, journal_required=True)
+                try:
+                    self._journal.execute(cleanup_unit)
+                except Exception as err:  # noqa: BLE001
+                    counts["errors"] += 1
+                    logger.warning(
+                        "【STRM同步】旧输出事务清理失败，保留："
+                        f"{obsolete_output}，原因：{safe_error_text(err)}"
+                    )
+        config_mapping_ids = {
+            str(item.get("id") or item.get("source_cid") or "default")
+            for item in self._store.get_config().get("strm_mappings") or []
+            if isinstance(item, dict)
+        }
+        stale_mapping_ids = config_mapping_ids | {mapping_id} | {
+            str(record.get("mapping_id") or "")
+            for record in records.values()
+            if isinstance(record, dict) and record.get("mapping_id")
+        }
+        # legacy key 仅接受候选完整 mapping id 的唯一最长前缀，不从 key 猜第一段。
+        for key, record in records.items():
+            resolved = resolve_legacy_strm_owner(
+                str(key),
+                stale_mapping_ids,
+                record_mapping_id=(
+                    str(record.get("mapping_id") or "")
+                    if isinstance(record, dict) else ""
+                ),
+            )
+            if resolved.confidence != "ambiguous" and resolved.mapping_id:
+                stale_mapping_ids.add(resolved.mapping_id)
+        stale_claims = RecordClaims.from_records(
+            records,
+            upload_records,
+            mapping_ids=stale_mapping_ids,
+            upload_mappings=(self._store.get_config().get("upload_mappings") or []),
+        )
         for record_key in mapping_record_keys - seen_record_keys:
-            stale_record = records.pop(record_key, None)
+            stale_record = records.get(record_key)
             if not isinstance(stale_record, dict):
                 continue
-            stale_path = str(stale_record.get("path") or "").strip()
-            if stale_path:
-                stale_outputs.add(Path(stale_path))
-            counts["removed"] += 1
-        for stale_output in stale_outputs:
-            try:
-                resolved_output = stale_output.expanduser().resolve()
-                resolved_output.relative_to(target_dir)
-                if self._record_claims_output(records, resolved_output):
-                    logger.debug(f"【STRM同步】失效路径仍被其他记录使用，保留：{resolved_output}")
+            removal = materializer.remove_if_owned(
+                record_ref=("strm", record_key),
+                record=stale_record,
+                claims=stale_claims,
+                target_root=target_dir,
+                expected_owner_id=mapping_id,
+            )
+            if removal.may_drop_record and removal.unit is not None:
+                try:
+                    self._journal.execute(removal.unit)
+                except Exception as err:  # noqa: BLE001
+                    counts["errors"] += 1
+                    logger.warning(
+                        "【STRM同步】失效输出事务清理失败，保留记录与文件："
+                        f"{stale_record.get('path')}，原因：{safe_error_text(err)}"
+                    )
                     continue
-                resolved_output.unlink(missing_ok=True)
-                logger.debug(f"【STRM同步】清理远端已删除条目的输出：{resolved_output}")
-            except (OSError, RuntimeError, ValueError) as err:
+                records.pop(record_key, None)
+                counts["removed"] += 1
+                logger.debug(
+                    f"【STRM同步】清理远端已删除条目的输出：{stale_record.get('path')}"
+                )
+            else:
                 counts["errors"] += 1
-                logger.error(
-                    f"【STRM同步】清理失效输出失败：{stale_output}，原因：{safe_error_text(err)}"
+                logger.warning(
+                    "【STRM同步】失效输出 ownership 无法确认，保留记录与文件："
+                    f"{stale_record.get('path')}，原因：{removal.reason}"
                 )
         if same_stem_conflicts:
             logger.info(
@@ -895,7 +1077,6 @@ class StrmGenerator:
                 "【STRM同步】输出路径冲突已按 115 更新时间完成选优："
                 f"冲突候选 {counts['conflicts']} 个"
             )
-        self._store.save_strm_records(records)
         return {
             "kind": "strm",
             "time": datetime.now().isoformat(timespec="seconds"),

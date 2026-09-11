@@ -48,17 +48,51 @@ class NotifierTest(unittest.TestCase):
 
         self.assertEqual(len(self.poster.calls), 1)
         call = self.poster.calls[0]
-        # 标题是「自称 · 结论」，通道名不进标题 —— 每条 headline 都自报家门，
-        # 再加一个「每日签到」就是把同一件事说两遍，还要从结论那边挤掉几个字
         self.assertEqual(call["title"], "115 · 签到成功")
         self.assertEqual(call["text"], "连续 3 天\n\n+5 积分")
+        self.assertNotIn("save_history", call)
 
     def test_empty_body_becomes_placeholder(self):
         self.config["upload_notify"] = True
         self.notifier.notify("upload", "", [])
         self.assertEqual(self.poster.calls[0]["text"], "-")
-        # 上传通道自称「115 网盘」：那条通知讲的是某部片子入库了，不是插件在汇报工作
-        self.assertEqual(self.poster.calls[0]["title"], "115 网盘")
+        self.assertEqual(self.poster.calls[0]["title"], "")
+
+    def test_upload_uses_media_title_and_forwards_host_fields(self):
+        self.config["upload_notify"] = True
+        self.config["upload_notify_type"] = "Organize"
+
+        self.notifier.notify(
+            "upload",
+            "权力的游戏 (2011) S01 E01-E03 已入库",
+            ["本次入库 3 集"],
+            image="https://image.example/poster.jpg",
+            link="https://moviepilot.example/#/history",
+            title_prefix="",
+        )
+
+        call = self.poster.calls[0]
+        self.assertEqual(call["title"], "权力的游戏 (2011) S01 E01-E03 已入库")
+        self.assertEqual(call["image"], "https://image.example/poster.jpg")
+        self.assertEqual(call["link"], "https://moviepilot.example/#/history")
+        self.assertNotIn("save_history", call)
+
+    def test_explicit_empty_prefix_keeps_complete_headline(self):
+        self.config["strm_notify"] = True
+        self.notifier.notify("strm", "STRM 已是最新", [], title_prefix="")
+        title = self.poster.calls[0]["title"]
+        self.assertEqual(title, "STRM 已是最新")
+        self.assertFalse(title.startswith(" · "))
+
+    def test_empty_prefix_and_empty_headline_stay_empty(self):
+        self.config["strm_notify"] = True
+        self.notifier.notify("strm", "", [], title_prefix="")
+        self.assertEqual(self.poster.calls[0]["title"], "")
+
+    def test_save_history_can_be_disabled_explicitly(self):
+        self.config["strm_notify"] = True
+        self.notifier.notify("strm", "完成", [], save_history=False)
+        self.assertFalse(self.poster.calls[0]["save_history"])
 
     def test_unknown_channel_ignored(self):
         self.config["strm_notify"] = True

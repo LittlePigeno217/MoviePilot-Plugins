@@ -1,42 +1,38 @@
 <script setup>
-/**
- * 通道通知开关。一条通道一个实例，开关和消息类型都是独立字段——
- * STRM 只关心自己的，签到失败不会因为上传没开通知而静默。
- * 消息类型下拉优先用宿主注入的动态列表（types prop，来自 MoviePilot MessageType 源，
- * 与渠道 switchs 分流中文 value 同步），没有才回退到静态 NOTIFY_TYPES。
- */
+/** 通知事件行。聚合模式由父组件决定，本组件只呈现事件选择和可选类型。 */
 import { computed } from 'vue'
 import { NOTIFY_TYPES } from '../../plugin.js'
 
 const props = defineProps({
-  enabled: { type: Boolean, default: false },
+  checked: { type: Boolean, default: false },
   type: { type: String, default: 'Plugin' },
-  label: { type: String, default: '执行后发送通知' },
+  showType: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
+  label: { type: String, required: true },
   hint: { type: String, default: '' },
   types: { type: Array, default: null },
 })
-const emit = defineEmits(['update:enabled', 'update:type'])
-
-const typeOptions = computed(
-  () => (Array.isArray(props.types) && props.types.length ? props.types : NOTIFY_TYPES)
-)
+const emit = defineEmits(['update:checked', 'update:type'])
+const typeOptions = computed(() => (Array.isArray(props.types) && props.types.length ? props.types : NOTIFY_TYPES))
 </script>
 
 <template>
-  <div class="ntf">
+  <div class="ntf" :class="{ 'ntf--disabled': props.disabled }">
     <div class="ntf__line">
-      <v-switch
-        :model-value="props.enabled"
+      <v-checkbox
+        :model-value="props.checked"
+        :disabled="props.disabled"
         color="primary"
         density="compact"
         hide-details
         :label="props.label"
-        @update:model-value="value => emit('update:enabled', Boolean(value))"
+        @update:model-value="value => emit('update:checked', Boolean(value))"
       />
       <v-select
+        v-if="props.showType"
         :model-value="props.type"
         :items="typeOptions"
-        :disabled="!props.enabled"
+        :disabled="props.disabled || !props.checked"
         class="ntf__type"
         label="消息类型"
         variant="outlined"
@@ -50,7 +46,7 @@ const typeOptions = computed(
 </template>
 
 <style scoped lang="scss">
-.ntf {
+.ntf + .ntf {
   padding-top: 10px;
   margin-top: 10px;
   border-top: 1px solid var(--p115-hairline);
@@ -66,5 +62,10 @@ const typeOptions = computed(
 .ntf__type {
   flex: 0 1 12rem;
   min-width: 9rem;
+  margin-inline-start: auto;
+}
+
+.ntf--disabled {
+  opacity: var(--v-disabled-opacity, 0.42);
 }
 </style>

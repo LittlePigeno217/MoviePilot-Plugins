@@ -17,6 +17,8 @@ from p115cipher import rsa_decrypt, rsa_encrypt
 
 from app.log import logger
 
+from .limiter import RequestPacer, get_rate_limit_profile
+
 
 class U115AuthError(RuntimeError):
     pass
@@ -110,16 +112,16 @@ class U115Client:
         client_type: str = "",
         session: Any = None,
         token_saver: Optional[Callable[[Dict[str, Any]], None]] = None,
+        rate_limit_profile: str = "balanced",
     ):
         self.cookie = cookie.strip()
         self.tokens = dict(tokens or {})
         self.client_type = client_type.strip() if client_type in self.qrcode_client_types else ""
         self._auth_state: Dict[str, Any] = {}
         self._open_auth_lock = threading.RLock()
-        self._download_rate_lock = threading.Lock()
-        self._next_download_request_at = 0.0
-        self._directory_rate_lock = threading.Lock()
-        self._next_directory_request_at = 0.0
+        self.rate_limit_profile = str(rate_limit_profile or "balanced").strip().lower()
+        self._rate_limit_values = get_rate_limit_profile(self.rate_limit_profile)
+        self._pacer = RequestPacer(self._rate_limit_values, waiter=self._pacer_wait)
         self._request_limit_context = threading.local()
         self._remote_dir_cache_lock = threading.RLock()
         self._remote_dir_cache: Dict[str, Dict[str, Any]] = {
@@ -302,6 +304,7 @@ class U115Client:
                     "POST",
                     "/open/refreshToken",
                     base_url=self.passport_url,
+                    rate_limit_route="auth",
                     require_auth=False,
                     no_error=True,
                     data={"refresh_token": refresh_token},
@@ -339,6 +342,7 @@ class U115Client:
                 "POST",
                 f"{self.passport_url}/open/authDeviceCode",
                 require_auth=False,
+                rate_limit_route="auth",
                 data={
                     "client_id": self._open_client_id(),
                     "code_challenge": code_challenge,
@@ -364,6 +368,7 @@ class U115Client:
                 "POST",
                 f"{self.passport_url}/open/deviceCodeToToken",
                 require_auth=False,
+                rate_limit_route="auth",
                 data={"uid": uid, "code_verifier": code_verifier},
             )
             token_data = token_payload.get("data") or {}
@@ -428,7 +433,7 @@ class U115Client:
                 ) from auth_err
 
     def ensure_upload_ready(self) -> None:
-        self._request("GET", "/open/user/info")
+        self._request("GET", "/open/user/info", rate_limit_route="upload_control")
 
     def get_dir_list(self, cid: str = "0") -> list[Dict[str, Any]]:
         return self._get_open_dir_list(cid)
@@ -438,10 +443,10 @@ class U115Client:
         offset = 0
         page_size = 1150
         while True:
-            self._acquire_directory_request_slot()
             payload = self._request(
                 "GET",
                 "/open/ufile/files",
+                rate_limit_route="directory",
                 params={
                     "cid": int(cid or 0),
                     "limit": page_size,
@@ -466,19 +471,8 @@ class U115Client:
             if total < 0 and len(batch) < page_size:
                 return items
             offset = next_offset
-
-    def _acquire_directory_request_slot(self) -> None:
-        self._raise_if_shared_access_limited()
-        interval = max(0.0, float(self.directory_request_interval))
-        if not interval:
-            return
-        with self._directory_rate_lock:
-            now = time.monotonic()
-            delay = max(0.0, self._next_directory_request_at - now)
-            self._next_directory_request_at = max(now, self._next_directory_request_at) + interval
-        if delay:
-            self._wait_for_request_retry(delay)
-        self._raise_if_shared_access_limited()
+            self._pacer.acquire_directory_page(cancelled=self._request_cancelled)
+            self._raise_if_shared_access_limited()
 
     @staticmethod
     def new_access_limit_state() -> Dict[str, Any]:
@@ -525,6 +519,13 @@ class U115Client:
             state["event"].set()
         return first
 
+    def _request_cancelled(self) -> bool:
+        state = getattr(self._request_limit_context, "limit_state", None)
+        return bool(state is not None and state["event"].is_set())
+
+    def _pacer_wait(self, delay: float) -> None:
+        self._wait_for_request_retry(delay)
+
     def _wait_for_request_retry(self, delay: float) -> None:
         state = getattr(self._request_limit_context, "limit_state", None)
         if state is None:
@@ -533,19 +534,6 @@ class U115Client:
         if state["event"].wait(max(0.0, float(delay))):
             self._raise_if_shared_access_limited()
             raise U115AccessLimitError("115 并发任务因访问上限中止")
-
-    def _acquire_download_request_slot(self) -> None:
-        self._raise_if_shared_access_limited()
-        interval = max(0.0, float(self.download_request_interval))
-        if not interval:
-            return
-        with self._download_rate_lock:
-            now = time.monotonic()
-            delay = max(0.0, self._next_download_request_at - now)
-            self._next_download_request_at = max(now, self._next_download_request_at) + interval
-        if delay:
-            self._wait_for_request_retry(delay)
-        self._raise_if_shared_access_limited()
 
     def iter_files(
         self,
@@ -639,7 +627,7 @@ class U115Client:
     def get_item(self, path: str) -> Optional[Dict[str, Any]]:
         normalized = self._normalize_cloud_path(path)
         payload = self._request(
-            "POST", "/open/folder/get_info", no_error=True, data={"path": normalized}
+            "POST", "/open/folder/get_info", no_error=True, rate_limit_route="metadata", data={"path": normalized}
         )
         return self._parse_open_item(payload, requested_path=normalized)
 
@@ -662,6 +650,7 @@ class U115Client:
             "POST",
             "/open/folder/get_info",
             no_error=True,
+            rate_limit_route="metadata",
             data={"file_id": normalized_id},
         )
         return self._parse_open_item(payload, strict=False)
@@ -778,6 +767,7 @@ class U115Client:
         payload = self._request_url(
             "POST",
             self.life_calendar_url,
+            rate_limit_route="mutation",
             data={"locus": 1, "open_life": 1},
             headers={"User-Agent": self.ios_user_agent},
         )
@@ -811,6 +801,7 @@ class U115Client:
         payload = self._request_url(
             "GET",
             url,
+            rate_limit_route=("life_web" if normalized_app == "web" else "life_ios"),
             params=params,
             headers={"User-Agent": self.ios_user_agent},
         )
@@ -867,6 +858,7 @@ class U115Client:
                 "POST",
                 "/open/folder/add",
                 no_error=True,
+                rate_limit_route="upload_control",
                 data={"pid": int(current["fileid"] or 0), "file_name": name},
             )
             data = self._response_data(payload)
@@ -929,6 +921,7 @@ class U115Client:
         payload = self._request(
             "POST",
             "/open/upload/init",
+            rate_limit_route="upload_control",
             data=init_data,
             timeout=self.upload_request_timeout,
         )
@@ -942,6 +935,7 @@ class U115Client:
             payload = self._request(
                 "POST",
                 "/open/upload/init",
+                rate_limit_route="upload_control",
                 data=init_data,
                 timeout=self.upload_request_timeout,
             )
@@ -1004,7 +998,6 @@ class U115Client:
             return None
         mode = self._playback_auth_mode(mode)
         if mode == "cookie":
-            self._acquire_download_request_slot()
             return self._get_cookie_download_url(pickcode, user_agent)
         return self._get_open_download_url(pickcode, user_agent)
 
@@ -1018,6 +1011,7 @@ class U115Client:
         payload = self._request_url(
             "POST",
             self.cookie_download_url,
+            rate_limit_route="download_link",
             data={"data": encrypted},
             headers={"User-Agent": user_agent},
         )
@@ -1051,6 +1045,7 @@ class U115Client:
             "POST",
             "/open/ufile/downurl",
             no_error=True,
+            rate_limit_route="download_link",
             data={"pick_code": pickcode},
             headers={"User-Agent": user_agent},
         )
@@ -1118,6 +1113,7 @@ class U115Client:
                 self._request_url(
                     "POST",
                     self.web_copy_url,
+                    rate_limit_route="mutation",
                     data={"fid": source_file_id, "pid": int(target_cid)},
                     headers={"User-Agent": self.ios_user_agent},
                 )
@@ -1125,6 +1121,7 @@ class U115Client:
                 self._request(
                     "POST",
                     "/open/ufile/copy",
+                    rate_limit_route="mutation",
                     data={"file_id": source_file_id, "pid": int(target_cid)},
                     headers={"User-Agent": self.ios_user_agent},
                 )
@@ -1173,6 +1170,7 @@ class U115Client:
         payload = self._request(
             "GET",
             "/open/ufile/files",
+            rate_limit_route="directory",
             params=params,
             headers={"User-Agent": self.ios_user_agent},
         )
@@ -1239,6 +1237,7 @@ class U115Client:
         self._request(
             "POST",
             "/open/ufile/update",
+            rate_limit_route="mutation",
             data={"file_id": int(target), "file_name": new_name},
             headers={"User-Agent": self.ios_user_agent},
         )
@@ -1258,6 +1257,7 @@ class U115Client:
         payload = self._request(
             "POST",
             "/open/folder/add",
+            rate_limit_route="mutation",
             data={"pid": int(parent), "file_name": new_name},
             headers={"User-Agent": self.ios_user_agent},
         )
@@ -1287,6 +1287,7 @@ class U115Client:
                 self._request_url(
                     "POST",
                     self.web_delete_url,
+                    rate_limit_route="mutation",
                     data=data,
                     headers={"User-Agent": self.ios_user_agent},
                 )
@@ -1294,6 +1295,7 @@ class U115Client:
                 self._request(
                     "POST",
                     "/open/ufile/delete",
+                    rate_limit_route="mutation",
                     data={"file_ids": ",".join(str(value) for value in batch)},
                     headers={"User-Agent": self.ios_user_agent},
                 )
@@ -1305,6 +1307,7 @@ class U115Client:
             current = self._request_url(
                 "GET",
                 self.points_sign_url,
+                rate_limit_route="metadata",
                 headers=self.points_sign_headers,
             )
             data = current.get("data")
@@ -1330,6 +1333,7 @@ class U115Client:
                 payload = self._request_url(
                     "POST",
                     self.points_sign_url,
+                    rate_limit_route="mutation",
                     headers=self.points_sign_headers,
                     data={"token": token, "token_time": token_time},
                 )
@@ -1381,6 +1385,7 @@ class U115Client:
                 self._request(
                     "GET",
                     "/open/upload/get_token",
+                    rate_limit_route="upload_control",
                     timeout=self.upload_request_timeout,
                 )
             )
@@ -1414,6 +1419,7 @@ class U115Client:
                 "POST",
                 "/open/upload/resume",
                 no_error=True,
+                rate_limit_route="upload_control",
                 timeout=self.upload_request_timeout,
                 data={"file_size": file_size, "target": target, "fileid": file_sha1, "pick_code": pick_code},
             )
@@ -1595,10 +1601,10 @@ class U115Client:
         base_url: str | None = None,
         require_auth: bool = True,
         no_error: bool = False,
+        *,
+        rate_limit_route: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        if endpoint == self.download_endpoint:
-            self._acquire_download_request_slot()
         url = f"{base_url or self.base_url}{endpoint}"
         if not require_auth:
             return self._request_url(
@@ -1606,6 +1612,8 @@ class U115Client:
                 url,
                 require_auth=False,
                 no_error=no_error,
+                rate_limit_route=rate_limit_route,
+                rate_limit_is_open=False,
                 **kwargs,
             )
 
@@ -1619,6 +1627,7 @@ class U115Client:
                 url,
                 failed_access_token,
                 no_error=no_error,
+                rate_limit_route=rate_limit_route or "other_open",
                 **kwargs,
             )
         except (_U115OpenAuthError, httpx.HTTPStatusError) as err:
@@ -1635,6 +1644,7 @@ class U115Client:
                 url,
                 access_token,
                 no_error=no_error,
+                rate_limit_route=rate_limit_route or "other_open",
                 **kwargs,
             )
         except _U115OpenAuthError as err:
@@ -1650,6 +1660,8 @@ class U115Client:
         url: str,
         access_token: str,
         no_error: bool = False,
+        *,
+        rate_limit_route: str = "other_open",
         **kwargs: Any,
     ) -> Dict[str, Any]:
         kwargs["headers"] = self._scoped_auth_headers(
@@ -1664,6 +1676,8 @@ class U115Client:
                 url,
                 require_auth=False,
                 no_error=True,
+                rate_limit_route=rate_limit_route,
+                rate_limit_is_open=True,
                 **kwargs,
             )
             if self._is_response_success(payload):
@@ -1703,6 +1717,9 @@ class U115Client:
         url: str,
         require_auth: bool = True,
         no_error: bool = False,
+        *,
+        rate_limit_route: Optional[str] = None,
+        rate_limit_is_open: bool = False,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         cookie_request = require_auth
@@ -1720,6 +1737,13 @@ class U115Client:
         while True:
             try:
                 self._raise_if_shared_access_limited()
+                if rate_limit_route is not None:
+                    self._pacer.acquire(
+                        rate_limit_route,
+                        is_open=rate_limit_is_open,
+                        cancelled=self._request_cancelled,
+                    )
+                    self._raise_if_shared_access_limited()
                 response = self.session.request(method, url, **kwargs)
                 response.raise_for_status()
                 payload = response.json()

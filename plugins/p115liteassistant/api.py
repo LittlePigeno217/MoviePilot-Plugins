@@ -42,7 +42,12 @@ from .reverse_delete import RECENT_DELETE_TTL, ReverseDeleter
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
 from .strm import (
+    CommitJournal,
+    OwnedRemovalRequest,
+    RecordClaims,
     StrmGenerator,
+    StrmMaterializer,
+    StrmRecoveryBlockedError,
     normalize_moviepilot_url,
     normalize_pickcode,
     verify_redirect_signature,
@@ -86,6 +91,8 @@ class Api:
         life_monitor_status: Callable[[], bool] | None = None,
         notifier: Notifier | None = None,
         strm_watch_status: Callable[[], bool] | None = None,
+        recover_strm_commits: Callable[[str], list[str]] | None = None,
+        journal: CommitJournal | None = None,
     ):
         self._client_provider = client_provider
         self._store = store
@@ -93,6 +100,10 @@ class Api:
         self._life_monitor_status = life_monitor_status
         self._strm_watch_status = strm_watch_status
         self._notifier = notifier or Notifier(store.get_config)
+        self._recover_strm_commits = recover_strm_commits or (lambda _stage: [])
+        if journal is None:
+            raise ValueError("Api 必须注入插件唯一 CommitJournal")
+        self._strm_journal = journal
         self._running: set[str] = set()
         #: 每个在跑的任务是什么时候起的（epoch 秒）。任务台要显示「已跑多久」，
         #: 而 _running 只是个集合，答不了这个问题。
@@ -107,10 +118,14 @@ class Api:
         # 实时上传监听触发的“待补跑”标记：_start("upload") 抢不到锁的事件记在这里，
         # 等当前 115 任务结束由 _drain_pending_upload 补跑一次增量上传，不丢事件。
         self._pending_upload = False
+        self._pending_upload_source = ""
+        self._pending_upload_queued_at = 0.0
+        self._pending_upload_count = 0
         # 通知去重：上传（开着“生成 STRM”）发出的入库卡片已经覆盖了同一批媒体的
         # STRM 变化，随后的 STRM 同步不该再发一张。这里记抑制窗的截止时刻（monotonic）。
         self._strm_notify_quiet_until = 0.0
         self._lock = threading.Lock()
+        self._config_write_lock = threading.RLock()
         self._cloud_task_lock = threading.Lock()
         self._checkin_lock = threading.Lock()
         self._browse_115_cache: TtlCache[str, list[Dict[str, Any]]] = TtlCache(30)
@@ -138,6 +153,10 @@ class Api:
         return config
 
     def save_config(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        with self._config_write_lock:
+            return self._save_config(payload)
+
+    def _save_config(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
         payload = payload or {}
         if not isinstance(payload, dict):
             return _error("配置格式无效")
@@ -167,9 +186,68 @@ class Api:
             type_key = meta["type_key"]
             if type_key in updates:
                 updates[type_key] = normalize_notify_type(updates[type_key])
+        if "local_path_allowlist" in updates:
+            allowlist = updates.get("local_path_allowlist")
+            if isinstance(allowlist, str):
+                allowlist = [line.strip() for line in allowlist.splitlines() if line.strip()]
+            if not isinstance(allowlist, list):
+                return _error("本地目录 allowlist 格式无效")
+            normalized_allowlist = self._allowlist_values({"local_path_allowlist": allowlist})
+            if len(normalized_allowlist) != len(allowlist):
+                return _error("本地目录 allowlist 格式无效")
+            resolved_allowlist: list[str] = []
+            for value in normalized_allowlist:
+                root = self._resolved_local_root(value)
+                if root is None:
+                    return _error(f"本地目录 allowlist 路径无效或不可用：{value}")
+                text = str(root)
+                if text not in resolved_allowlist:
+                    resolved_allowlist.append(text)
+            updates["local_path_allowlist"] = resolved_allowlist
         allowed = set(DEFAULT_CONFIG) - {"tokens"}
         current = self._store.get_config()
         saved_updates = {key: updates[key] for key in allowed if key in updates}
+        allowlist_in_payload = "local_path_allowlist" in saved_updates
+        submitted_allowlist = self._allowlist_values(saved_updates)
+        full_config_payload = all(
+            key in payload
+            for key in (
+                "enabled",
+                "strm_mappings",
+                "upload_mappings",
+                "local_path_allowlist",
+            )
+        )
+        should_migrate = (
+            not allowlist_in_payload
+            or (not submitted_allowlist and full_config_payload)
+        )
+        if should_migrate:
+            # MoviePilot 自身配置的下载/媒体库目录本来就是授权根。若本次候选
+            # 映射已完全落在这些根内，就不应再因旧映射目录尚未创建而触发
+            # legacy allowlist 迁移；否则仍按原规则把旧映射精确迁移进 allowlist。
+            candidate_without_allowlist = {
+                **current,
+                **saved_updates,
+                "local_path_allowlist": [],
+            }
+            host_roots = self._local_roots(candidate_without_allowlist)
+            host_authorized = bool(host_roots) and not self._local_mapping_error(
+                candidate_without_allowlist
+            )
+            if not host_authorized:
+                migrated_allowlist, error = self._legacy_allowlist_migration(current)
+                if error:
+                    return _error(error)
+                if migrated_allowlist is not None:
+                    saved_updates["local_path_allowlist"] = migrated_allowlist
+        if any(
+            key in saved_updates
+            for key in ("local_path_allowlist", "strm_mappings", "upload_mappings")
+        ):
+            candidate = {**current, **saved_updates}
+            if error := self._local_mapping_error(candidate):
+                return _error(error)
         cookie_changed = (
             "cookie" in saved_updates
             and bool(str(saved_updates["cookie"] or "").strip())
@@ -306,20 +384,230 @@ class Api:
             return {"error": safe_error_text(err)}
 
     @staticmethod
-    def _local_roots() -> list[Path]:
-        root = Path("/").resolve()
-        return [root] if root.is_dir() else []
+    def _allowlist_values(config: Dict[str, Any]) -> list[str]:
+        values = config.get("local_path_allowlist") or []
+        if isinstance(values, str):
+            values = values.splitlines()
+        if not isinstance(values, list):
+            return []
+        result: list[str] = []
+        for value in values:
+            if not isinstance(value, (str, Path)):
+                continue
+            text = str(value).strip()
+            if text:
+                result.append(text)
+        return result
+
+    @staticmethod
+    def _mapping_local_values(
+        config: Dict[str, Any],
+        *,
+        enabled_only: bool = False,
+    ) -> list[str]:
+        fields = (
+            ("strm_mappings", "target_dir"),
+            ("upload_mappings", "source"),
+            ("upload_mappings", "strm_target"),
+        )
+        values: list[str] = []
+        for collection, key in fields:
+            for mapping in config.get(collection) or []:
+                if not isinstance(mapping, dict):
+                    continue
+                if enabled_only and not mapping.get("enabled", True):
+                    continue
+                value = str(mapping.get(key) or "").strip()
+                if value and value not in values:
+                    values.append(value)
+        return values
+
+    def _legacy_mapping_allowlist(self, config: Dict[str, Any]) -> tuple[list[str], str]:
+        migrated: list[str] = []
+        for value in self._mapping_local_values(config, enabled_only=True):
+            root = self._resolved_local_root(value)
+            if root is None:
+                return [], f"旧映射本地目录无效或不可用，无法迁移 allowlist：{value}"
+            text = str(root)
+            if text not in migrated:
+                migrated.append(text)
+        return migrated, ""
+
+    def _legacy_allowlist_migration(
+        self,
+        config: Dict[str, Any],
+    ) -> tuple[list[str] | None, str]:
+        """统一生成旧映射迁移候选；无迁移需求时返回 ``(None, "")``。"""
+        if self._allowlist_values(config):
+            return None, ""
+        if not self._mapping_local_values(config, enabled_only=True):
+            return None, ""
+        migrated, error = self._legacy_mapping_allowlist(config)
+        if error:
+            return None, error
+        candidate = {**config, "local_path_allowlist": migrated}
+        if error := self._local_mapping_error(candidate):
+            return None, error
+        return migrated, ""
+
+    def migrate_legacy_allowlist(self) -> tuple[bool, str]:
+        """启动时迁移旧映射授权，返回（是否写入，错误文本）。"""
+        with self._config_write_lock:
+            current = self._store.get_config()
+            migrated, error = self._legacy_allowlist_migration(current)
+            if error or migrated is None:
+                return False, error
+            self._store.update_config({"local_path_allowlist": migrated})
+            persisted = self._allowlist_values(self._store.get_config())
+            if persisted != migrated:
+                return False, "allowlist 迁移结果未能持久化"
+            return True, ""
+
+    @staticmethod
+    def _resolved_local_path(value: Any) -> Path | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        candidate = Path(text).expanduser()
+        if not candidate.is_absolute():
+            return None
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if resolved == Path("/"):
+            return None
+        return resolved
+
+    @classmethod
+    def _resolved_local_root(cls, value: Any) -> Path | None:
+        resolved = cls._resolved_local_path(value)
+        return resolved if resolved is not None and resolved.is_dir() else None
+
+    @classmethod
+    def _host_local_root(cls, value: Any) -> Path | None:
+        """读取宿主目录根，但不允许根本身通过符号链接动态换靶。"""
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            candidate = Path(text).expanduser()
+            if not candidate.is_absolute() or candidate == Path("/"):
+                return None
+            before = candidate.lstat()
+            if candidate.is_symlink() or not candidate.is_dir():
+                return None
+            resolved = cls._resolved_local_path(candidate)
+            after = candidate.lstat()
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+            return None
+        return resolved
+
+    @staticmethod
+    def _saved_local_root(value: Any) -> Path | None:
+        """读取保存时已经固化的 allowlist 路径，不查询文件系统或重新 resolve。"""
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            root = Path(text)
+            if not root.is_absolute() or root == Path("/") or ".." in root.parts:
+                return None
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return root
+
+    def _local_roots(self, config: Dict[str, Any] | None = None) -> list[Path]:
+        """返回插件获准访问的本地根目录，绝不把整个容器根目录暴露出去。"""
+        host_values: list[Any] = []
+        try:
+            try:
+                # MoviePilot V2 兼容入口。
+                from app.helper.directory import DirectoryHelper
+            except ImportError:
+                # MoviePilot V3 的目录应用服务入口。
+                from app.application.directory import DirectoryHelper
+
+            for directory in DirectoryHelper().get_dirs():
+                if getattr(directory, "storage", None) in (None, "", "local"):
+                    host_values.append(getattr(directory, "download_path", None))
+                if getattr(directory, "library_storage", None) in (None, "", "local"):
+                    host_values.append(getattr(directory, "library_path", None))
+        except Exception as err:  # noqa: BLE001
+            logger.warning(f"【本地目录】读取 MoviePilot 下载/媒体库目录失败：{safe_error_text(err)}")
+
+        effective_config = config if config is not None else self._store.get_config()
+        roots: list[Path] = []
+        for value in host_values:
+            root = self._host_local_root(value)
+            if root is not None and root not in roots:
+                roots.append(root)
+        for value in self._allowlist_values(effective_config):
+            root = self._saved_local_root(value)
+            if root is not None and root not in roots:
+                roots.append(root)
+        return roots
+
+    def _authorized_local_path(
+        self,
+        value: Any,
+        config: Dict[str, Any] | None = None,
+        roots: list[Path] | None = None,
+    ) -> Path | None:
+        """规范化本地路径，并确认它仍位于当前授权根内。"""
+        target = self._resolved_local_path(value)
+        if target is None:
+            return None
+        allowed_roots = roots if roots is not None else self._local_roots(config)
+        if not allowed_roots:
+            return None
+        return target if any(self._path_within(target, root) for root in allowed_roots) else None
+
+    def _local_mapping_error(self, config: Dict[str, Any]) -> str:
+        """校验显式 allowlist 及配置中的所有本地映射路径。"""
+        for value in self._allowlist_values(config):
+            if self._saved_local_root(value) is None:
+                return f"本地目录 allowlist 路径无效或不可用：{value}"
+
+        roots = self._local_roots(config)
+        fields = (
+            ("strm_mappings", "target_dir", "STRM 输出目录"),
+            ("upload_mappings", "source", "上传源目录"),
+            ("upload_mappings", "strm_target", "上传 STRM 输出目录"),
+        )
+        for collection, key, label in fields:
+            for index, mapping in enumerate(config.get(collection) or [], start=1):
+                if not isinstance(mapping, dict):
+                    continue
+                if not mapping.get("enabled", True):
+                    continue
+                value = str(mapping.get(key) or "").strip()
+                if not value:
+                    continue
+                target = self._resolved_local_path(value)
+                if target is None:
+                    return f"第 {index} 条{label}无效：{value}"
+                if self._authorized_local_path(value, config=config, roots=roots) is None:
+                    return f"第 {index} 条{label}不在本地目录 allowlist 内：{value}"
+        return ""
 
     def browse_local(self, path: str = "", root: str = "") -> Dict[str, Any]:
         try:
             roots = self._local_roots()
             if not roots:
-                return {"error": "MoviePilot 根目录不可用"}
-            requested_root = Path(root).expanduser().resolve() if root else None
+                return {"error": "没有可用的 MoviePilot 本地媒体或下载目录"}
+            requested_root = self._authorized_local_path(root, roots=roots) if root else None
             base = next((item for item in roots if item == requested_root), roots[0])
-            if requested_root and base != requested_root:
+            if root and base != requested_root:
                 return {"error": "本地目录根路径无效"}
-            target = (base / path).resolve() if path else base
+            target = self._authorized_local_path(
+                base / path if path else base,
+                roots=[base],
+            )
+            if target is None:
+                return {"error": "目录超出 MoviePilot 根目录"}
             target.relative_to(base)
             if not target.is_dir():
                 return {"error": f"目录不存在: {target}"}
@@ -345,6 +633,10 @@ class Api:
             now = time()
             with self._lock:
                 running = sorted(self._running)
+                pending_upload = self._pending_upload
+                pending_upload_source = self._pending_upload_source
+                pending_upload_queued_at = self._pending_upload_queued_at
+                pending_upload_count = self._pending_upload_count
                 tasks = [
                     {
                         "kind": kind,
@@ -354,6 +646,47 @@ class Api:
                     }
                     for kind, since in sorted(self._running_since.items())
                 ]
+            try:
+                pending_conflicts = sorted(
+                    (
+                        {
+                            "path": str(item.get("path") or ""),
+                            "target": str(item.get("target") or ""),
+                            "reason": str(item.get("reason") or ""),
+                            "first_seen": str(item.get("first_seen") or ""),
+                        }
+                        for item in self._store.get_upload_conflicts().values()
+                        if isinstance(item, dict)
+                    ),
+                    key=lambda item: item["first_seen"],
+                )
+            except AttributeError:
+                pending_conflicts = []
+            try:
+                pending_deletes = [
+                    {
+                        "id": str(batch.get("id") or ""),
+                        "mapping": str(batch.get("mapping") or "-"),
+                        "count": int(batch.get("count") or 0),
+                        "total_size": int(batch.get("total_size") or 0),
+                        "created_at": str(batch.get("created_at") or ""),
+                        "updated_at": str(batch.get("updated_at") or ""),
+                        "items_truncated": bool(batch.get("items_truncated")),
+                    }
+                    for batch in self._store.get_strm_delete_pending().values()
+                    if isinstance(batch, dict)
+                ]
+            except AttributeError:
+                pending_deletes = []
+            try:
+                recent_uploads = self._store.get_recent_uploaded_media(
+                    parse_extensions(
+                        config.get("upload_media_extensions", ""),
+                        DEFAULT_MEDIA_EXTENSIONS,
+                    )
+                )
+            except AttributeError:
+                recent_uploads = []
             return {
                 "enabled": bool(config.get("enabled")),
                 "authenticated": self._client_provider().is_authenticated(),
@@ -368,42 +701,17 @@ class Api:
                     self._strm_watch_status and self._strm_watch_status()
                 ),
                 "pending_sweep": self._pending_sweep_text(),
-                "pending_conflicts": sorted(
-                    (
-                        {
-                            "path": str(item.get("path") or ""),
-                            "target": str(item.get("target") or ""),
-                            "reason": str(item.get("reason") or ""),
-                            "first_seen": str(item.get("first_seen") or ""),
-                        }
-                        for item in self._store.get_upload_conflicts().values()
-                        if isinstance(item, dict)
-                    ),
-                    key=lambda item: item["first_seen"],
-                ),
-                "pending_deletes": [
-                    {
-                        "id": str(batch.get("id") or ""),
-                        "mapping": str(batch.get("mapping") or "-"),
-                        "count": int(batch.get("count") or 0),
-                        "total_size": int(batch.get("total_size") or 0),
-                        "created_at": str(batch.get("created_at") or ""),
-                        "updated_at": str(batch.get("updated_at") or ""),
-                        "items_truncated": bool(batch.get("items_truncated")),
-                    }
-                    for batch in self._store.get_strm_delete_pending().values()
-                    if isinstance(batch, dict)
-                ],
+                "pending_upload": pending_upload,
+                "pending_upload_source": pending_upload_source,
+                "pending_upload_queued_at": pending_upload_queued_at or None,
+                "pending_upload_count": pending_upload_count,
+                "pending_conflicts": pending_conflicts,
+                "pending_deletes": pending_deletes,
                 "running": running,
                 # 任务台要的是「跑了多久」，running 只答得了「在不在跑」
                 "tasks": tasks,
                 "history": self._store.get_history(),
-                "recent_uploads": self._store.get_recent_uploaded_media(
-                    parse_extensions(
-                        config.get("upload_media_extensions", ""),
-                        DEFAULT_MEDIA_EXTENSIONS,
-                    )
-                ),
+                "recent_uploads": recent_uploads,
             }
         except Exception as err:  # noqa: BLE001
             logger.error(f"【状态】获取运行状态失败：{safe_error_text(err)}")
@@ -412,17 +720,33 @@ class Api:
     def _strm_moviepilot_url(self) -> str:
         return str(self._store.get_config().get("moviepilot_address") or "").strip().rstrip("/")
 
-    def _strm_start_error(self) -> str:
+    def _plugin_console_link(self) -> str:
+        try:
+            return settings.MP_DOMAIN("#/plugins?tab=installed&id=P115LiteAssistant")
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _organize_history_link(self) -> str:
+        try:
+            return settings.MP_DOMAIN("#/history")
+        except Exception:  # noqa: BLE001
+            return self._plugin_console_link()
+
+    def _strm_start_error(
+        self,
+        mappings: Optional[list[Dict[str, Any]]] = None,
+    ) -> str:
         config = self._store.get_config()
         try:
             normalize_moviepilot_url(str(config.get("moviepilot_address") or ""))
         except ValueError as err:
             return str(err)
-        mappings = [
-            mapping
-            for mapping in config.get("strm_mappings") or []
-            if isinstance(mapping, dict) and mapping.get("enabled", True)
-        ]
+        if mappings is None:
+            mappings = [
+                mapping
+                for mapping in config.get("strm_mappings") or []
+                if isinstance(mapping, dict) and mapping.get("enabled", True)
+            ]
         if not mappings:
             return "没有启用的 STRM 目录映射"
         for mapping in mappings:
@@ -456,9 +780,161 @@ class Api:
         moviepilot_url = self._strm_moviepilot_url()
         return self._start(
             "strm",
-            lambda: self.run_strm(moviepilot_url, mappings),
+            lambda: self.run_strm(moviepilot_url, mappings, manual=True),
             "已开始同步这条通道" if mapping_id else "STRM 同步已开始",
         )
+
+    def task_gap_fill(
+        self,
+        payload: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """按最新清单定位缺集媒体，并整条重跑其当前启用的 STRM 映射。
+
+        清单通过 ``channel_ids`` 保留同一媒体的全部映射归属；这里会跨行、同行去重，
+        但必须跑完整映射，不能缩到媒体子目录，否则同步清理会误判其它记录已过期。
+        """
+        data = payload if isinstance(payload, dict) else {}
+        raw_row_ids = data.get("row_ids")
+        if isinstance(raw_row_ids, str):
+            raw_row_ids = [raw_row_ids]
+        if (
+            not isinstance(raw_row_ids, list)
+            or not raw_row_ids
+            or any(not isinstance(row_id, str) for row_id in raw_row_ids)
+        ):
+            return _error("请选择要补缺集的媒体")
+
+        row_ids: list[str] = []
+        seen_row_ids: set[str] = set()
+        for raw_row_id in raw_row_ids:
+            row_id = raw_row_id.strip()
+            if row_id and row_id not in seen_row_ids:
+                seen_row_ids.add(row_id)
+                row_ids.append(row_id)
+        if not row_ids:
+            return _error("请选择要补缺集的媒体")
+        if len(row_ids) > 200:
+            return _error("参数错误：一次最多选择 200 部媒体")
+
+        rows, _meta = self._ledger_rows(with_seeding=False)
+        rows_by_id = {
+            str(row.get("id")): row
+            for row in rows
+            if isinstance(row, dict) and row.get("id")
+        }
+        config = self._store.get_config()
+        configured_strm: Dict[str, Dict[str, Any]] = {}
+        enabled_strm: Dict[str, Dict[str, Any]] = {}
+        for mapping in config.get("strm_mappings") or []:
+            if not isinstance(mapping, dict):
+                continue
+            mapping_id = str(
+                mapping.get("id") or mapping.get("source_cid") or "default"
+            )
+            configured_strm[mapping_id] = mapping
+            if mapping.get("enabled", True):
+                enabled_strm[mapping_id] = mapping
+        upload_mapping_ids = {
+            str(mapping.get("id") or mapping.get("source") or "")
+            for mapping in config.get("upload_mappings") or []
+            if isinstance(mapping, dict)
+            and str(mapping.get("id") or mapping.get("source") or "")
+        }
+
+        reasons: Dict[str, int] = {}
+
+        def skip(reason: str) -> None:
+            reasons[reason] = reasons.get(reason, 0) + 1
+
+        selected_mapping_ids: set[str] = set()
+        deduplicated = 0
+        for row_id in row_ids:
+            row = rows_by_id.get(row_id)
+            if row is None:
+                skip("not_found")
+                continue
+            if not row.get("missing"):
+                skip("no_missing")
+                continue
+            raw_channel_ids = row.get("channel_ids")
+            if isinstance(raw_channel_ids, list):
+                channel_ids = [
+                    str(channel_id).strip()
+                    for channel_id in raw_channel_ids
+                    if str(channel_id).strip()
+                ]
+            else:
+                channel_id = str(row.get("channel_id") or "").strip()
+                channel_ids = [channel_id] if channel_id else []
+            # 兼容过渡期数据：channel_ids 为空时仍读取旧 channel_id。
+            if not channel_ids:
+                channel_id = str(row.get("channel_id") or "").strip()
+                channel_ids = [channel_id] if channel_id else []
+            if not channel_ids:
+                skip("missing_channel")
+                continue
+            seen_row_channels: set[str] = set()
+            for channel_id in channel_ids:
+                if channel_id in seen_row_channels:
+                    continue
+                seen_row_channels.add(channel_id)
+                if channel_id == "untracked":
+                    skip("untracked")
+                    continue
+                if channel_id.startswith("once:"):
+                    skip("once_mapping")
+                    continue
+                if channel_id in enabled_strm:
+                    if channel_id in selected_mapping_ids:
+                        deduplicated += 1
+                    else:
+                        selected_mapping_ids.add(channel_id)
+                    continue
+                if channel_id in upload_mapping_ids:
+                    skip("upload_mapping")
+                elif channel_id in configured_strm:
+                    skip("disabled_mapping")
+                else:
+                    skip("missing_mapping")
+
+        # 保持配置顺序；批量选择只提交一个 STRM 后台任务。
+        mappings = [
+            mapping
+            for mapping_id, mapping in enabled_strm.items()
+            if mapping_id in selected_mapping_ids
+        ]
+        mapping_ids = [
+            str(mapping.get("id") or mapping.get("source_cid") or "default")
+            for mapping in mappings
+        ]
+        summary = {
+            "requested": len(row_ids),
+            "triggered": len(mappings),
+            "skipped": sum(reasons.values()),
+            "deduplicated": deduplicated,
+            "mapping_ids": mapping_ids,
+            "reasons": reasons,
+        }
+        if not mappings:
+            result = _error("选中的媒体没有可补跑的 STRM 映射")
+            result["data"] = summary
+            return result
+        # 只预检本次选中的映射，配置错误必须在提交后台任务前同步返回。
+        if error := self._strm_start_error(mappings):
+            result = _error(error)
+            result["data"] = summary
+            return result
+
+        result = self._start(
+            "strm",
+            # 补缺集只做增量；全量同步由独立入口负责。
+            lambda: self.run_strm(
+                self._strm_moviepilot_url(), mappings, manual=True, strm_incremental=True
+            ),
+            f"已开始补缺集：同步 {len(mappings)} 条 STRM 通道",
+        )
+        result["data"] = summary
+        return result
 
     # ── 文件管理台：一次性任务 ──────────────────────────────────────────
     #
@@ -475,20 +951,27 @@ class Api:
             return _error("先选一个 115 源目录")
         if not target_dir:
             return _error("先选一个本地输出目录")
-        if error := self._strm_start_error():
-            return _error(error)
+        config = self._store.get_config()
+        authorized_target = self._authorized_local_path(target_dir, config=config)
+        if authorized_target is None:
+            return _error(f"STRM 输出目录不在本地目录 allowlist 内：{target_dir}")
+        try:
+            moviepilot_url = normalize_moviepilot_url(
+                str(config.get("moviepilot_address") or "")
+            )
+        except ValueError as err:
+            return _error(str(err))
         source_path = str(data.get("source_path") or "").strip()
         mapping = {
             "id": f"once:{source_cid}",
             "source_cid": source_cid,
             "source_path": source_path,
-            "target_dir": target_dir,
+            "target_dir": str(authorized_target),
             "enabled": True,
         }
-        moviepilot_url = self._strm_moviepilot_url()
         return self._start(
             "strm",
-            lambda: self.run_strm(moviepilot_url, [mapping]),
+            lambda: self.run_strm(moviepilot_url, [mapping], manual=True),
             f"已开始为 {source_path or source_cid} 生成 STRM",
         )
 
@@ -501,24 +984,37 @@ class Api:
             return _error("先选一个本地源目录")
         if not target:
             return _error("先选一个 115 目标目录")
-        try:
-            source_dir = Path(source).expanduser().resolve()
-        except (OSError, RuntimeError, ValueError):
-            return _error("本地源目录无效")
+        config = self._store.get_config()
+        source_dir = self._authorized_local_path(source, config=config)
+        if source_dir is None:
+            return _error(f"本地源目录不在本地目录 allowlist 内：{source}")
         if not source_dir.is_dir():
             return _error(f"本地源目录不存在：{source_dir}")
-        if error := self._upload_start_error():
-            return _error(error)
+        strm_target = str(data.get("strm_target") or "").strip()
+        authorized_strm_target: Path | None = None
+        if config.get("upload_generate_strm"):
+            if not strm_target:
+                return _error("上传完成生成 STRM 时，必须配置 STRM 输出目录")
+            authorized_strm_target = self._authorized_local_path(strm_target, config=config)
+            if authorized_strm_target is None:
+                return _error(f"上传 STRM 输出目录不在本地目录 allowlist 内：{strm_target}")
+        moviepilot_url = ""
+        if config.get("upload_generate_strm"):
+            try:
+                moviepilot_url = normalize_moviepilot_url(
+                    str(config.get("moviepilot_address") or "")
+                )
+            except ValueError as err:
+                return _error(str(err))
         incremental = bool(data.get("incremental", True))
         mapping = {
             "id": f"once:{source_dir.as_posix()}",
             "source": str(source_dir),
             "target": target,
-            "strm_target": "",
+            "strm_target": str(authorized_strm_target or ""),
             "enabled": True,
             "label": source_dir.name,
         }
-        moviepilot_url = self._strm_moviepilot_url()
         mode = "增量" if incremental else "全量"
         return self._start(
             "upload",
@@ -532,14 +1028,18 @@ class Api:
     ) -> Dict[str, Any]:
         """上传入口。
 
-        ``payload`` 为 True / dict 时是手动/媒体整理触发：抢不到锁直接报错，用户看得到。
-        为 False 或 ``None`` 时是实时监听触发的自动语义：抢不到锁记 ``_pending_upload``，
-        等当前 115 任务结束自动补跑，保证源目录新增不漏传。
+        ``payload`` 为 True 或普通 dict 时是手动触发，抢不到锁直接报错；为 False、None
+        或带 ``auto`` 的 dict 时是监听/TransferComplete 自动语义，忙时合并排队补跑。
         """
         if error := self._upload_start_error():
             return _error(error)
         incremental = payload if isinstance(payload, bool) else bool((payload or {}).get("incremental", True))
         auto = payload in (False, None) or (isinstance(payload, dict) and payload.get("auto"))
+        source = (
+            str(payload.get("source") or "auto")
+            if isinstance(payload, dict) and auto
+            else "watch"
+        )
         moviepilot_url = self._strm_moviepilot_url()
         result = self._start(
             "upload",
@@ -548,33 +1048,72 @@ class Api:
         )
         if result.get("success") or not auto:
             return result
-        with self._lock:
-            self._pending_upload = True
+        self._queue_pending_upload(source)
         logger.info("【目录上传】任务忙，已排队，等当前 115 任务结束后自动补跑")
         return _ok(data={"queued": True}, message="已排队，等当前任务结束后自动补跑")
 
-    def queue_upload(self) -> Dict[str, Any]:
-        """实时监听触发的上传入口（自动语义）：抢不到锁就排队补跑，不丢事件。"""
-        return self.trigger_upload(False)
+    def queue_upload(self, source: str = "watch") -> Dict[str, Any]:
+        """自动上传入口：抢不到锁就合并排队，当前任务结束后补跑一次。"""
+        return self.trigger_upload({"auto": True, "incremental": True, "source": source})
+
+    def _queue_pending_upload(self, source: str) -> None:
+        with self._lock:
+            if not self._pending_upload:
+                self._pending_upload_queued_at = time()
+                self._pending_upload_source = str(source or "auto")
+            elif source and source not in self._pending_upload_source.split(","):
+                self._pending_upload_source = ",".join(
+                    value for value in (self._pending_upload_source, source) if value
+                )
+            self._pending_upload = True
+            self._pending_upload_count += 1
+
+    def _take_pending_upload(self) -> tuple[str, float, int] | None:
+        with self._lock:
+            if not self._pending_upload or "upload" in self._running:
+                return None
+            batch = (
+                self._pending_upload_source,
+                self._pending_upload_queued_at,
+                self._pending_upload_count,
+            )
+            self._pending_upload = False
+            self._pending_upload_source = ""
+            self._pending_upload_queued_at = 0.0
+            self._pending_upload_count = 0
+            return batch
+
+    def _restore_pending_upload(self, batch: tuple[str, float, int]) -> None:
+        source, queued_at, count = batch
+        with self._lock:
+            current = set(filter(None, self._pending_upload_source.split(",")))
+            current.update(filter(None, source.split(",")))
+            self._pending_upload = True
+            self._pending_upload_source = ",".join(sorted(current))
+            timestamps = [
+                value
+                for value in (self._pending_upload_queued_at, queued_at)
+                if value
+            ]
+            self._pending_upload_queued_at = min(timestamps) if timestamps else time()
+            self._pending_upload_count += max(1, count)
 
     def _drain_pending_upload(self) -> None:
         """115 数据任务释放锁之后补跑排队中的实时上传；没排队就什么都不做。"""
-        with self._lock:
-            if not self._pending_upload:
-                return
-            if "upload" in self._running:
-                return
         if self._upload_start_error():
             return
-        with self._lock:
-            self._pending_upload = False
+        batch = self._take_pending_upload()
+        if batch is None:
+            return
         logger.debug("【目录上传】上一个 115 任务已结束，补跑排队中的增量上传")
         moviepilot_url = self._strm_moviepilot_url()
-        self._start(
+        result = self._start(
             "upload",
             lambda: self.run_upload(True, moviepilot_url),
             "目录上传已开始（补跑）",
         )
+        if not result.get("success"):
+            self._restore_pending_upload(batch)
 
     def _upload_start_error(self) -> str:
         config = self._store.get_config()
@@ -598,24 +1137,23 @@ class Api:
         self,
         moviepilot_url: str,
         mappings: Optional[list[Dict[str, Any]]] = None,
+        manual: bool = False,
+        strm_incremental: Optional[bool] = None,
     ) -> list[Dict[str, Any]]:
-        """``mappings`` 给了就只跑这些（文件管理台的一次性任务），不给就跑配置里启用的那些。"""
+        """``mappings`` 可限定通道；``strm_incremental=None`` 时沿用全局配置。"""
         config = self._store.get_config()
-        incremental = bool(config.get("strm_incremental", True))
+        incremental = (
+            bool(config.get("strm_incremental", True))
+            if strm_incremental is None
+            else bool(strm_incremental)
+        )
         if mappings is None:
             mappings = [mapping for mapping in config.get("strm_mappings") or [] if mapping.get("enabled", True)]
         logger.info(f"【STRM同步】开始执行，模式：{'增量' if incremental else '全量'}，有效映射：{len(mappings)}")
         if not mappings:
             logger.warning("【STRM同步】没有启用的目录映射，任务结束")
-        generator = StrmGenerator(
-            self._client_provider(),
-            self._store,
-            moviepilot_url,
-            incremental,
-            download_sidecars=bool(config.get("strm_download_sidecars", False)),
-            sidecar_extensions=str(config.get("upload_sidecar_extensions") or ""),
-            recent_deletes=self._recent_deletes,
-        )
+        allowed_roots = self._local_roots(config)
+        generator: StrmGenerator | None = None
         entries = []
         totals = {
             "added": 0,
@@ -633,50 +1171,75 @@ class Api:
             target = str(mapping.get("target_dir") or "-")
             logger.info(f"【STRM同步】开始处理映射：{source} -> {target}")
             mapping_started = monotonic()
-            try:
-                entry = retry_call(
-                    lambda: generator.run_mapping(mapping),
-                    attempts=3,
-                    delay=3.0,
-                    abort_on=(U115AccessLimitError, U115AuthError),
-                )
-            except U115AccessLimitError as err:
-                access_limited = True
-                logger.error(
-                    f"【STRM同步】115 访问上限重试耗尽，停止后续映射："
-                    f"{source} -> {target}，原因：{safe_error_text(err)}"
-                )
+            authorized_target = self._authorized_local_path(target, roots=allowed_roots)
+            if authorized_target is None:
+                message = f"STRM 输出目录不在本地目录 allowlist 内：{target}"
+                logger.error(f"【STRM同步】映射授权失败：{source} -> {target}，原因：{message}")
                 entry = {
                     "kind": "strm",
                     "time": datetime.now().isoformat(timespec="seconds"),
                     "mapping": source,
                     "errors": 1,
-                    "message": str(err),
+                    "message": message,
                 }
-            except U115AuthError as err:
-                access_limited = True
-                logger.error(
-                    f"【STRM同步】115 授权失效，停止后续映射："
-                    f"{source} -> {target}，原因：{safe_error_text(err)}"
-                )
-                entry = {
-                    "kind": "strm",
-                    "time": datetime.now().isoformat(timespec="seconds"),
-                    "mapping": source,
-                    "errors": 1,
-                    "message": str(err),
-                }
-            except Exception as err:  # noqa: BLE001
-                logger.error(
-                    f"【STRM同步】映射处理失败：{source} -> {target}，原因：{safe_error_text(err)}"
-                )
-                entry = {
-                    "kind": "strm",
-                    "time": datetime.now().isoformat(timespec="seconds"),
-                    "mapping": source,
-                    "errors": 1,
-                    "message": str(err),
-                }
+            else:
+                execution_mapping = deepcopy(mapping)
+                execution_mapping["target_dir"] = str(authorized_target)
+                if generator is None:
+                    generator = StrmGenerator(
+                        self._client_provider(),
+                        self._store,
+                        moviepilot_url,
+                        incremental,
+                        download_sidecars=bool(config.get("strm_download_sidecars", False)),
+                        sidecar_extensions=str(config.get("upload_sidecar_extensions") or ""),
+                        recent_deletes=self._recent_deletes,
+                        journal=self._strm_journal,
+                    )
+                try:
+                    entry = retry_call(
+                        lambda: generator.run_mapping(execution_mapping),
+                        attempts=3,
+                        delay=3.0,
+                        abort_on=(U115AccessLimitError, U115AuthError),
+                    )
+                except U115AccessLimitError as err:
+                    access_limited = True
+                    logger.error(
+                        f"【STRM同步】115 访问上限重试耗尽，停止后续映射："
+                        f"{source} -> {target}，原因：{safe_error_text(err)}"
+                    )
+                    entry = {
+                        "kind": "strm",
+                        "time": datetime.now().isoformat(timespec="seconds"),
+                        "mapping": source,
+                        "errors": 1,
+                        "message": str(err),
+                    }
+                except U115AuthError as err:
+                    access_limited = True
+                    logger.error(
+                        f"【STRM同步】115 授权失效，停止后续映射："
+                        f"{source} -> {target}，原因：{safe_error_text(err)}"
+                    )
+                    entry = {
+                        "kind": "strm",
+                        "time": datetime.now().isoformat(timespec="seconds"),
+                        "mapping": source,
+                        "errors": 1,
+                        "message": str(err),
+                    }
+                except Exception as err:  # noqa: BLE001
+                    logger.error(
+                        f"【STRM同步】映射处理失败：{source} -> {target}，原因：{safe_error_text(err)}"
+                    )
+                    entry = {
+                        "kind": "strm",
+                        "time": datetime.now().isoformat(timespec="seconds"),
+                        "mapping": source,
+                        "errors": 1,
+                        "message": str(err),
+                    }
             entry["duration_ms"] = int((monotonic() - mapping_started) * 1000)
             self._store.append_history(entry)
             entries.append(entry)
@@ -705,7 +1268,7 @@ class Api:
         )
         log_total = logger.warning if totals["errors"] else logger.info
         log_total(f"【STRM同步】执行完成，{total_summary}")
-        self._notify_strm(entries, totals, incremental)
+        self._notify_strm(entries, totals, incremental, manual=manual)
         return entries
 
     # ---- 反向删除：本地 STRM 被删除后清理网盘上对应的文件 ----
@@ -840,7 +1403,10 @@ class Api:
         except Exception as err:  # noqa: BLE001
             logger.error(f"【网盘】新建目录失败：{safe_error_text(err)}")
             return _error(safe_error_text(err))
-        self._browse_115_cache.clear()
+        try:
+            self._browse_115_cache.clear()
+        except Exception as err:  # noqa: BLE001
+            logger.warning(f"【目录上传】清理目录缓存失败：{safe_error_text(err)}")
         return _ok(message=f"已新建目录 {name}")
 
     def disk_rename(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
@@ -859,20 +1425,51 @@ class Api:
         self._browse_115_cache.clear()
         return _ok(message=f"已改名为 {name}")
 
-    def disk_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """在网盘上删除，进 115 回收站，能在 115 上还原。
+    def _strm_claim_context(
+        self, records: Dict[str, Any]
+    ) -> tuple[RecordClaims, Dict[str, Path]]:
+        config = self._store.get_config()
+        mappings = [
+            item for item in config.get("strm_mappings") or []
+            if isinstance(item, dict)
+        ]
+        mapping_ids = {
+            str(item.get("id") or item.get("source_cid") or "default")
+            for item in mappings
+        }
+        mapping_ids.update(
+            str(record.get("mapping_id") or "")
+            for record in records.values()
+            if isinstance(record, dict) and record.get("mapping_id")
+        )
+        upload_getter = getattr(self._store, "get_upload_records", None)
+        upload_records = upload_getter() if callable(upload_getter) else {}
+        claims = RecordClaims.from_records(
+            records, upload_records, mapping_ids=mapping_ids,
+            upload_mappings=config.get("upload_mappings") or [],
+        )
+        roots = {
+            str(item.get("id") or item.get("source_cid") or "default"):
+            Path(str(item.get("target_dir") or "")).expanduser().resolve()
+            for item in mappings if str(item.get("target_dir") or "").strip()
+        }
+        return claims, roots
 
-        ``also_local`` 给 true 时**顺带**删掉本地对应的 STRM 与记录 —— 默认不动，
-        因为「在网盘上删一个文件」和「把本地那份也删掉」是两件事，不该悄悄一起做。
-        不删的话本地那份就成了死链，界面上要说清这一点。
-        """
+    @staticmethod
+    def _claim_owner_id(claim) -> str:
+        return str(claim.owner or "").removeprefix(f"{claim.container}:")
+
+    def disk_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """删除网盘条目；also_local 使用统一 owned-removal journal。"""
         data = payload or {}
         raw_ids = data.get("file_ids") or data.get("ids")
         if isinstance(raw_ids, (str, int)):
             raw_ids = [raw_ids]
         if not isinstance(raw_ids, list) or not raw_ids:
             return _error("没有要删的文件")
-        ids = [str(value).strip() for value in raw_ids if str(value).strip()]
+        ids = list(dict.fromkeys(
+            str(value).strip() for value in raw_ids if str(value).strip()
+        ))
         if not ids:
             return _error("没有要删的文件")
         try:
@@ -882,43 +1479,59 @@ class Api:
             return _error(safe_error_text(err))
         self._browse_115_cache.clear()
 
-        local_removed = 0
-        records_dropped = 0
+        local_removed = records_dropped = local_refused = local_errors = 0
         if bool(data.get("also_local")):
             wanted = set(ids)
             records = self._store.get_strm_records()
-            for key in [
-                key
-                for key, record in records.items()
-                if isinstance(record, dict) and str(record.get("file_id") or "") in wanted
-            ]:
-                record = records.pop(key, None) or {}
-                records_dropped += 1
-                raw_path = str(record.get("path") or "")
-                if not raw_path:
+            claims, roots = self._strm_claim_context(records)
+            requests: list[OwnedRemovalRequest] = []
+            for key, record in records.items():
+                if not isinstance(record, dict):
+                    continue
+                file_id = str(record.get("file_id") or record.get("fileid") or "")
+                if file_id not in wanted:
+                    continue
+                claim = claims.get(("strm", str(key)))
+                owner_id = self._claim_owner_id(claim) if claim is not None else ""
+                target_root = roots.get(owner_id)
+                if claim is None or target_root is None:
+                    local_refused += 1
+                    continue
+                requests.append(OwnedRemovalRequest(
+                    ("strm", str(key)), record, target_root, owner_id
+                ))
+            results = StrmMaterializer(self._store).prepare_owned_removals(
+                requests, claims
+            )
+            for result in results:
+                if not result.may_drop_record or result.unit is None:
+                    local_refused += 1
                     continue
                 try:
-                    local = Path(raw_path)
-                    if local.is_file():
-                        local.unlink()
-                        local_removed += 1
-                except OSError as err:
-                    logger.warning(f"【网盘】本地 STRM 删不掉 {raw_path}：{safe_error_text(err)}")
-            if records_dropped:
-                self._store.save_strm_records(records)
+                    self._strm_journal.execute(result.unit)
+                except Exception as err:  # noqa: BLE001
+                    local_errors += 1
+                    logger.warning(f"【网盘】本地 STRM 删除事务失败：{safe_error_text(err)}")
+                    continue
+                records_dropped += len(result.unit.mutations)
+                local_removed += sum(
+                    1 for operation in result.unit.file_ops
+                    if operation.action == "unlink"
+                )
+                for mutation in result.unit.mutations:
+                    records.pop(mutation.key, None)
 
         message = f"网盘删了 {len(ids)} 个，进了 115 回收站，能在 115 上还原"
         if bool(data.get("also_local")):
             message += f"；本地跟着删了 {local_removed} 个 STRM"
+            if local_refused or local_errors:
+                message += f"，拒绝 {local_refused} 个，失败 {local_errors} 个"
         logger.info(f"【网盘】{message}")
-        return _ok(
-            {
-                "deleted": len(ids),
-                "local_removed": local_removed,
-                "records_dropped": records_dropped,
-            },
-            message=message,
-        )
+        return _ok({
+            "deleted": len(ids), "local_removed": local_removed,
+            "records_dropped": records_dropped, "local_refused": local_refused,
+            "local_errors": local_errors,
+        }, message=message)
 
     # ── 媒体清单 ──────────────────────────────────────────────────────
 
@@ -1172,11 +1785,7 @@ class Api:
     # ── STRM 库体检 ────────────────────────────────────────────────────
 
     def library_drop(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """删掉指定的本地 STRM 文件并清掉对应记录。**网盘一个文件都不动。**
-
-        只允许删配置里那些 STRM 输出目录之下、以 ``.strm`` 结尾的文件 —— 少了这道闸门，
-        这个接口就是个任意文件删除器。
-        """
+        """事务化清理本地 STRM 与所有明确命中的记录；不动网盘。"""
         data = payload or {}
         raw_paths = data.get("paths")
         if isinstance(raw_paths, str):
@@ -1185,28 +1794,37 @@ class Api:
             return _error("没有要清理的文件")
 
         config = self._store.get_config()
+        allowed_roots = self._local_roots(config)
+        if not allowed_roots:
+            return _error("没有可用的本地目录 allowlist，没有可清理的范围")
+        mapping_roots: dict[str, Path] = {}
         roots: list[Path] = []
+        has_mapping_root = False
         for mapping in config.get("strm_mappings") or []:
             if not isinstance(mapping, dict):
                 continue
             value = str(mapping.get("target_dir") or "").strip()
             if not value:
                 continue
-            try:
-                roots.append(Path(value).expanduser().resolve())
-            except (OSError, RuntimeError, ValueError):
+            has_mapping_root = True
+            mapping_root = self._resolved_local_path(value)
+            if mapping_root is None:
                 continue
-        if not roots:
+            mapping_id = str(mapping.get("id") or mapping.get("source_cid") or "default")
+            mapping_roots[mapping_id] = mapping_root
+            root = self._authorized_local_path(value, roots=allowed_roots)
+            if root is not None and root not in roots:
+                roots.append(root)
+            for allowed_root in allowed_roots:
+                authorized = self._authorized_local_path(allowed_root, roots=[allowed_root])
+                if (authorized is not None
+                        and self._path_within(authorized, mapping_root)
+                        and authorized not in roots):
+                    roots.append(authorized)
+        if not has_mapping_root:
             return _error("还没有配置 STRM 输出目录，没有可清理的范围")
 
-        records = self._store.get_strm_records()
-        by_path = {
-            str(record.get("path") or ""): key
-            for key, record in records.items()
-            if isinstance(record, dict)
-        }
-        removed = 0
-        dropped = 0
+        targets: list[Path] = []
         refused = 0
         for raw in raw_paths[:2000]:
             try:
@@ -1214,31 +1832,86 @@ class Api:
             except (OSError, RuntimeError, ValueError):
                 refused += 1
                 continue
-            if target.suffix.lower() != ".strm" or not any(
-                self._path_within(target, root) for root in roots
-            ):
+            if target in targets:
+                continue
+            if (target.suffix.lower() != ".strm"
+                    or not any(self._path_within(target, root) for root in roots)
+                    or self._authorized_local_path(target, roots=allowed_roots) is None):
+                refused += 1
+                continue
+            targets.append(target)
+
+        records = self._store.get_strm_records()
+        claims, _configured_roots = self._strm_claim_context(records)
+        by_path: dict[Path, list[tuple[str, Dict[str, Any]]]] = {}
+        for key, record in records.items():
+            if not isinstance(record, dict):
+                continue
+            value = str(record.get("output_path") or record.get("path") or "").strip()
+            if not value:
+                continue
+            try:
+                by_path.setdefault(Path(value).expanduser().resolve(), []).append(
+                    (str(key), record)
+                )
+            except (OSError, RuntimeError, ValueError):
+                continue
+
+        removed = dropped = errors = 0
+        materializer = StrmMaterializer(self._store)
+        for target in targets:
+            matches = by_path.get(target, [])
+            if not matches:
+                refused += 1  # untracked 默认拒删
+                continue
+            requests: list[OwnedRemovalRequest] = []
+            invalid = False
+            for key, record in matches:
+                claim = claims.get(("strm", key))
+                if claim is None or claim.owner_confidence == "ambiguous":
+                    invalid = True
+                    break
+                owner_id = self._claim_owner_id(claim)
+                target_root = mapping_roots.get(owner_id)
+                if target_root is None:
+                    invalid = True
+                    break
+                requests.append(OwnedRemovalRequest(
+                    ("strm", key), record, target_root, owner_id
+                ))
+            if invalid:
+                refused += 1
+                continue
+            result = materializer.prepare_owned_removals(requests, claims)[0]
+            if not result.may_drop_record or result.unit is None:
                 refused += 1
                 continue
             try:
-                if target.is_file():
-                    target.unlink()
-                    removed += 1
-            except OSError as err:
-                logger.warning(f"【库体检】删不掉 {target}：{safe_error_text(err)}")
+                self._strm_journal.execute(result.unit)
+            except Exception as err:  # noqa: BLE001
+                errors += 1
+                logger.warning(f"【库体检】删除事务失败 {target}：{safe_error_text(err)}")
                 continue
-            key = by_path.get(str(target)) or by_path.get(str(raw))
-            if key and records.pop(key, None) is not None:
-                dropped += 1
-        if dropped:
-            self._store.save_strm_records(records)
+            dropped += len(result.unit.mutations)
+            removed += sum(
+                1 for operation in result.unit.file_ops if operation.action == "unlink"
+            )
+            for mutation in result.unit.mutations:
+                records.pop(mutation.key, None)
+
         logger.info(
             f"【库体检】清理完成：删掉 {removed} 个 STRM，清掉 {dropped} 条记录，"
-            f"拒绝 {refused} 个越界路径，网盘上的文件一个都没动"
+            f"拒绝 {refused} 个，失败 {errors} 个，网盘上的文件一个都没动"
         )
         message = f"删掉 {removed} 个 STRM，清掉 {dropped} 条记录，网盘上的文件一个都没动"
         if refused:
-            message += f"；{refused} 个路径不在 STRM 输出目录里，已拒绝"
-        return _ok({"removed": removed, "dropped": dropped, "refused": refused}, message=message)
+            message += f"；拒绝 {refused} 个越界、未跟踪或归属含糊路径"
+        if errors:
+            message += f"；{errors} 个事务失败并保留记录"
+        result = {"removed": removed, "dropped": dropped, "refused": refused}
+        if errors:
+            result["errors"] = errors
+        return _ok(result, message=message)
 
     def source_drop(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
         """删掉本地**源文件**（上传通道源目录里的媒体文件）。网盘和 STRM 都不动。
@@ -1259,18 +1932,33 @@ class Api:
             return _error("没有要删的源文件")
 
         config = self._store.get_config()
+        allowed_roots = self._local_roots(config)
+        if not allowed_roots:
+            return _error("没有可用的本地目录 allowlist，没有可删的范围")
         roots: list[Path] = []
+        has_mapping_root = False
         for mapping in config.get("upload_mappings") or []:
             if not isinstance(mapping, dict):
                 continue
             value = str(mapping.get("source") or "").strip()
             if not value:
                 continue
-            try:
-                roots.append(Path(value).expanduser().resolve())
-            except (OSError, RuntimeError, ValueError):
+            has_mapping_root = True
+            mapping_root = self._resolved_local_path(value)
+            if mapping_root is None:
                 continue
-        if not roots:
+            root = self._authorized_local_path(value, roots=allowed_roots)
+            if root is not None and root not in roots:
+                roots.append(root)
+            for allowed_root in allowed_roots:
+                authorized = self._authorized_local_path(allowed_root, roots=[allowed_root])
+                if (
+                    authorized is not None
+                    and self._path_within(authorized, mapping_root)
+                    and authorized not in roots
+                ):
+                    roots.append(authorized)
+        if not has_mapping_root:
             return _error("还没有配置上传通道源目录，没有可删的范围")
         suffixes = {
             str(value).lower()
@@ -1289,8 +1977,10 @@ class Api:
             except (OSError, RuntimeError, ValueError):
                 refused += 1
                 continue
-            if target.suffix.lower() not in suffixes or not any(
-                self._path_within(target, root) for root in roots
+            if (
+                target.suffix.lower() not in suffixes
+                or not any(self._path_within(target, root) for root in roots)
+                or self._authorized_local_path(target, roots=allowed_roots) is None
             ):
                 refused += 1
                 continue
@@ -1386,7 +2076,11 @@ class Api:
         if not has_scope:
             logger.debug("【STRM反向删除】没有待处理的目标，本次跳过")
             return []
-        return self.run_strm_sweep(scope)
+        try:
+            return self.run_strm_sweep(scope)
+        except Exception:
+            self._queue_sweep_scope(scope)
+            raise
 
     def _drain_pending_sweep(self) -> None:
         """115 数据任务释放锁之后补跑排队中的反向删除；没有排队就什么都不做。"""
@@ -1399,6 +2093,18 @@ class Api:
             return
         logger.debug("【STRM反向删除】上一个 115 任务已结束，补跑排队中的反向删除")
         self._start("sweep", self._sweep_worker, "STRM 反向删除已开始")
+
+    def _drain_pending_tasks(self, completed_kind: str) -> None:
+        drains = (
+            (self._drain_pending_upload, self._drain_pending_sweep)
+            if completed_kind == "sweep"
+            else (self._drain_pending_sweep, self._drain_pending_upload)
+        )
+        for drain in drains:
+            try:
+                drain()
+            except Exception as err:  # noqa: BLE001
+                logger.error(f"【任务编排】补跑排队任务失败：{safe_error_text(err)}")
 
     _SWEEP_COUNT_KEYS = (
         "cloud_deleted",
@@ -1445,7 +2151,9 @@ class Api:
         if not mappings:
             logger.warning("【STRM反向删除】没有匹配的 STRM 通道，任务结束")
             return []
-        deleter = ReverseDeleter(self._client_provider, self._store, self._recent_deletes)
+        deleter = ReverseDeleter(
+            self._client_provider, self._store, self._strm_journal, self._recent_deletes
+        )
         scope_text = "全部记录" if paths is None else f"{len(paths)} 个路径"
         logger.info(
             f"【STRM反向删除】开始执行，范围：{scope_text}，有效通道：{len(mappings)}"
@@ -1528,16 +2236,14 @@ class Api:
         deleted = int(totals.get("cloud_deleted", 0))
         pending = int(totals.get("pending", 0))
         failed = int(totals.get("errors", 0))
-        # 删除不可逆，标题先说清「动了多少」。地名写「网盘」而不是「115 上」——标题
-        # 前缀已经是「115 轻量助手」，同一个数字前面挂两个 115 读起来像口误
         if failed:
-            headline = f"{failed} 个网盘文件没删掉"
-        elif deleted:
-            headline = f"删了 {deleted} 个网盘文件"
+            headline = f"网盘清理完成：{failed} 个失败"
         elif pending:
-            headline = f"{pending} 个网盘文件等你确认"
+            headline = f"网盘清理待确认：{pending} 个文件"
+        elif deleted:
+            headline = f"网盘清理完成：删除 {deleted} 个文件"
         else:
-            headline = "没有要删的"
+            headline = "网盘清理完成：没有要删除的文件"
 
         # 出事的、等人的排前面：映射多到要折叠时，被折掉的必须是已经办完的那几条。
         # 只有一条映射时（真机上的常态）行里不带数：那个数标题刚说过，行里要说的是
@@ -1575,7 +2281,13 @@ class Api:
         if tail:
             lines.append("")
             lines.extend(tail)
-        self._notifier.notify("strm", headline, lines or ["这次没有需要处理的"])
+        self._notifier.notify(
+            "strm",
+            headline,
+            lines or ["这次没有需要处理的"],
+            link=self._plugin_console_link(),
+            title_prefix="",
+        )
 
     @classmethod
     def _sweep_row(cls, entry: Dict[str, Any], terse: bool = False) -> tuple[int, str]:
@@ -1869,11 +2581,9 @@ class Api:
             message=f"已按「{label}」处理 {len(resolved)} 个冲突",
         )
 
-    # ── 飞书卡片的排版零件 ──────────────────────────────────────────────────
+    # ── 已废弃的飞书卡片排版零件 ────────────────────────────────────────────
     #
-    # 卡片和纯文本走的是同一份信息架构：一行结论、一行读数、一份清单。卡片多的只是
-    # 颜色和分栏，不多一条信息 —— 两边不一致的话，飞书里看到的和微信里看到的就成了
-    # 两回事。
+    # 保留这些私有方法，避免旧测试或外部补丁导入断裂；正式通知统一走宿主 post_message。
 
     @staticmethod
     def _card_text(content: str, *, margin: str = "4px 16px 0px 16px", align: str = "") -> dict:
@@ -1924,12 +2634,9 @@ class Api:
         entries: list[Dict[str, Any]],
         totals: Dict[str, int],
         incremental: bool,
+        manual: bool = False,
     ) -> None:
-        """STRM 通道执行完成后的通知：飞书发卡片，其余渠道发同一套文案的纯文本。
-
-        三个大数（新增 / 更新 / 清理）单独占一行，剩下的（刮削文件 / 没变化 / 失败）挤成
-        一行灰字 —— 它们只在出事的时候才会被看，平时不该和主数字抢注意力。
-        """
+        """STRM 完成通知统一交给宿主；自动空跑保持静默。"""
         if not self._notifier.is_enabled("strm"):
             return
         quiet_remaining = self._strm_notify_quiet_until - monotonic()
@@ -1941,62 +2648,19 @@ class Api:
                 f"{int(quiet_remaining / 60) + 1} 分钟内生效"
             )
             return
-        failed = int(totals.get("errors") or 0)
-        meta = (
-            f"{'增量' if incremental else '全量'} · {len(entries)} 个映射"
-            f" · {self._duration_text(totals.get('duration_ms'))}"
+        changed = sum(
+            int(totals.get(key) or 0) for key in ("added", "updated", "removed", "errors")
         )
-        verdict = (
-            f"<font color='red'>**❌ {failed} 个没生成**</font>"
-            if failed
-            else "<font color='green'>**✅ 全部完成**</font>"
+        if not changed and not manual:
+            return
+        headline, lines = self._strm_text_notice(entries, totals, incremental)
+        self._notifier.notify(
+            "strm",
+            headline,
+            lines,
+            link=self._plugin_console_link(),
+            title_prefix="",
         )
-        elements: list[dict] = [
-            self._card_text(
-                f"{verdict}　<font color='grey'>{meta}</font>", margin="0px 16px 0px 16px"
-            ),
-            self._card_rule(),
-            self._card_stats([
-                (int(totals.get("added") or 0), "新增"),
-                (int(totals.get("updated") or 0), "更新"),
-                (int(totals.get("removed") or 0), "清理"),
-            ]),
-        ]
-        aside = [
-            f"刮削文件 {int(totals.get('sidecars') or 0)}",
-            f"没变化 {int(totals.get('skipped') or 0)}",
-        ]
-        if failed:
-            aside.append(f"<font color='red'>失败 {failed}</font>")
-        elements.append(
-            self._card_text(
-                f"<font color='grey'>{' · '.join(aside)}</font>",
-                margin="6px 16px 0px 16px",
-                align="center",
-            )
-        )
-        # 出错的映射排在前面：映射多到要折叠时，被折掉的必须是「都好」的那几条
-        ordered = sorted(entries, key=lambda entry: not int(entry.get("errors") or 0))
-        if ordered:
-            elements.append(self._card_rule("8px 16px 8px 16px"))
-            elements.append(self._card_text("**映射**", margin="0px 16px 0px 16px"))
-            elements.extend(
-                self._card_text(self._strm_row_line(entry))
-                for entry in ordered[: self.NOTIFY_ROW_LIMIT]
-            )
-            if len(ordered) > self.NOTIFY_ROW_LIMIT:
-                elements.append(
-                    self._card_text(
-                        f"<font color='grey'>另外 {len(ordered) - self.NOTIFY_ROW_LIMIT}"
-                        f" 条映射见插件运行台</font>"
-                    )
-                )
-
-        strm_mtype = normalize_notify_type(self._store.get_config().get("strm_notify_type"))
-        if not self._notifier.send_upload_feishu_card(
-            "115 轻量助手 · STRM 同步", self._card_close(elements), mtype=strm_mtype
-        ):
-            self._notifier.notify("strm", *self._strm_text_notice(entries, totals, incremental))
 
     # 通知里最多逐行列几条映射，再多就折叠 —— 锁屏上看不完那么长
     NOTIFY_ROW_LIMIT = 8
@@ -2094,18 +2758,26 @@ class Api:
         updated = int(totals.get("updated", 0))
         failed = int(totals.get("errors", 0))
         if failed:
-            headline = f"{failed} 个 STRM 文件没生成"
+            headline = f"STRM 同步完成：{failed} 个失败"
         elif added:
-            headline = f"新增 {added} 个 STRM 文件"
+            headline = f"STRM 同步完成：新增 {added} 个"
         elif updated:
-            headline = f"更新 {updated} 个 STRM 文件"
+            headline = f"STRM 同步完成：更新 {updated} 个"
         else:
-            headline = "没有需要更新的"
+            headline = "STRM 已是最新"
         # 出错的映射排在前面：映射多到要折叠时，被折掉的必须是「都好」的那几条
         ordered = sorted(entries, key=lambda entry: not int(entry.get("errors") or 0))
         lines = [self._strm_row_line(entry) for entry in ordered[: self.NOTIFY_ROW_LIMIT]]
         if len(ordered) > self.NOTIFY_ROW_LIMIT:
             lines.append(f"另外 {len(ordered) - self.NOTIFY_ROW_LIMIT} 条映射见插件运行台")
+        summary = (
+            f"新增 {added} 个，更新 {updated} 个，清理 {int(totals.get('removed') or 0)} 个"
+        )
+        meta = (
+            f"{'增量' if incremental else '全量'}同步，{len(entries)} 条映射，"
+            f"耗时 {self._duration_text(totals.get('duration_ms'))}"
+        )
+        lines = [summary, meta, *([""] if ordered else []), *lines]
         if aside := self._strm_aside_line(totals, incremental):
             lines.append(aside)
         return headline, lines
@@ -2683,25 +3355,91 @@ class Api:
             config = {**config, "upload_mappings": mappings}
         mappings = [mapping for mapping in config.get("upload_mappings") or [] if mapping.get("enabled", True)]
         logger.info(f"【目录上传】开始执行，模式：{'增量' if incremental else '全量'}，有效映射：{len(mappings)}")
-        try:
-            entry = DirectoryUploader(
-                self._client_provider(),
-                self._store,
-                config,
-                moviepilot_url or str(config.get("moviepilot_address") or ""),
-                poster_search=self._search_poster,
-            ).run(incremental)
-        except Exception as err:  # noqa: BLE001
-            logger.error(f"【目录上传】执行失败：{safe_error_text(err)}")
+        allowed_roots = self._local_roots(config)
+        execution_mappings: list[Dict[str, Any]] = []
+        authorization_errors: list[Dict[str, str]] = []
+        for mapping in mappings:
+            source = str(mapping.get("source") or "").strip()
+            authorized_source = self._authorized_local_path(source, roots=allowed_roots)
+            if authorized_source is None:
+                authorization_errors.append(
+                    {
+                        "path": source,
+                        "target": str(mapping.get("target") or ""),
+                        "message": f"上传源目录不在本地目录 allowlist 内：{source or '-'}",
+                    }
+                )
+                continue
+            if not authorized_source.is_dir():
+                authorization_errors.append(
+                    {
+                        "path": source,
+                        "target": str(mapping.get("target") or ""),
+                        "message": f"上传源目录不存在：{authorized_source}",
+                    }
+                )
+                continue
+            execution_mapping = deepcopy(mapping)
+            execution_mapping["source"] = str(authorized_source)
+            if config.get("upload_generate_strm"):
+                strm_target = str(mapping.get("strm_target") or "").strip()
+                if not strm_target:
+                    authorization_errors.append(
+                        {
+                            "path": source,
+                            "target": str(mapping.get("target") or ""),
+                            "message": "上传完成生成 STRM 时，必须配置 STRM 输出目录",
+                        }
+                    )
+                    continue
+                authorized_strm_target = self._authorized_local_path(
+                    strm_target,
+                    roots=allowed_roots,
+                )
+                if authorized_strm_target is None:
+                    authorization_errors.append(
+                        {
+                            "path": source,
+                            "target": str(mapping.get("target") or ""),
+                            "message": f"上传 STRM 输出目录不在本地目录 allowlist 内：{strm_target}",
+                        }
+                    )
+                    continue
+                execution_mapping["strm_target"] = str(authorized_strm_target)
+            execution_mappings.append(execution_mapping)
+
+        if authorization_errors:
+            for error in authorization_errors:
+                logger.error(f"【目录上传】映射授权失败：{error['message']}")
             entry = {
                 "kind": "upload",
                 "time": datetime.now().isoformat(timespec="seconds"),
                 "incremental": incremental,
-                "errors": 1,
-                "message": str(err),
+                "errors": len(authorization_errors),
+                "errors_detail": authorization_errors[:20],
+                "message": authorization_errors[0]["message"],
             }
-        finally:
-            self._browse_115_cache.clear()
+        else:
+            execution_config = {**config, "upload_mappings": execution_mappings}
+            try:
+                entry = DirectoryUploader(
+                    self._client_provider(),
+                    self._store,
+                    execution_config,
+                    moviepilot_url or str(config.get("moviepilot_address") or ""),
+                    poster_search=self._search_poster,
+                    journal=self._strm_journal,
+                ).run(incremental)
+            except Exception as err:  # noqa: BLE001
+                logger.error(f"【目录上传】执行失败：{safe_error_text(err)}")
+                entry = {
+                    "kind": "upload",
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "incremental": incremental,
+                    "errors": 1,
+                    "message": str(err),
+                }
+        self._browse_115_cache.clear()
         self._store.append_history(entry)
         summary = (
             f"上传 {int(entry.get('uploaded') or 0)}，秒传 {int(entry.get('instant') or 0)}，"
@@ -2763,12 +3501,6 @@ class Api:
             for f in files:
                 m = f.get("method", "upload")
                 _methods[m] = _methods.get(m, 0) + 1
-            _method_parts = []
-            if _methods.get("upload"):
-                _method_parts.append(f"上传 {_methods['upload']}")
-            if _methods.get("instant"):
-                _method_parts.append(f"秒传 {_methods['instant']}")
-            _method_str = "，".join(_method_parts) if _method_parts else "上传"
             _strm = sum(1 for f in files if f.get("strm_generated"))
             _sidecars = sum(len(f.get("sidecars") or []) for f in files)
             _labels = sorted(set(f.get("mapping_label", "") for f in files if f.get("mapping_label")))
@@ -2841,52 +3573,61 @@ class Api:
                     "",
                 )
 
-            # 卡片和纯文本走同一份信息架构：库存带在上，读数在下。卡片多的只是颜色和
-            # 分栏，不多一条信息 —— 两边不一致的话，飞书里看到的和微信里看到的就成了
-            # 两回事
-            elements: list[dict] = [
-                self._card_text(
-                    f"<font color='green'>{line}</font>" if line.endswith("集齐了") else line,
-                    margin="2px 16px 0px 16px",
-                )
-                for line in _season_lines
-            ]
-            elements.append(self._card_rule())
-            elements.append(self._card_stats([
-                (_count, "这次进了"),
-                (_size, "大小"),
-                (_method_str, "方式"),
-            ]))
-            elements.append(self._card_stats(
-                [(_label_str, "存进"), (_strm, "STRM"), (_sidecars, "刮削文件")],
-                margin="6px 16px 0px 16px",
-            ))
-            # 优先飞书美化卡片，失败回退文本（mtype 用配置的消息类型分流渠道）
-            card_title = f"115 网盘・{title_key} 已入库"
-            upload_mtype = normalize_notify_type(
-                self._store.get_config().get("upload_notify_type")
+            episode_title = self._upload_episode_title(_se_text)
+            headline = f"{title_key}{f' {episode_title}' if episode_title else ''} 已入库"
+            facts = {
+                "season_lines": _season_lines,
+                "count": _count,
+                "size": _size,
+                "instant": int(_methods.get("instant") or 0),
+                "library": _label_str,
+                "strm": _strm,
+                "sidecars": _sidecars,
+            }
+            self._notifier.notify(
+                "upload",
+                headline,
+                self._upload_text_lines(facts),
+                image=poster,
+                link=self._organize_history_link(),
+                title_prefix="",
             )
-            if not self._notifier.send_upload_feishu_card(
-                card_title, self._card_close(elements), poster, upload_mtype
-            ):
-                self._notifier.notify(
-                    "upload",
-                    f"{title_key} 已入库",
-                    self._upload_text_lines({
-                        "season_lines": _season_lines,
-                        "count": _count, "size": _size,
-                        "instant": int(_methods.get("instant") or 0),
-                        "library": _label_str, "strm": _strm, "sidecars": _sidecars,
-                    }),
-                    image=poster,
-                )
         # 汇总通知（有错误时补充）。标题已经报了失败数，正文只说标题装不下的：这一批
         # 里还有多少是好的，以及去哪儿看失败原因
         if errors:
             lines = ["失败的文件名和原因在插件运行台的记录里"]
             if per_file:
                 lines.insert(0, f"同一批里另外 {len(per_file)} 个已经进库了")
-            self._notifier.notify("upload", f"{errors} 个文件没传上去", lines)
+            self._notifier.notify(
+                "upload",
+                f"{errors} 个文件没传上去",
+                lines,
+                link=self._plugin_console_link(),
+                title_prefix="",
+            )
+
+    @staticmethod
+    def _upload_episode_title(se_text: Any) -> str:
+        """把聚合结果压成原生入库标题使用的 Sxx Exx-Eyy 形式。"""
+        parts: list[str] = []
+        for season_text in str(se_text or "").split("，"):
+            match = re.match(r"第(\d+)季\s*第([\d、\-]+)集", season_text.strip())
+            if not match:
+                continue
+            episode_text = match.group(2)
+            ranges = re.findall(r"\d+(?:-\d+)?", episode_text)
+            if not ranges:
+                continue
+            formatted_ranges: list[str] = []
+            for segment in ranges:
+                if "-" in segment:
+                    start, end = segment.split("-", 1)
+                    formatted_ranges.append(f"E{int(start):02d}-E{int(end):02d}")
+                else:
+                    formatted_ranges.append(f"E{int(segment):02d}")
+            formatted = "、".join(formatted_ranges)
+            parts.append(f"S{int(match.group(1)):02d} {formatted}")
+        return " ".join(parts)
 
     def run_checkin(self) -> Dict[str, Any]:
         if not self._checkin_lock.acquire(blocking=False):
@@ -2932,24 +3673,37 @@ class Api:
         if not success:
             self._notifier.notify(
                 "checkin",
-                "没签上",
+                "115 签到失败",
                 [message or "115 没说原因，去插件运行台看这次的记录"],
+                title_prefix="",
             )
             return
         points = int(entry.get("points_num") or 0)
         continuous = int(entry.get("continuous_day") or 0)
         if entry.get("already"):
-            headline = "今天已经签过了"
+            headline = "115 今日已签到"
         else:
-            headline = f"已签到，+{points} 积分" if points else "已签到"
+            headline = "115 签到成功"
         # 连续 1 天也照写：真机上刚断签重来的那天正文只剩一句「签到已记录」，
         # 而标题已经说了「已签到，+1 积分」—— 那一行等于把同一句话说第二遍。
         # 「连续签到 1 天」反倒是新消息：连签断了，从今天重新数
-        lines = [f"连续签到 {continuous} 天"] if continuous >= 1 else []
+        if points and not entry.get("already"):
+            lines = [
+                f"连续签到 {continuous} 天，获得 {points} 积分"
+                if continuous >= 1
+                else f"获得 {points} 积分"
+            ]
+        else:
+            lines = [f"当前连续签到 {continuous} 天"] if continuous >= 1 else []
         # 115 的回执偶尔带活动提示之类的内容，和上面两句不重复时才附上
         if message and message not in {"签到成功", "今日已签到"} and message not in headline:
             lines.append(message)
-        self._notifier.notify("checkin", headline, lines or ["签到已记录"])
+        self._notifier.notify(
+            "checkin",
+            headline,
+            lines or ["签到已记录"],
+            title_prefix="",
+        )
 
     @staticmethod
     def _checkin_timezone():
@@ -3242,8 +3996,14 @@ class Api:
             self._running.add(kind)
             self._running_since[kind] = time()
         def run() -> None:
+            recovery_failed = False
             try:
+                if kind in self._CLOUD_TASK_KINDS:
+                    self._recover_strm_commits(f"{label}任务启动")
                 target()
+            except StrmRecoveryBlockedError as err:
+                recovery_failed = True
+                logger.error(f"【{label}】STRM journal 恢复失败，任务已阻断：{safe_error_text(err)}")
             except Exception as err:  # noqa: BLE001
                 logger.error(f"【{label}】后台任务异常终止：{safe_error_text(err)}")
             finally:
@@ -3252,16 +4012,10 @@ class Api:
                     self._running_since.pop(kind, None)
                 if cloud_lock_acquired:
                     self._cloud_task_lock.release()
-                # 锁已释放，这时候才轮得到排队中的反向删除与实时上传。放在 finally
-                # 里是因为任务异常终止同样要让排队的任务跑起来，不然事件就永远压在队列里。
-                try:
-                    self._drain_pending_sweep()
-                except Exception as err:  # noqa: BLE001
-                    logger.error(f"【STRM反向删除】补跑排队任务失败：{safe_error_text(err)}")
-                try:
-                    self._drain_pending_upload()
-                except Exception as err:  # noqa: BLE001
-                    logger.error(f"【目录上传】补跑排队任务失败：{safe_error_text(err)}")
+                # 恢复失败时保留现有 pending 标记，本轮不立即重排输出任务，
+                # 避免同一损坏 journal 形成无限补跑。
+                if not recovery_failed:
+                    self._drain_pending_tasks(kind)
 
         thread = threading.Thread(target=run, name=f"p115liteassistant-{kind}", daemon=True)
         try:

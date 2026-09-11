@@ -4,16 +4,26 @@ from tempfile import TemporaryDirectory
 import threading
 from time import sleep, time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from p115pickcode import id_to_pickcode
 from app.plugins.p115liteassistant import P115LiteAssistant
-from app.plugins.p115liteassistant.api import Api
+from app.plugins.p115liteassistant.api import Api as ProductionApi
 from app.plugins.p115liteassistant.client import PlaybackCopy, U115AccessLimitError
 from app.plugins.p115liteassistant.log_utils import safe_error_text
 from app.plugins.p115liteassistant.strm import build_redirect_signature
+
+
+from tests.p115liteassistant.helpers import make_test_journal
+
+
+def Api(client_provider, store, *args, journal=None, **kwargs):
+    return ProductionApi(
+        client_provider, store, *args,
+        journal=journal or make_test_journal(store), **kwargs
+    )
 
 
 VALID_PICKCODE = id_to_pickcode(1)
@@ -42,6 +52,9 @@ class FakeStore:
     def append_history(self, entry):
         self.history.append(entry)
 
+    def get_history(self):
+        return list(self.history)
+
     def get_checkin_schedule(self):
         return dict(self.schedule)
 
@@ -61,6 +74,9 @@ class FakeClient:
         self.copy_calls = []
         self.deleted = []
         self.checkin_calls = 0
+
+    def is_authenticated(self) -> bool:
+        return False
 
     def get_dir_list(self, cid):
         self.browse_calls += 1
@@ -132,6 +148,223 @@ class ApiReliabilityTest(unittest.TestCase):
             file_name,
             VALID_SIGNATURE,
         )
+
+    def test_plugin_startup_recovers_before_watchers(self):
+        plugin = object.__new__(P115LiteAssistant)
+        plugin._store = Mock()
+        plugin._api = Mock()
+        plugin._api.cloud_task_lock = threading.Lock()
+        plugin._life_monitor = Mock()
+        plugin._strm_watch = Mock()
+        plugin._upload_watch = Mock()
+        plugin._upload_watch_config_signature = Mock(return_value=(True, ()))
+        order = []
+        plugin._recover_strm_commits = Mock(
+            side_effect=lambda _stage: order.append("recover") or []
+        )
+        plugin._migrate_legacy_allowlist_on_startup = Mock(
+            side_effect=lambda: order.append("migrate")
+        )
+        plugin._sync_life_monitor = Mock(side_effect=lambda: order.append("life"))
+        plugin._sync_strm_watch = Mock(side_effect=lambda: order.append("strm"))
+        plugin._sync_upload_watch = Mock(side_effect=lambda: order.append("upload"))
+
+        plugin.init_plugin()
+
+        self.assertEqual(order, ["recover", "migrate", "life", "strm", "upload"])
+        self.assertFalse(plugin._strm_recovery_blocked)
+
+    def test_plugin_startup_recovery_failure_stops_all_watchers(self):
+        from app.plugins.p115liteassistant.strm import StrmRecoveryBlockedError
+
+        plugin = object.__new__(P115LiteAssistant)
+        plugin._store = Mock()
+        plugin._api = Mock()
+        plugin._api.cloud_task_lock = threading.Lock()
+        plugin._life_monitor = Mock()
+        plugin._strm_watch = Mock()
+        plugin._upload_watch = Mock()
+        plugin._recover_strm_commits = Mock(
+            side_effect=StrmRecoveryBlockedError("broken")
+        )
+        plugin._migrate_legacy_allowlist_on_startup = Mock()
+        plugin._sync_life_monitor = Mock()
+        plugin._sync_strm_watch = Mock()
+        plugin._sync_upload_watch = Mock()
+
+        plugin.init_plugin()
+
+        plugin._life_monitor.stop.assert_called_once_with()
+        plugin._strm_watch.stop.assert_called_once_with()
+        plugin._upload_watch.stop.assert_called_once_with()
+        plugin._sync_life_monitor.assert_not_called()
+        plugin._sync_strm_watch.assert_not_called()
+        plugin._sync_upload_watch.assert_not_called()
+        self.assertTrue(plugin._strm_recovery_blocked)
+
+    @staticmethod
+    def recovery_plugin(config=None):
+        plugin = object.__new__(P115LiteAssistant)
+        plugin._store = Mock()
+        plugin._store.get_config.return_value = dict(config or {})
+        plugin._api = Mock()
+        plugin._api.cloud_task_lock = threading.Lock()
+        plugin._life_monitor = Mock()
+        plugin._strm_watch = Mock()
+        plugin._upload_watch = Mock()
+        plugin._client = Mock()
+        plugin._client_signature = ("old",)
+        plugin._upload_watch_signature = None
+        plugin._strm_recovery_blocked = True
+        return plugin
+
+
+    def test_client_profile_is_part_of_cache_signature_and_token_save_does_not_rebuild(self):
+        plugin = object.__new__(P115LiteAssistant)
+        plugin._store = Mock()
+        plugin._store.get_config.return_value = {
+            "cookie": "cookie", "tokens": {"access_token": "token"},
+            "login_client_type": "web", "rate_limit_profile": "balanced",
+        }
+        plugin._store.update_config = Mock()
+        plugin._client = None
+        plugin._client_signature = None
+        with patch("app.plugins.p115liteassistant.U115Client") as client_type:
+            first = plugin._get_client()
+            plugin._save_client_tokens({"access_token": "fresh"})
+            second = plugin._get_client()
+            self.assertIs(first, second)
+            client_type.assert_called_once()
+            self.assertEqual(plugin._client_signature, ("cookie", "web", "balanced"))
+
+            plugin._store.get_config.return_value["rate_limit_profile"] = "conservative"
+            plugin._get_client()
+            self.assertEqual(client_type.call_count, 2)
+            self.assertEqual(
+                client_type.call_args.kwargs["rate_limit_profile"], "conservative"
+            )
+
+    def test_config_save_keeps_components_stopped_when_recovery_still_blocked(self):
+        from app.plugins.p115liteassistant.strm import StrmRecoveryBlockedError
+
+        plugin = self.recovery_plugin({"enabled": True})
+        plugin._recover_strm_commits = Mock(
+            side_effect=StrmRecoveryBlockedError("broken")
+        )
+
+        plugin._on_config_saved()
+
+        plugin._life_monitor.stop.assert_called_once_with()
+        plugin._strm_watch.stop.assert_called_once_with()
+        plugin._upload_watch.stop.assert_called_once_with()
+        plugin._life_monitor.start.assert_not_called()
+        plugin._strm_watch.start.assert_not_called()
+        plugin._upload_watch.start.assert_not_called()
+        self.assertTrue(plugin._strm_recovery_blocked)
+
+    def test_config_save_restarts_components_after_recovery_succeeds(self):
+        config = {
+            "enabled": True,
+            "life_monitor_enabled": True,
+            "strm_mappings": [{"enabled": True}],
+            "strm_delete_cloud_on_missing": True,
+            "strm_delete_watch": True,
+            "upload_mappings": [{"id": "movies", "source": "/media"}],
+        }
+        plugin = self.recovery_plugin(config)
+        plugin._upload_watch_signature = plugin._upload_watch_config_signature(config)
+        plugin._recover_strm_commits = Mock(return_value=[])
+
+        plugin._on_config_saved()
+
+        plugin._recover_strm_commits.assert_called_once_with("保存配置")
+        plugin._life_monitor.start.assert_called_once_with()
+        plugin._strm_watch.start.assert_called_once_with()
+        plugin._upload_watch.start.assert_called_once_with()
+        self.assertFalse(plugin._strm_recovery_blocked)
+
+    def test_sync_components_defend_against_recovery_block(self):
+        plugin = self.recovery_plugin(
+            {
+                "enabled": True,
+                "life_monitor_enabled": True,
+                "strm_mappings": [{"enabled": True}],
+                "strm_delete_cloud_on_missing": True,
+                "strm_delete_watch": True,
+                "upload_mappings": [{"source": "/media"}],
+            }
+        )
+
+        plugin._sync_life_monitor()
+        plugin._sync_strm_watch()
+        plugin._sync_upload_watch()
+
+        plugin._life_monitor.stop.assert_called_once_with()
+        plugin._strm_watch.stop.assert_called_once_with()
+        plugin._upload_watch.stop.assert_called_once_with()
+        plugin._life_monitor.start.assert_not_called()
+        plugin._strm_watch.start.assert_not_called()
+        plugin._upload_watch.start.assert_not_called()
+
+    def test_recovery_alert_bypasses_disabled_strm_notification_and_deduplicates(self):
+        plugin = object.__new__(P115LiteAssistant)
+        plugin._store = Mock()
+        plugin._store.get_config.return_value = {"strm_notify": False}
+        plugin._strm_journal = Mock()
+        plugin._strm_journal.recover_all.side_effect = RuntimeError("broken")
+        plugin._strm_recovery_alerted = False
+        plugin.post_message = Mock()
+
+        for _ in range(2):
+            with self.assertRaisesRegex(Exception, "broken"):
+                plugin._recover_strm_commits("插件启动")
+
+        plugin.post_message.assert_called_once()
+        self.assertEqual(plugin.post_message.call_args.kwargs["mtype"].name, "Plugin")
+        self.assertNotIn("strm_notify", plugin.post_message.call_args.kwargs)
+
+    def test_cloud_task_recovers_before_target(self):
+        order = []
+        done = threading.Event()
+        api = Api(
+            lambda: self.client,
+            self.store,
+            recover_strm_commits=lambda stage: order.append(("recover", stage)) or [],
+        )
+
+        result = api._start(
+            "strm",
+            lambda: (order.append(("target", "")), done.set()),
+            "started",
+        )
+
+        self.assertTrue(result["success"])
+        self.assertTrue(done.wait(1))
+        self.assertEqual([item[0] for item in order], ["recover", "target"])
+
+    def test_cloud_task_recovery_failure_blocks_target_and_drain(self):
+        from app.plugins.p115liteassistant.strm import StrmRecoveryBlockedError
+
+        attempted = threading.Event()
+        target = Mock(side_effect=lambda: attempted.set())
+        api = Api(
+            lambda: self.client,
+            self.store,
+            recover_strm_commits=lambda _stage: (_ for _ in ()).throw(
+                StrmRecoveryBlockedError("broken journal")
+            ),
+        )
+        drained = threading.Event()
+        api._drain_pending_tasks = Mock(side_effect=lambda _kind: drained.set())
+
+        self.assertTrue(api._start("upload", target, "started")["success"])
+        for _ in range(100):
+            if "upload" not in api._running:
+                break
+            sleep(0.01)
+        self.assertFalse(attempted.is_set())
+        self.assertFalse(drained.is_set())
+        target.assert_not_called()
 
     def test_browse_115_sorts_and_caches_short_lived_results(self):
         first = self.api.browse_115("0")
@@ -208,6 +441,314 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertTrue(valid["success"])
         start.assert_called_once()
 
+    @staticmethod
+    def _gap_row(row_id, channel_id, missing=None, channel_ids=None):
+        row = {
+            "id": row_id,
+            "channel_id": channel_id,
+            "missing": [2] if missing is None else missing,
+        }
+        if channel_ids is not None:
+            row["channel_ids"] = channel_ids
+        return row
+
+    def _configure_gap_mappings(self):
+        mappings = [
+            {
+                "id": "tv-a",
+                "enabled": True,
+                "source_cid": "101",
+                "target_dir": "/strm/a",
+            },
+            {
+                "id": "tv-b",
+                "enabled": True,
+                "source_cid": "102",
+                "target_dir": "/strm/b",
+            },
+        ]
+        self.store.config.update(
+            {
+                "moviepilot_address": "https://moviepilot.example",
+                "strm_mappings": mappings,
+            }
+        )
+        return mappings
+
+    def test_gap_fill_triggers_single_enabled_mapping(self):
+        mappings = self._configure_gap_mappings()
+        self.api._ledger_rows = Mock(
+            return_value=([self._gap_row("tv|A|2026|1", "tv-a")], {})
+        )
+        captured = {}
+
+        def start(kind, target, message):
+            captured.update(kind=kind, message=message)
+            target()
+            return {"success": True, "message": message, "data": {}}
+
+        self.api._start = Mock(side_effect=start)
+        self.api.run_strm = Mock()
+
+        result = self.api.task_gap_fill({"row_ids": "tv|A|2026|1"})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["triggered"], 1)
+        self.assertEqual(result["data"]["mapping_ids"], ["tv-a"])
+        self.assertEqual(captured["kind"], "strm")
+        self.assertIn("同步 1 条 STRM 通道", captured["message"])
+        self.api._ledger_rows.assert_called_once_with(with_seeding=False)
+        self.api.run_strm.assert_called_once_with(
+            "https://moviepilot.example",
+            [mappings[0]],
+            manual=True,
+            strm_incremental=True,
+        )
+
+    def test_gap_fill_forces_incremental_when_global_setting_is_full(self):
+        mappings = self._configure_gap_mappings()
+        self.store.config["strm_incremental"] = False
+        self.api._ledger_rows = Mock(
+            return_value=([self._gap_row("tv|A|2026|1", "tv-a")], {})
+        )
+
+        def start(_kind, target, _message):
+            target()
+            return {"success": True}
+
+        self.api._start = Mock(side_effect=start)
+        self.api.run_strm = Mock()
+
+        self.api.task_gap_fill({"row_ids": ["tv|A|2026|1"]})
+
+        self.api.run_strm.assert_called_once_with(
+            "https://moviepilot.example",
+            [mappings[0]],
+            manual=True,
+            strm_incremental=True,
+        )
+
+    def test_gap_fill_deduplicates_rows_on_same_mapping(self):
+        self._configure_gap_mappings()
+        self.api._ledger_rows = Mock(
+            return_value=(
+                [
+                    self._gap_row("tv|A|2026|1", "tv-a"),
+                    self._gap_row("tv|B|2026|1", "tv-a"),
+                ],
+                {},
+            )
+        )
+        self.api._start = Mock(return_value={"success": True})
+
+        result = self.api.task_gap_fill(
+            {"row_ids": ["tv|A|2026|1", "tv|B|2026|1"]}
+        )
+
+        self.assertEqual(result["data"]["triggered"], 1)
+        self.assertEqual(result["data"]["deduplicated"], 1)
+        self.assertEqual(result["data"]["skipped"], 0)
+        self.assertEqual(result["data"]["mapping_ids"], ["tv-a"])
+
+    def test_gap_fill_counts_each_invalid_mapping_reason(self):
+        self._configure_gap_mappings()
+        self.store.config["strm_mappings"].append(
+            {
+                "id": "tv-off",
+                "enabled": False,
+                "source_cid": "103",
+                "target_dir": "/strm/off",
+            }
+        )
+        self.store.config["upload_mappings"] = [
+            {"id": "upload-a", "enabled": True, "source": "/inbox"}
+        ]
+        rows = [
+            self._gap_row("missing-channel", ""),
+            self._gap_row("untracked", "untracked"),
+            self._gap_row("once", "once:99"),
+            self._gap_row("upload", "upload-a"),
+            self._gap_row("disabled", "tv-off"),
+            self._gap_row("deleted", "tv-deleted"),
+        ]
+        self.api._ledger_rows = Mock(return_value=(rows, {}))
+        self.api._start = Mock()
+
+        result = self.api.task_gap_fill({"row_ids": [row["id"] for row in rows]})
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["data"]["triggered"], 0)
+        self.assertEqual(result["data"]["skipped"], 6)
+        self.assertEqual(
+            result["data"]["reasons"],
+            {
+                "missing_channel": 1,
+                "untracked": 1,
+                "once_mapping": 1,
+                "upload_mapping": 1,
+                "disabled_mapping": 1,
+                "missing_mapping": 1,
+            },
+        )
+        self.api._start.assert_not_called()
+
+    def test_gap_fill_skips_stale_or_no_longer_missing_rows(self):
+        self._configure_gap_mappings()
+        self.api._ledger_rows = Mock(
+            return_value=([self._gap_row("complete", "tv-a", missing=[])], {})
+        )
+        self.api._start = Mock()
+
+        result = self.api.task_gap_fill(
+            {"row_ids": ["gone", "complete", "gone"]}
+        )
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["data"]["requested"], 2)
+        self.assertEqual(
+            result["data"]["reasons"], {"not_found": 1, "no_missing": 1}
+        )
+        self.api._start.assert_not_called()
+
+    def test_gap_fill_busy_does_not_queue_and_preserves_summary(self):
+        self._configure_gap_mappings()
+        self.api._ledger_rows = Mock(
+            return_value=([self._gap_row("tv|A|2026|1", "tv-a")], {})
+        )
+        self.api.run_strm = Mock()
+        self.api._cloud_task_lock.acquire()
+        try:
+            result = self.api.task_gap_fill({"row_ids": ["tv|A|2026|1"]})
+        finally:
+            self.api._cloud_task_lock.release()
+
+        self.assertFalse(result["success"])
+        self.assertIn("115 数据任务正在运行", result["message"])
+        self.assertEqual(result["data"]["mapping_ids"], ["tv-a"])
+        self.assertFalse(self.api._pending_upload)
+        self.assertFalse(self.api._pending_sweep_all)
+        self.assertEqual(self.api._pending_sweep_paths, set())
+        self.api.run_strm.assert_not_called()
+
+    def test_gap_fill_runs_two_mappings_in_one_task_in_config_order(self):
+        mappings = self._configure_gap_mappings()
+        self.api._ledger_rows = Mock(
+            return_value=(
+                [
+                    self._gap_row("tv|B|2026|1", "tv-b"),
+                    self._gap_row("tv|A|2026|1", "tv-a"),
+                ],
+                {},
+            )
+        )
+        captured = []
+
+        def start(kind, target, message):
+            captured.append((kind, message))
+            target()
+            return {"success": True}
+
+        self.api._start = Mock(side_effect=start)
+        self.api.run_strm = Mock()
+
+        result = self.api.task_gap_fill(
+            {"row_ids": ["tv|B|2026|1", "tv|A|2026|1"]}
+        )
+
+        self.assertEqual(result["data"]["mapping_ids"], ["tv-a", "tv-b"])
+        self.assertEqual(result["data"]["triggered"], 2)
+        self.api._start.assert_called_once()
+        self.api.run_strm.assert_called_once_with(
+            "https://moviepilot.example",
+            mappings,
+            manual=True,
+            strm_incremental=True,
+        )
+        self.assertEqual(captured[0][0], "strm")
+
+    def test_gap_fill_runs_all_mappings_for_one_multi_mapping_row(self):
+        mappings = self._configure_gap_mappings()
+        self.api._ledger_rows = Mock(
+            return_value=(
+                [
+                    self._gap_row(
+                        "tv|A|2026|1",
+                        "tv-a",
+                        channel_ids=["tv-a", "tv-b"],
+                    )
+                ],
+                {},
+            )
+        )
+        captured = []
+
+        def start(kind, target, message):
+            captured.append((kind, message))
+            target()
+            return {"success": True}
+
+        self.api._start = Mock(side_effect=start)
+        self.api.run_strm = Mock()
+
+        result = self.api.task_gap_fill({"row_ids": ["tv|A|2026|1"]})
+
+        self.assertEqual(result["data"]["mapping_ids"], ["tv-a", "tv-b"])
+        self.assertEqual(result["data"]["triggered"], 2)
+        self.api._start.assert_called_once()
+        self.api.run_strm.assert_called_once_with(
+            "https://moviepilot.example",
+            mappings,
+            manual=True,
+            strm_incremental=True,
+        )
+        self.assertEqual(captured[0][0], "strm")
+
+    def test_gap_fill_preflight_rejects_invalid_selected_mapping_before_start(self):
+        invalid_cases = (
+            ({"moviepilot_address": "ftp://moviepilot.example"}, "MoviePilot"),
+            ({"source_cid": ""}, "源目录"),
+            ({"target_dir": ""}, "输出目录"),
+        )
+        for updates, message in invalid_cases:
+            with self.subTest(updates=updates):
+                self._configure_gap_mappings()
+                if "moviepilot_address" in updates:
+                    self.store.config["moviepilot_address"] = updates["moviepilot_address"]
+                else:
+                    self.store.config["strm_mappings"][0].update(updates)
+                self.api._ledger_rows = Mock(
+                    return_value=([self._gap_row("tv|A|2026|1", "tv-a")], {})
+                )
+                self.api._start = Mock()
+
+                result = self.api.task_gap_fill({"row_ids": ["tv|A|2026|1"]})
+
+                self.assertFalse(result["success"])
+                self.assertIn(message, result["message"])
+                self.api._start.assert_not_called()
+
+    def test_gap_fill_preflight_ignores_invalid_unselected_mapping(self):
+        self._configure_gap_mappings()
+        self.store.config["strm_mappings"][1]["target_dir"] = ""
+        self.api._ledger_rows = Mock(
+            return_value=([self._gap_row("tv|A|2026|1", "tv-a")], {})
+        )
+        self.api._start = Mock(return_value={"success": True})
+
+        result = self.api.task_gap_fill({"row_ids": ["tv|A|2026|1"]})
+
+        self.assertTrue(result["success"])
+        self.api._start.assert_called_once()
+
+    def test_gap_fill_validates_row_id_shape_and_limit(self):
+        self.assertFalse(self.api.task_gap_fill({})["success"])
+        self.assertFalse(self.api.task_gap_fill({"row_ids": []})["success"])
+        self.assertFalse(self.api.task_gap_fill({"row_ids": ["ok", 1]})["success"])
+        too_many = [f"row-{index}" for index in range(201)]
+        result = self.api.task_gap_fill({"row_ids": too_many})
+        self.assertFalse(result["success"])
+        self.assertIn("200", result["message"])
+
     def test_trigger_upload_validates_strm_generation_before_starting_thread(self):
         self.store.config.update(
             {
@@ -256,9 +797,6 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertEqual(first.status_code, 302)
         self.assertEqual(second.status_code, 302)
         self.assertEqual(modes, ["cookie", "open"])
-
-    def test_local_directory_root_is_filesystem_root(self):
-        self.assertEqual(Api._local_roots(), [Path("/").resolve()])
 
     def test_redirect_uses_pickcode_and_user_agent_cache(self):
         request = self.request("Player-A")
@@ -427,23 +965,41 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertTrue(any("没有启用的目录映射" in message for message in warning_messages))
 
     def test_upload_execution_writes_start_and_summary_logs(self):
-        self.store.config["upload_mappings"] = [{"enabled": True, "source": "/source", "target": "/target"}]
-        upload_result = {
-            "kind": "upload",
-            "uploaded": 1,
-            "instant": 0,
-            "skipped": 0,
-            "deleted": 0,
-            "errors": 1,
-            "duration_ms": 25,
-            "errors_detail": [{"path": "/source/fail.mkv", "target": "/target/fail.mkv", "message": "失败"}],
-        }
+        with TemporaryDirectory() as temp:
+            source = Path(temp) / "source"
+            source.mkdir()
+            self.store.config.update(
+                {
+                    "local_path_allowlist": [str(source)],
+                    "upload_mappings": [
+                        {"enabled": True, "source": str(source), "target": "/target"}
+                    ],
+                }
+            )
+            upload_result = {
+                "kind": "upload",
+                "uploaded": 1,
+                "instant": 0,
+                "skipped": 0,
+                "deleted": 0,
+                "errors": 1,
+                "duration_ms": 25,
+                "errors_detail": [
+                    {
+                        "path": str(source / "fail.mkv"),
+                        "target": "/target/fail.mkv",
+                        "message": "失败",
+                    }
+                ],
+            }
 
-        with patch("app.plugins.p115liteassistant.api.DirectoryUploader") as uploader, patch(
-            "app.plugins.p115liteassistant.api.logger"
-        ) as task_logger:
-            uploader.return_value.run.return_value = upload_result
-            result = self.api.run_upload(incremental=True)
+            with patch("app.plugins.p115liteassistant.api.DirectoryUploader") as uploader, patch(
+                "app.plugins.p115liteassistant.api.logger"
+            ) as task_logger, patch(
+                "app.helper.directory.DirectoryHelper.get_dirs", return_value=[]
+            ):
+                uploader.return_value.run.return_value = upload_result
+                result = self.api.run_upload(incremental=True)
 
         self.assertEqual(result, upload_result)
         self.assertTrue(any("【目录上传】开始执行" in call.args[0] for call in task_logger.info.call_args_list))
@@ -481,17 +1037,30 @@ class ApiReliabilityTest(unittest.TestCase):
         get_download_url.assert_called_once()
 
     def test_strm_access_limit_stops_remaining_mappings(self):
-        self.store.config["strm_mappings"] = [
-            {"enabled": True, "source_cid": "first", "target_dir": "/first"},
-            {"enabled": True, "source_cid": "second", "target_dir": "/second"},
-        ]
-        with patch("app.plugins.p115liteassistant.api.StrmGenerator") as generator, patch(
-            "app.plugins.p115liteassistant.api.logger"
-        ) as task_logger:
-            generator.return_value.run_mapping.side_effect = U115AccessLimitError(
-                "已达到当前访问上限"
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            self.store.config.update(
+                {
+                    "local_path_allowlist": [str(root)],
+                    "strm_mappings": [
+                        {"enabled": True, "source_cid": "first", "target_dir": str(first)},
+                        {"enabled": True, "source_cid": "second", "target_dir": str(second)},
+                    ],
+                }
             )
-            result = self.api.run_strm("http://moviepilot:3000")
+            with patch("app.plugins.p115liteassistant.api.StrmGenerator") as generator, patch(
+                "app.plugins.p115liteassistant.api.logger"
+            ) as task_logger, patch(
+                "app.helper.directory.DirectoryHelper.get_dirs", return_value=[]
+            ):
+                generator.return_value.run_mapping.side_effect = U115AccessLimitError(
+                    "已达到当前访问上限"
+                )
+                result = self.api.run_strm("http://moviepilot:3000")
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["mapping"], "first")
@@ -533,6 +1102,48 @@ class ApiReliabilityTest(unittest.TestCase):
                 break
             sleep(0.01)
         self.assertFalse(self.api._running)
+
+    def test_auto_upload_busy_state_is_merged_and_exposed(self):
+        self.api._cloud_task_lock.acquire()
+        try:
+            first = self.api.queue_upload(source="transfer")
+            second = self.api.queue_upload(source="transfer")
+            status = self.api.status()
+        finally:
+            self.api._cloud_task_lock.release()
+
+        self.assertTrue(first["success"])
+        self.assertTrue(second["success"])
+        self.assertTrue(status["pending_upload"])
+        self.assertEqual(status["pending_upload_source"], "transfer")
+        self.assertEqual(status["pending_upload_count"], 2)
+        self.assertIsNotNone(status["pending_upload_queued_at"])
+
+    def test_pending_upload_is_restored_when_retry_cannot_start(self):
+        self.api._queue_pending_upload("transfer")
+        with patch.object(
+            self.api,
+            "_start",
+            return_value={"success": False, "message": "启动失败"},
+        ):
+            self.api._drain_pending_upload()
+        self.assertTrue(self.api._pending_upload)
+        self.assertEqual(self.api._pending_upload_source, "transfer")
+        self.assertEqual(self.api._pending_upload_count, 1)
+
+    def test_completed_sweep_gives_pending_upload_first_chance(self):
+        calls = []
+        with patch.object(
+            self.api,
+            "_drain_pending_upload",
+            side_effect=lambda: calls.append("upload"),
+        ), patch.object(
+            self.api,
+            "_drain_pending_sweep",
+            side_effect=lambda: calls.append("sweep"),
+        ):
+            self.api._drain_pending_tasks("sweep")
+        self.assertEqual(calls, ["upload", "sweep"])
 
     def test_error_text_redacts_credentials_and_limits_length(self):
         message = safe_error_text(
@@ -647,6 +1258,19 @@ class SweepOrchestrationTest(unittest.TestCase):
 
             self.assertTrue(result["success"])
             self.assertIn("排队", result["message"])
+            self.assertEqual(api._pending_sweep_paths, {"/media/A.strm"})
+
+    def test_failed_sweep_requeues_taken_scope(self):
+        with TemporaryDirectory() as directory:
+            api = self._api(directory)
+            api._queue_sweep_scope(["/media/A.strm"])
+            with patch.object(
+                api,
+                "run_strm_sweep",
+                side_effect=RuntimeError("boom"),
+            ):
+                with self.assertRaises(RuntimeError):
+                    api._sweep_worker()
             self.assertEqual(api._pending_sweep_paths, {"/media/A.strm"})
 
     def test_manual_trigger_rejects_when_cloud_lock_is_busy(self):
@@ -789,12 +1413,17 @@ class ServiceRegistrationTest(unittest.TestCase):
 
     def test_sweep_endpoints_are_registered(self):
         plugin = self._plugin({})
-        paths = {(item["path"], tuple(item["methods"])) for item in plugin.get_api()}
+        routes = plugin.get_api()
+        paths = {(item["path"], tuple(item["methods"])) for item in routes}
 
         self.assertIn(("/strm/sweep", ("POST",)), paths)
         self.assertIn(("/strm/sweep/pending", ("GET",)), paths)
         self.assertIn(("/strm/sweep/confirm", ("POST",)), paths)
         self.assertIn(("/strm/sweep/dismiss", ("POST",)), paths)
+        gap_fill = next(item for item in routes if item["path"] == "/task/gap-fill")
+        self.assertEqual(gap_fill["methods"], ["POST"])
+        self.assertEqual(gap_fill["auth"], "bear")
+        self.assertTrue(callable(gap_fill["endpoint"]))
 
 
 class PendingReviewApiTest(unittest.TestCase):

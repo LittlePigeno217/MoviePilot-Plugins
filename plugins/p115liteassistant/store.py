@@ -15,6 +15,9 @@ from .records import IncrementalRecordStore, TaskHistory
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "enabled": False,
+    "rate_limit_profile": "balanced",
+    "upload_instant_wait_enabled": False,
+    "upload_instant_wait_timeout": 0,
     "cookie": "",
     "tokens": {},
     "login_client_type": "",
@@ -31,6 +34,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "strm_delete_confirm_threshold": 16,
     "strm_notify": False,
     "strm_notify_type": RESOURCE_NOTIFY_TYPE,
+    # 本地文件系统额外放行目录。宿主配置的本地下载/媒体库目录会自动加入；这里仅用于
+    # 显式补充不在宿主目录配置中的挂载点，且根目录 ``/`` 永远不会被放行。
+    "local_path_allowlist": [],
     "strm_mappings": [],
     "upload_mappings": [],
     "upload_notify": False,

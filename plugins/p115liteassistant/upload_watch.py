@@ -5,9 +5,9 @@
 :meth:`~app.plugins.p115liteassistant.api.Api.trigger_upload` 决定 —— 那边会再跑
 一次增量上传，用上传增量记录（size + mtime 指纹）挑出真正的新变化。
 
-它不是上传的兜底：`upload_after_transfer_complete`（媒体整理事件）和定时/手动
-触发仍在，实时监听只是加速 —— 网络挂载（NFS/SMB/CIFS）上的 inotify 收不到其它
-主机直接扔进源目录的事件，那些靠定时增量扫描补上。
+它不是独立兜底：自动上传由本地实时监听与 MoviePilot `TransferComplete`
+媒体整理完成事件共同触发。网络挂载（NFS/SMB/CIFS）上的 inotify 可能收不到
+其他主机直接写入事件；若写入也不经过 MoviePilot 整理流程，需要用户手动触发增量上传。
 """
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ class UploadWatcher:
                 return
             if self._observer_factory is None:
                 logger.warning(
-                    f"{LOG_TAG}未安装 watchdog，实时监听不可用；仍按定时/手动增量扫描兜底"
+                    f"{LOG_TAG}未安装 watchdog，实时监听不可用；仍可由媒体整理完成事件触发增量上传"
                 )
                 return
             dirs = self.watch_dirs()

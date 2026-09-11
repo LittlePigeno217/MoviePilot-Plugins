@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import httpx
+import pytest
 
 from app.plugins.p115liteassistant.client import (
     PlaybackCopy,
@@ -19,6 +20,22 @@ from app.plugins.p115liteassistant.client import (
     U115Client,
 )
 from app.plugins.p115liteassistant.resilience import retry_call
+from app.plugins.p115liteassistant.limiter import RequestPacer
+
+_REAL_PACER_ACQUIRE = RequestPacer.acquire
+
+
+@pytest.fixture(autouse=True)
+def disable_real_request_pacing(monkeypatch):
+    # Client behavior tests assert retries/routes without real profile sleeps.
+    monkeypatch.setattr(
+        RequestPacer, "acquire",
+        lambda self, route, *, is_open, cancelled=None: None,
+    )
+    monkeypatch.setattr(
+        RequestPacer, "acquire_directory_page",
+        lambda self, *, cancelled=None: None,
+    )
 
 
 class FakeResponse:
@@ -1229,12 +1246,17 @@ class U115ClientTest(unittest.TestCase):
 
         session = DownloadSession()
         client = U115Client(tokens={"access_token": "token"}, session=session)
+        calls = 0
 
-        with TemporaryDirectory() as directory, patch(
-            "app.plugins.p115liteassistant.client.time.monotonic", return_value=100.0
-        ), patch(
-            "app.plugins.p115liteassistant.client.time.sleep",
-            side_effect=lambda delay: sleep_delays.append(delay),
+        def acquire(route, *, is_open, cancelled=None):
+            nonlocal calls
+            if route == "download_link":
+                calls += 1
+                if calls > 1:
+                    sleep_delays.append(1.0)
+
+        with TemporaryDirectory() as directory, patch.object(
+            client._pacer, "acquire", side_effect=acquire
         ), patch(
             "app.plugins.p115liteassistant.client.httpx.stream",
             side_effect=lambda *_args, **_kwargs: DownloadResponse(),
@@ -2478,3 +2500,301 @@ class OpenItemLookupTest(unittest.TestCase):
 
         with self.assertRaisesRegex(U115ApiError, "服务器开小差了"):
             client.get_item("/任意/路径")
+
+
+class RequestPacingIntegrationTest(unittest.TestCase):
+    def test_http_429_retry_acquires_once_before_each_physical_request(self):
+        class RateLimitSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                self.attempts += 1
+                if self.attempts < 3:
+                    return httpx.Response(
+                        429,
+                        headers={"X-RateLimit-Reset": "65"},
+                        request=httpx.Request(method, url),
+                    )
+                return FakeResponse({"state": True, "data": {"ok": True}})
+
+        session = RateLimitSession()
+        client = U115Client(session=session)
+        pacing_before_request = []
+
+        def acquire(route, *, is_open, cancelled=None):
+            pacing_before_request.append((route, is_open, len(session.requests)))
+
+        client._pacer.acquire = acquire
+        with patch.object(client, "_wait_for_request_retry") as waiter:
+            payload = client._request_url(
+                "GET",
+                "https://example.invalid/rate-limit",
+                require_auth=False,
+                rate_limit_route="metadata",
+                rate_limit_is_open=True,
+            )
+
+        self.assertTrue(payload["state"])
+        self.assertEqual(len(session.requests), 3)
+        self.assertEqual(
+            pacing_before_request,
+            [("metadata", True, 0), ("metadata", True, 1), ("metadata", True, 2)],
+        )
+        self.assertEqual([call.args[0] for call in waiter.call_args_list], [70.0, 70.0])
+
+    def test_open_access_limit_retry_acquires_once_before_each_physical_request(self):
+        class AccessLimitSession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                self.attempts += 1
+                if self.attempts < 3:
+                    return FakeResponse(
+                        {
+                            "state": False,
+                            "code": 911,
+                            "message": "已达到当前访问上限，请稍后再试",
+                        }
+                    )
+                return FakeResponse({"state": True, "data": [], "count": 0})
+
+        session = AccessLimitSession()
+        client = U115Client(tokens={"access_token": "token"}, session=session)
+        pacing_before_request = []
+
+        def acquire(route, *, is_open, cancelled=None):
+            pacing_before_request.append((route, is_open, len(session.requests)))
+
+        client._pacer.acquire = acquire
+        with patch.object(client, "_wait_for_request_retry") as waiter:
+            self.assertEqual(client.get_dir_list("0"), [])
+
+        self.assertEqual(len(session.requests), 3)
+        self.assertEqual(
+            pacing_before_request,
+            [("directory", True, 0), ("directory", True, 1), ("directory", True, 2)],
+        )
+        self.assertEqual([call.args[0] for call in waiter.call_args_list], [70.0, 70.0])
+
+    def test_directory_page_cooldown_only_after_successful_nonfinal_page(self):
+        scenarios = {
+            "has_next": (
+                [
+                    {"state": True, "code": 0, "count": 2, "data": [{"fid": "1"}]},
+                    {"state": True, "code": 0, "count": 2, "data": [{"fid": "2"}]},
+                ],
+                1,
+                None,
+            ),
+            "final": (
+                [{"state": True, "code": 0, "count": 1, "data": [{"fid": "1"}]}],
+                0,
+                None,
+            ),
+            "failed": (
+                [{"state": False, "code": 50001, "message": "page failed"}],
+                0,
+                U115ApiError,
+            ),
+        }
+
+        for name, (responses, expected_cooldowns, expected_error) in scenarios.items():
+            with self.subTest(name=name):
+                class DirectorySession(FakeSession):
+                    def request(self, method, url, **kwargs):
+                        self.requests.append((method, url, kwargs))
+                        return FakeResponse(responses[len(self.requests) - 1])
+
+                client = U115Client(
+                    tokens={"access_token": "token"},
+                    session=DirectorySession(),
+                )
+                client._pacer.acquire_directory_page = Mock()
+                if expected_error is None:
+                    client.get_dir_list("0")
+                else:
+                    with self.assertRaises(expected_error):
+                        client.get_dir_list("0")
+                self.assertEqual(
+                    client._pacer.acquire_directory_page.call_count,
+                    expected_cooldowns,
+                )
+
+    def test_cookie_download_and_mutation_use_endpoint_slots_without_open_global(self):
+        class CookieSession(FakeSession):
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/android/2.0/ufile/download"):
+                    return FakeResponse({"state": True, "data": "encrypted-response"})
+                if url.endswith("/rb/delete"):
+                    return FakeResponse({"state": True})
+                raise AssertionError(url)
+
+        client = U115Client(
+            cookie="UID=1_R2_0; CID=2",
+            session=CookieSession(),
+            rate_limit_profile="fast",
+        )
+        client._pacer.acquire = _REAL_PACER_ACQUIRE.__get__(client._pacer, RequestPacer)
+        client._pacer.open_global.acquire = Mock()
+        client._pacer._routes["download_link"].acquire = Mock()
+        client._pacer._routes["mutation"].acquire = Mock()
+
+        with patch(
+            "app.plugins.p115liteassistant.client.rsa_encrypt",
+            return_value=b"encrypted-request",
+        ), patch(
+            "app.plugins.p115liteassistant.client.rsa_decrypt",
+            return_value=b'{"url":"https://download.example/cookie-file"}',
+        ):
+            self.assertEqual(
+                client.get_download_url("abcdefghijklmnopq", mode="cookie"),
+                "https://download.example/cookie-file",
+            )
+        client.delete_file("456", mode="cookie")
+
+        client._pacer.open_global.acquire.assert_not_called()
+        self.assertEqual(client._pacer._routes["download_link"].acquire.call_count, 1)
+        self.assertEqual(client._pacer._routes["mutation"].acquire.call_count, 1)
+
+    def test_oss_multipart_calls_do_not_touch_request_pacer(self):
+        class Bucket:
+            @staticmethod
+            def init_multipart_upload(_object_name, params=None):
+                return SimpleNamespace(upload_id="upload-1")
+
+            @staticmethod
+            def upload_part(_object_name, _upload_id, _part_number, _data):
+                return SimpleNamespace(etag="etag")
+
+            @staticmethod
+            def complete_multipart_upload(_object_name, _upload_id, _parts, headers=None):
+                response = SimpleNamespace(json=lambda: {"state": True, "code": 0})
+                return SimpleNamespace(status=200, resp=SimpleNamespace(response=response))
+
+        with TemporaryDirectory() as directory:
+            media = Path(directory) / "Film.mkv"
+            media.write_bytes(b"media")
+            client = U115Client(tokens={"access_token": "token"}, session=FakeSession())
+            client._pacer.acquire = Mock()
+            bucket = Bucket()
+
+            with patch.object(
+                client,
+                "_request",
+                side_effect=U115ClientTest._upload_api_response,
+            ), patch("oss2.StsAuth", return_value=Mock()), patch(
+                "oss2.Bucket", return_value=bucket
+            ), patch("oss2.determine_part_size", return_value=5):
+                client._upload_to_oss(
+                    media,
+                    media.stat().st_size,
+                    hashlib.sha1(media.read_bytes()).hexdigest(),
+                    "U_1_9",
+                    {
+                        "bucket": "bucket-name",
+                        "object": "object-name",
+                        "pick_code": "pick-code",
+                    },
+                )
+
+        client._pacer.acquire.assert_not_called()
+
+    def test_each_physical_retry_acquires_once(self):
+        class RetrySession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.count = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                self.count += 1
+                if self.count < 3:
+                    return httpx.Response(503, request=httpx.Request(method, url))
+                return FakeResponse({"state": True, "data": {}})
+
+        client = U115Client(session=RetrySession())
+        client._pacer.acquire = Mock()
+        with patch.object(client, "_wait_for_request_retry"):
+            client._request_url(
+                "GET",
+                "https://example.invalid/retry",
+                require_auth=False,
+                rate_limit_route="metadata",
+                rate_limit_is_open=True,
+            )
+        self.assertEqual(len(client.session.requests), 3)
+        self.assertEqual(client._pacer.acquire.call_count, 3)
+
+    def test_open_auth_replay_reacquires_original_route(self):
+        class ReplaySession(FakeSession):
+            def __init__(self):
+                super().__init__()
+                self.business_calls = 0
+
+            def request(self, method, url, **kwargs):
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/ufile/files"):
+                    self.business_calls += 1
+                    if self.business_calls == 1:
+                        return FakeResponse({"state": False, "code": 401})
+                    return FakeResponse({"state": True, "data": [], "count": 0})
+                raise AssertionError(url)
+
+        client = U115Client(tokens={"access_token": "old"}, session=ReplaySession())
+        routes = []
+        client._pacer.acquire = lambda route, **_kwargs: routes.append(route)
+
+        def recover(_failed, _err):
+            client.tokens["access_token"] = "new"
+
+        client._recover_open_auth = recover
+        self.assertEqual(client.get_dir_list("0"), [])
+        self.assertEqual(routes, ["directory", "directory"])
+
+
+def test_concurrent_expired_token_refreshes_once():
+    class ConcurrentRefreshSession(FakeSession):
+        def __init__(self):
+            super().__init__()
+            self.refreshes = 0
+            self.lock = threading.Lock()
+
+        def request(self, method, url, **kwargs):
+            with self.lock:
+                self.requests.append((method, url, kwargs))
+                if url.endswith("/open/refreshToken"):
+                    self.refreshes += 1
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                "access_token": "fresh",
+                                "refresh_token": "refresh",
+                                "expires_in": 7200,
+                            },
+                        }
+                    )
+                if url.endswith("/open/user/info"):
+                    return FakeResponse({"code": 0, "data": {"user_id": "1"}})
+            raise AssertionError(url)
+
+    session = ConcurrentRefreshSession()
+    client = U115Client(
+        tokens={
+            "access_token": "expired",
+            "refresh_token": "refresh",
+            "expires_in": 1,
+            "refresh_time": 1,
+        },
+        session=session,
+    )
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(lambda _: client.ensure_upload_ready(), range(4)))
+    assert session.refreshes == 1

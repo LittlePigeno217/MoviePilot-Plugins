@@ -8,9 +8,19 @@ from unittest.mock import patch
 import httpx
 from p115pickcode import id_to_pickcode
 
-from app.plugins.p115liteassistant.life_monitor import LifeEventRetryError, LifeMonitor
+from app.plugins.p115liteassistant.life_monitor import LifeEventRetryError, LifeMonitor as ProductionLifeMonitor
 from app.plugins.p115liteassistant.resilience import TtlCache
-from app.plugins.p115liteassistant.strm import build_strm_content
+from app.plugins.p115liteassistant.strm import StrmMaterializer, build_strm_content
+
+
+from tests.p115liteassistant.helpers import make_test_journal
+
+
+def LifeMonitor(client_provider, store, *args, journal=None, **kwargs):
+    return ProductionLifeMonitor(
+        client_provider, store, *args,
+        journal=journal or make_test_journal(store), **kwargs
+    )
 
 
 VALID_PICKCODE = id_to_pickcode(101)
@@ -36,6 +46,7 @@ class FakeStore:
             ],
         }
         self.records = {}
+        self.upload_records = {}
         self.cursor = {"from_time": 100, "from_id": 0}
         self.api_state = {}
         self.paths = {}
@@ -48,6 +59,9 @@ class FakeStore:
 
     def save_strm_records(self, records):
         self.records = dict(records)
+
+    def get_upload_records(self):
+        return dict(self.upload_records)
 
     def get_redirect_secret(self):
         return "life-test-secret-0123456789abcdef"
@@ -132,6 +146,118 @@ class LifeMonitorTest(unittest.TestCase):
         self.store = FakeStore(target)
         return LifeMonitor(lambda: self.client, self.store, moviepilot_url_provider=lambda: "http://moviepilot:3000")
 
+    def test_life_monitor_uses_materializer_and_persists_compatible_schema(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            calls = []
+            original_prepare = StrmMaterializer.prepare
+
+            def tracking_prepare(materializer, request, claims, **kwargs):
+                calls.append(request)
+                return original_prepare(materializer, request, claims, **kwargs)
+
+            with patch.object(StrmMaterializer, "prepare", tracking_prepare):
+                monitor.process_events(
+                    [{"id": 1, "update_time": 101, "type": 2, "file_id": "501"}]
+                )
+
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0].producer, "life")
+            self.assertEqual(calls[0].owner_id, "movies")
+            record = self.store.records["movies:Film.mkv"]
+            for key in (
+                "path", "fingerprint", "mapping_id", "kind", "producer",
+                "owner_id", "output_path", "cloud_identity",
+            ):
+                self.assertIn(key, record)
+
+    def test_existing_exact_strm_without_record_is_claimed_and_advances_cursor(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            output = Path(directory) / "Film.strm"
+            expected = build_strm_content(
+                "http://moviepilot:3000", VALID_PICKCODE,
+                self.store.get_redirect_secret(), "Film.mkv",
+            )
+            output.write_text(expected, encoding="utf-8")
+
+            monitor.process_events(
+                [{"id": 1, "update_time": 101, "type": 2, "file_id": "501"}]
+            )
+
+            self.assertEqual(output.read_text(encoding="utf-8"), expected)
+            self.assertEqual(self.store.cursor, {"from_time": 101, "from_id": 1})
+            record = self.store.records["movies:Film.mkv"]
+            self.assertEqual(record["owner_id"], "movies")
+            self.assertEqual(record["cloud_identity"]["pickcode"], VALID_PICKCODE)
+            self.assertEqual(record["cloud_identity"]["file_id"], "501")
+
+    def test_existing_different_strm_without_record_retries_without_changes(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            output = Path(directory) / "Film.strm"
+            output.write_bytes(b"external")
+
+            with self.assertRaises(LifeEventRetryError):
+                monitor.process_events(
+                    [{"id": 1, "update_time": 101, "type": 2, "file_id": "501"}]
+                )
+
+            self.assertEqual(output.read_bytes(), b"external")
+            self.assertEqual(self.store.cursor, {"from_time": 100, "from_id": 0})
+            self.assertEqual(self.store.records, {})
+
+    def test_exact_strm_symlink_and_directory_retry_without_cursor_advance(self):
+        with TemporaryDirectory() as directory:
+            expected = build_strm_content(
+                "http://moviepilot:3000", VALID_PICKCODE,
+                "life-test-secret-0123456789abcdef", "Film.mkv",
+            )
+            for kind in ("symlink", "directory"):
+                root = Path(directory) / kind
+                root.mkdir()
+                monitor = self.monitor(root)
+                output = root / "Film.strm"
+                if kind == "symlink":
+                    real = root / "real.strm"
+                    real.write_text(expected, encoding="utf-8")
+                    output.symlink_to(real)
+                else:
+                    output.mkdir()
+
+                with self.assertRaises(LifeEventRetryError):
+                    monitor.process_events(
+                        [{"id": 1, "update_time": 101, "type": 2, "file_id": "501"}]
+                    )
+                self.assertEqual(self.store.cursor, {"from_time": 100, "from_id": 0})
+                self.assertEqual(self.store.records, {})
+
+    def test_exact_strm_with_other_claim_is_not_claimed(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            output = Path(directory) / "Film.strm"
+            expected = build_strm_content(
+                "http://moviepilot:3000", VALID_PICKCODE,
+                self.store.get_redirect_secret(), "Film.mkv",
+            )
+            output.write_text(expected, encoding="utf-8")
+            self.store.upload_records["/downloads/other.mkv"] = {
+                "output_path": str(output),
+                "kind": "strm",
+                "owner_id": "other-upload",
+                "cloud_identity": {"pickcode": COPY_PICKCODE, "file_id": "502"},
+            }
+
+            with self.assertRaises(LifeEventRetryError):
+                monitor.process_events(
+                    [{"id": 1, "update_time": 101, "type": 2, "file_id": "501"}]
+                )
+
+            self.assertEqual(output.read_text(encoding="utf-8"), expected)
+            self.assertEqual(self.store.cursor, {"from_time": 100, "from_id": 0})
+            self.assertEqual(self.store.records, {})
+            self.assertIn("/downloads/other.mkv", self.store.upload_records)
+
     def test_restart_request_survives_a_still_stopping_thread(self):
         with TemporaryDirectory() as directory:
             monitor = self.monitor(directory)
@@ -208,6 +334,47 @@ class LifeMonitorTest(unittest.TestCase):
             self.assertFalse(renamed.exists())
             self.assertNotIn("movies:Renamed.mkv", self.store.records)
             self.assertTrue(copy.exists())
+
+    def test_delete_preserves_unified_output_claimed_by_upload_owner(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            output = Path(directory) / "Film.strm"
+            output.write_text("http://moviepilot/redirect\n", encoding="utf-8")
+            self.store.records = {
+                "movies:Film.mkv": {
+                    "output_path": str(output),
+                    "kind": "strm",
+                    "mapping_id": "movies",
+                    "owner_id": "movies",
+                    "cloud_path": "/Movies/Film.mkv",
+                    "file_id": "501",
+                }
+            }
+            self.store.upload_records = {
+                "/downloads/Film.mkv": {
+                    "output_path": str(output),
+                    "kind": "strm",
+                    "owner_id": "upload-movies",
+                    "cloud_path": "/Movies/Film.mkv",
+                    "file_id": "501",
+                }
+            }
+
+            monitor.process_events(
+                [{
+                    "id": 1,
+                    "update_time": 101,
+                    "type": 22,
+                    "file_id": "501",
+                    "parent_id": "10",
+                    "file_name": "Film.mkv",
+                }]
+            )
+
+            self.assertNotIn("movies:Film.mkv", self.store.records)
+            self.assertIn("/downloads/Film.mkv", self.store.upload_records)
+            self.assertTrue(output.is_file())
+            self.assertEqual(self.store.cursor, {"from_time": 101, "from_id": 1})
 
     def add_same_stem_items(self, mov_name="VVDV(1).MOV", other_name="VVDV(1).mp4", other_mtime=100):
         self.client.items["601"] = {
@@ -422,6 +589,56 @@ class LifeMonitorTest(unittest.TestCase):
             self.assertFalse((Path(directory) / "Film.strm").exists())
             self.assertNotIn("movies:Film.mkv", self.store.records)
             self.assertEqual(self.store.paths["501"]["path"], "/Movies/Film.txt")
+
+    def test_journal_delete_has_no_followup_full_save(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            monitor.process_events([{"id": 1, "update_time": 101, "type": 2, "file_id": "501"}])
+            self.client.items["501"].update(
+                {"path": "/Movies/Film.txt", "name": "Film.txt", "mtime": 102}
+            )
+            saves = 0
+            original_save = self.store.save_strm_records
+
+            def count_save(records):
+                nonlocal saves
+                saves += 1
+                original_save(records)
+
+            with patch.object(self.store, "save_strm_records", side_effect=count_save):
+                monitor.process_events(
+                    [{"id": 2, "update_time": 102, "type": 24, "file_id": "501"}]
+                )
+
+            self.assertEqual(saves, 1)
+            self.assertNotIn("movies:Film.mkv", self.store.records)
+
+    def test_journal_delete_does_not_overwrite_concurrent_record(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            monitor.process_events([{"id": 1, "update_time": 101, "type": 2, "file_id": "501"}])
+            self.client.items["501"].update(
+                {"path": "/Movies/Film.txt", "name": "Film.txt", "mtime": 102}
+            )
+            original_remove = monitor._remove_record
+            concurrent = {
+                "path": str(Path(directory) / "Concurrent.strm"),
+                "mapping_id": "movies",
+                "cloud_path": "/Movies/Concurrent.mkv",
+            }
+
+            def remove_then_publish(key, records):
+                removed = original_remove(key, records)
+                self.store.records["movies:Concurrent.mkv"] = concurrent
+                return removed
+
+            with patch.object(monitor, "_remove_record", side_effect=remove_then_publish):
+                monitor.process_events(
+                    [{"id": 2, "update_time": 102, "type": 24, "file_id": "501"}]
+                )
+
+            self.assertEqual(self.store.records["movies:Concurrent.mkv"], concurrent)
+            self.assertNotIn("movies:Film.mkv", self.store.records)
 
     def test_directory_move_scans_children_and_updates_paths(self):
         with TemporaryDirectory() as directory:
@@ -735,6 +952,26 @@ class LifeMonitorTest(unittest.TestCase):
             self.assertEqual(events[0]["id"], 1)
             self.assertEqual(events[-1]["id"], 65)
 
+
+    def test_pagination_uses_client_as_single_timing_source(self):
+        with TemporaryDirectory() as directory:
+            monitor = self.monitor(directory)
+            monitor.FIRST_EVENT_PAGE_SIZE = 1
+            monitor.EVENT_PAGE_SIZE = 1
+            calls = []
+
+            def get_page(**kwargs):
+                calls.append(kwargs["offset"])
+                if kwargs["offset"] == 0:
+                    return {"events": [{"id": 2, "update_time": 102, "type": 2}], "count": 2}
+                return {"events": [{"id": 1, "update_time": 101, "type": 2}], "count": 2}
+
+            self.client.get_life_events_page = get_page
+            with patch.object(monitor._stop_event, "wait", wraps=monitor._stop_event.wait) as waiter:
+                monitor._fetch_events(100, 0)
+            self.assertEqual(calls, [0, 1])
+            waiter.assert_not_called()
+
     def test_repeated_pagination_page_keeps_cursor_for_retry(self):
         with TemporaryDirectory() as directory:
             monitor = self.monitor(directory)
@@ -755,6 +992,59 @@ class LifeMonitorTest(unittest.TestCase):
             with self.assertRaises(LifeEventRetryError):
                 monitor._fetch_events(100, 0)
 
+
+
+
+def test_life_monitor_recovery_failure_keeps_cursor_and_skips_run_once():
+    import threading
+    from unittest.mock import Mock
+    from app.plugins.p115liteassistant.strm import StrmRecoveryBlockedError
+
+    cursor = {"from_time": 100, "from_id": 7}
+    store = Mock()
+    store.cursor = dict(cursor)
+    store.get_config.return_value = {"enabled": True, "life_monitor_enabled": True}
+    client = Mock()
+    stop = threading.Event()
+
+    def fail_recovery(_stage):
+        stop.set()
+        raise StrmRecoveryBlockedError("broken journal")
+
+    monitor = LifeMonitor(
+        lambda: client,
+        store,
+        recover_strm_commits=fail_recovery,
+    )
+    monitor._stop_event = stop
+    monitor.run_once = Mock()
+
+    monitor._run()
+
+    monitor.run_once.assert_not_called()
+    assert store.cursor == cursor
+
+
+def test_life_monitor_recovers_after_cloud_lock_before_run_once():
+    import threading
+    from unittest.mock import Mock
+
+    store = Mock()
+    store.get_config.return_value = {"enabled": True, "life_monitor_enabled": True}
+    client = Mock()
+    stop = threading.Event()
+    order = []
+    monitor = LifeMonitor(
+        lambda: client,
+        store,
+        recover_strm_commits=lambda stage: (order.append(("recover", stage)), stop.set())[0] or [],
+    )
+    monitor._stop_event = stop
+    monitor.run_once = Mock(side_effect=lambda: order.append(("run_once", "")))
+
+    monitor._run()
+
+    assert [item[0] for item in order] == ["recover", "run_once"]
 
 if __name__ == "__main__":
     unittest.main()

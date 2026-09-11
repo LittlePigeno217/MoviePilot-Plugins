@@ -26,12 +26,14 @@ class RecordingNotifier:
     def is_enabled(self, channel):
         return self.enabled
 
-    def notify(self, channel, headline, lines, image=""):
+    def notify(self, channel, headline, lines, image="", **kwargs):
         self.calls.append({
             "channel": channel,
             "headline": headline,
             "lines": [str(line) for line in lines],
             "text": "\n".join(str(line) for line in lines),
+            "image": image,
+            **kwargs,
         })
 
 
@@ -43,6 +45,7 @@ _BORROWED = (
     "_sweep_row", "_sweep_aside_line", "_sweep_entry_is_noteworthy", "_notify_strm_sweep",
     "_season_bar", "_season_ranges", "_season_episodes_map", "_season_lines",
     "_upload_haul_line", "_upload_text_lines",
+    "_upload_episode_title",
     "_notify_checkin",
 )
 _CONSTANTS = (
@@ -54,6 +57,7 @@ NotifyHost = type("NotifyHost", (), {
     **{name: Api.__dict__.get(name, getattr(Api, name)) for name in _BORROWED},
     **{name: getattr(Api, name) for name in _CONSTANTS},
     "__init__": lambda self, notifier: setattr(self, "_notifier", notifier),
+    "_plugin_console_link": lambda self: "https://moviepilot.example/#/plugins",
 })
 
 
@@ -112,22 +116,22 @@ class CheckinNoticeTest(unittest.TestCase):
         api, notifier = host()
         api._notify_checkin({"continuous_day": 45, "points_num": 5, "message": "签到成功"}, True)
         call = notifier.calls[0]
-        self.assertEqual(call["headline"], "已签到，+5 积分")
-        self.assertEqual(call["text"], "连续签到 45 天")
+        self.assertEqual(call["headline"], "115 签到成功")
+        self.assertEqual(call["text"], "连续签到 45 天，获得 5 积分")
 
     def test_already_signed_reads_plainly(self):
         api, notifier = host()
         api._notify_checkin({"already": True, "continuous_day": 12, "message": "今日已签到"}, True)
-        self.assertEqual(notifier.calls[0]["headline"], "今天已经签过了")
-        self.assertEqual(notifier.calls[0]["text"], "连续签到 12 天")
+        self.assertEqual(notifier.calls[0]["headline"], "115 今日已签到")
+        self.assertEqual(notifier.calls[0]["text"], "当前连续签到 12 天")
 
     def test_streak_of_one_is_still_worth_a_line(self):
         """真机上刚断签重来那天，正文只剩一句「签到已记录」，标题已经说过了。"""
         api, notifier = host()
         api._notify_checkin({"points_num": 1, "continuous_day": 1, "message": "签到成功"}, True)
         call = notifier.calls[0]
-        self.assertEqual(call["headline"], "已签到，+1 积分")
-        self.assertEqual(call["text"], "连续签到 1 天")
+        self.assertEqual(call["headline"], "115 签到成功")
+        self.assertEqual(call["text"], "连续签到 1 天，获得 1 积分")
 
     def test_body_never_restates_the_time(self):
         """通知自带到达时间，再写一行「时间：」是白占锁屏上的位置。"""
@@ -140,7 +144,7 @@ class CheckinNoticeTest(unittest.TestCase):
         api, notifier = host()
         api._notify_checkin({"message": "Cookie 已失效，请重新扫码登录"}, False)
         call = notifier.calls[0]
-        self.assertEqual(call["headline"], "没签上")
+        self.assertEqual(call["headline"], "115 签到失败")
         self.assertEqual(call["text"], "Cookie 已失效，请重新扫码登录")
 
     def test_failure_without_reason_points_somewhere(self):
@@ -179,22 +183,22 @@ class StrmNoticeTest(unittest.TestCase):
     def test_headline_counts_what_was_made(self):
         api, _ = host()
         headline, _ = api._strm_text_notice([], {"added": 12, "updated": 4}, True)
-        self.assertEqual(headline, "新增 12 个 STRM 文件")
+        self.assertEqual(headline, "STRM 同步完成：新增 12 个")
 
     def test_headline_leads_with_failures(self):
         api, _ = host()
         headline, _ = api._strm_text_notice([], {"added": 8, "errors": 3}, True)
-        self.assertEqual(headline, "3 个 STRM 文件没生成")
+        self.assertEqual(headline, "STRM 同步完成：3 个失败")
 
     def test_headline_falls_back_to_updates(self):
         api, _ = host()
         headline, _ = api._strm_text_notice([], {"updated": 4}, True)
-        self.assertEqual(headline, "更新 4 个 STRM 文件")
+        self.assertEqual(headline, "STRM 同步完成：更新 4 个")
 
     def test_headline_says_nothing_changed(self):
         api, _ = host()
         headline, _ = api._strm_text_notice([], {"skipped": 40}, True)
-        self.assertEqual(headline, "没有需要更新的")
+        self.assertEqual(headline, "STRM 已是最新")
 
     def test_每条映射一行(self):
         api, _ = host()
@@ -202,8 +206,8 @@ class StrmNoticeTest(unittest.TestCase):
             [{"mapping": "电影", "added": 8}, {"mapping": "剧集", "added": 4, "updated": 2}],
             {"added": 12, "updated": 2}, True,
         )
-        self.assertEqual(lines[0], "✅ 电影  新增 8 个")
-        self.assertEqual(lines[1], "✅ 剧集  新增 4 个，更新 2 个")
+        self.assertEqual(lines[3], "✅ 电影  新增 8 个")
+        self.assertEqual(lines[4], "✅ 剧集  新增 4 个，更新 2 个")
 
     def test_changes_are_spelled_out_not_symbols(self):
         """+ ~ ✕ 省地方，但通知是给人看一眼的，不该先让人猜图例。"""
@@ -232,7 +236,7 @@ class StrmNoticeTest(unittest.TestCase):
             [{"mapping": "电影", "added": 8}, {"mapping": "剧集", "errors": 1, "message": "超时"}],
             {"added": 8, "errors": 1}, True,
         )
-        self.assertTrue(lines[0].startswith("❌ 剧集"))
+        self.assertTrue(lines[3].startswith("❌ 剧集"))
 
     def test_aside_line_carries_what_nobody_watches(self):
         api, _ = host()
@@ -250,7 +254,10 @@ class StrmNoticeTest(unittest.TestCase):
     def test_quiet_run_has_no_aside(self):
         api, _ = host()
         _, lines = api._strm_text_notice([{"mapping": "电影", "added": 1}], {"added": 1}, True)
-        self.assertEqual(lines, ["✅ 电影  新增 1 个"])
+        self.assertEqual(
+            lines,
+            ["新增 1 个，更新 0 个，清理 0 个", "增量同步，1 条映射，耗时 -", "", "✅ 电影  新增 1 个"],
+        )
 
     def test_long_mapping_list_is_folded(self):
         api, _ = host()
@@ -273,15 +280,15 @@ class SweepNoticeTest(unittest.TestCase):
         return notifier.calls[0]
 
     def test_headline_counts_the_deletions(self):
-        self.assertEqual(self.notice({"cloud_deleted": 3})["headline"], "删了 3 个网盘文件")
+        self.assertEqual(self.notice({"cloud_deleted": 3})["headline"], "网盘清理完成：删除 3 个文件")
 
     def test_headline_leads_with_failures(self):
         self.assertEqual(
-            self.notice({"cloud_deleted": 3, "errors": 2})["headline"], "2 个网盘文件没删掉"
+            self.notice({"cloud_deleted": 3, "errors": 2})["headline"], "网盘清理完成：2 个失败"
         )
 
     def test_headline_surfaces_the_review_queue(self):
-        self.assertEqual(self.notice({"pending": 5})["headline"], "5 个网盘文件等你确认")
+        self.assertEqual(self.notice({"pending": 5})["headline"], "网盘清理待确认：5 个文件")
 
     def test_one_place_has_one_name(self):
         """同一处存储不能在标题里叫「云端」、正文里叫「115 上」——读的人得先确认是不是一回事。"""
@@ -293,7 +300,7 @@ class SweepNoticeTest(unittest.TestCase):
     def test_single_mapping_row_does_not_repeat_the_headline(self):
         """真机上常态就是一条映射：数标题刚说过，行里要说的是「哪条映射」。"""
         call = self.notice({"cloud_deleted": 3})
-        self.assertEqual(call["headline"], "删了 3 个网盘文件")
+        self.assertEqual(call["headline"], "网盘清理完成：删除 3 个文件")
         self.assertEqual(call["lines"][0], "✅ 电影")
 
     def test_destructive_action_says_whether_it_can_be_undone(self):
@@ -519,6 +526,10 @@ class UploadNoticeTest(unittest.TestCase):
                                    library="剧集", strm=3, sidecars=6))
         for ruler in NO_RULES:
             self.assertNotIn(ruler, text)
+
+    def test_episode_range_is_moved_into_the_title(self):
+        api, _ = host()
+        self.assertEqual(api._upload_episode_title("第1季 第1-3集"), "S01 E01-E03")
 
 
 if __name__ == "__main__":

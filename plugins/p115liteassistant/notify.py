@@ -73,9 +73,8 @@ _MP_HELPER_OK = ServiceConfigHelper is not None
 
 DEFAULT_NOTIFY_TYPE = "Plugin"
 
-# 资源入库通知类型（整理入库）。MoviePilot 的「通知模板 → 整理入库」模板
-# 就是资源入库通知样式：STRM 通道 / 上传通道默认走这个模板，让入库类消息
-# 与 MoviePilot 原生资源入库通知保持一致。
+# 资源入库通知类型（整理入库）。这里只用于 MoviePilot 的消息类型分流；插件已经
+# 自行生成 title/text，不会触发 ContentType.OrganizeSuccess 模板。
 RESOURCE_NOTIFY_TYPE = "Organize"
 
 # 可选的消息类型。MoviePilot 的通知渠道按类型分流，所以每条通道都能挑自己的类型。
@@ -176,35 +175,53 @@ class Notifier:
             return False
         return bool(config.get(meta["enabled_key"]))
 
-    def notify(self, channel: str, headline: str, lines: Iterable[Any], image: str = "") -> None:
+    def notify(
+        self,
+        channel: str,
+        headline: str,
+        lines: Iterable[Any],
+        image: str = "",
+        link: str = "",
+        title_prefix: Optional[str] = None,
+        save_history: bool = True,
+    ) -> None:
         """发一条通道通知；通道未开启或宿主不可用时静默跳过。"""
         meta = CHANNELS.get(channel)
         if not meta or not self.is_enabled(channel):
             return
         body = self._compose(lines)
-        title = self._title(channel, headline)
+        title = self._title(channel, headline, title_prefix)
         try:
             config = self._config_provider() or {}
             mtype = resolve_notify_type(config.get(meta["type_key"]))
-            kwargs: Dict[str, Any] = {"title": title, "text": body}
+            kwargs: Dict[str, Any] = {
+                "title": title,
+                "text": body,
+            }
             if mtype is not None:
                 kwargs["mtype"] = mtype
             if image:
                 kwargs["image"] = image
+            if link:
+                kwargs["link"] = link
+            if save_history is not True:
+                kwargs["save_history"] = save_history
             self._poster(**kwargs)  # type: ignore[misc]
         except Exception as err:  # noqa: BLE001
             self._log_error(f"【{meta['label']}】发送通知失败：{safe_error_text(err)}")
 
-    def _title(self, channel: str, headline: str) -> str:
-        """标题 = 「自称 · 结论」，中间一个间隔号，全篇只有这一处分隔符。
-
-        通道名（「STRM 通道」「每日签到」）不进标题：每条 headline 都写成自报家门的一句
-        话（「新增 12 个 STRM」「已签到，+5 积分」），再加一个通道名就是把同一件事说两遍，
-        还要从结论那边挤掉两三个字 —— 锁屏上常常只看得到这一行。
-        上传通道自称「115 网盘」：那条通知讲的是某部片子入库了，不是插件在汇报工作。
-        """
-        prefix = "115 网盘" if channel == "upload" else self._title_prefix
-        return f"{prefix} · {headline}" if headline else prefix
+    def _title(
+        self,
+        channel: str,
+        headline: str,
+        title_prefix: Optional[str] = None,
+    ) -> str:
+        """上传默认显示媒体标题；其余旧调用仍保留插件名前缀兼容行为。"""
+        if title_prefix is None:
+            prefix = "" if channel == "upload" else self._title_prefix
+        else:
+            prefix = title_prefix
+        return f"{prefix} · {headline}" if prefix and headline else headline or prefix
 
     @staticmethod
     def _compose(lines: Iterable[Any]) -> str:
@@ -228,7 +245,7 @@ class Notifier:
         if logger is not None:
             logger.error(message)
 
-    # ---------- 飞书美化卡片（仅上传通道） ----------
+    # ---------- 已废弃：飞书直发兼容代码，不再由通知主流程调用 ----------
 
     @staticmethod
     def _feishu_channels(mtype: str = "") -> list[dict]:
@@ -325,10 +342,9 @@ class Notifier:
         image_url: str = "",
         mtype: str = "",
     ) -> bool:
-        """发送「115 网盘」美化卡片（schema 2.0 column_set 布局）。
+        """Deprecated：保留旧接口兼容；正式通知统一交给 MoviePilot post_message。
 
-        读取 MoviePilot 内置飞书渠道配置直发；任何异常返回 False 由调用方回退文本。
-        mtype 传消息类型名（如 "Organize"）时只发送到该类型对应的渠道。
+        读取 MoviePilot 内置飞书渠道配置直发；任何异常返回 False。
         """
         if not _LARK_OK or _lark is None or _CreateMessageRequest is None or _CreateMessageRequestBody is None:
             return False

@@ -47,7 +47,7 @@ class TransferUploadTest(unittest.TestCase):
 
         plugin.upload_after_transfer_complete(self.transfer_event())
 
-        plugin._api.trigger_upload.assert_called_once_with(True)
+        plugin._api.queue_upload.assert_called_once_with(source="transfer")
 
     def test_disabled_plugin_does_not_trigger_upload(self):
         plugin = self.build_plugin(
@@ -59,7 +59,7 @@ class TransferUploadTest(unittest.TestCase):
 
         plugin.upload_after_transfer_complete(self.transfer_event())
 
-        plugin._api.trigger_upload.assert_not_called()
+        plugin._api.queue_upload.assert_not_called()
 
     def test_plugin_without_enabled_upload_mapping_does_not_trigger_upload(self):
         plugin = self.build_plugin(
@@ -71,4 +71,4 @@ class TransferUploadTest(unittest.TestCase):
 
         plugin.upload_after_transfer_complete(self.transfer_event())
 
-        plugin._api.trigger_upload.assert_not_called()
+        plugin._api.queue_upload.assert_not_called()

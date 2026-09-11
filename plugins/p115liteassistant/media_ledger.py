@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -124,6 +125,24 @@ def _path_key(value: Any) -> str:
     return raw.replace("\\", "/").rstrip("/").casefold()
 
 
+def _iso_to_epoch(value: Any) -> int:
+    """把上传记录的 ISO 时间字符串解析成 epoch 秒；解析失败返回 0。"""
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    try:
+        # 兼容带毫秒/带时区/不带时区的常见 ISO 写法
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone()
+            return int(parsed.timestamp())
+        return int(parsed.timestamp())
+    except (TypeError, ValueError):
+        return 0
+
+
 def seed_count(local_paths: Iterable[str], content_paths: Set[str]) -> int:
     """这些本地文件里有几个正被某个种子占着。
 
@@ -163,7 +182,9 @@ def _blank_row(spot: Dict[str, Any]) -> Dict[str, Any]:
         "year": spot["year"],
         "season": spot["season"],
         "channel": "",
+        # channel_id 保留给旧前端；channel_ids 才是完整的多映射归属。
         "channel_id": "",
+        "channel_ids": [],
         # in_library 在收尾时按「三处各有没有东西」推出来，不在这里定
         "in_library": "unknown",
         "files": 0,
@@ -291,14 +312,36 @@ def build_ledger(
     for key, record in (records or {}).items():
         if not isinstance(record, dict):
             continue
-        mapping_id, _, rest = str(key).partition(":")
-        if rest.startswith("sidecar:"):
+        record_key = str(key)
+        mapping_id = str(record.get("mapping_id") or "").strip()
+        if mapping_id and record_key.startswith(f"{mapping_id}:"):
+            rest = record_key[len(mapping_id) + 1 :]
+        else:
+            # 兼容 mapping_id 字段出现前的记录；配置 ID 可能含冒号，按最长前缀匹配。
+            mapping_id = next(
+                (
+                    candidate
+                    for candidate in sorted(channels, key=len, reverse=True)
+                    if record_key.startswith(f"{candidate}:")
+                ),
+                "",
+            )
+            if mapping_id:
+                rest = record_key[len(mapping_id) + 1 :]
+            elif record_key.startswith("once:") and record_key.count(":") >= 2:
+                once, cid, rest = record_key.split(":", 2)
+                mapping_id = f"{once}:{cid}"
+            else:
+                mapping_id, _, rest = record_key.partition(":")
+        if str(record.get("kind") or "") == "sidecar" or rest.startswith("sidecar:"):
             continue
         raw_path = str(record.get("path") or "")
         spot = locate(raw_path)
         if not spot:
             continue
         row = bucket(spot)
+        if mapping_id and mapping_id not in row["channel_ids"]:
+            row["channel_ids"].append(mapping_id)
         if not row["channel"]:
             row["channel_id"] = mapping_id
             row["channel"] = channels.get(mapping_id) or (
@@ -343,6 +386,14 @@ def build_ledger(
         for path, record in (upload_records or {}).items()
         if isinstance(record, dict) and str(record.get("uploaded_at") or "").strip()
     }
+    # 上传记录的入库时间回退源：键=本地路径归一化键，值=ISO 时间字符串。
+    # STRM 记录缺 mtime 时（旧版本写入/增量跳过不刷新），用上传记录里真正
+    # 落到网盘的时刻补全 library_at，避免「已入库却显示还没入库」的矛盾。
+    uploaded_at_by_key = {
+        _path_key(path): str(record.get("uploaded_at") or "").strip()
+        for path, record in (upload_records or {}).items()
+        if isinstance(record, dict)
+    }
     conflicts_by_path = {
         _path_key(path): item
         for path, item in (upload_conflicts or {}).items()
@@ -380,6 +431,12 @@ def build_ledger(
             row = bucket(spot)
             row["source_paths"].append(resolved)
             row["source_size"] += size
+            # STRM 记录缺 mtime 时（旧版本写入/增量跳过不刷新），用上传记录里真正
+            # 落到网盘的时刻补全 library_at，避免「已入库却显示还没入库」的矛盾。
+            if row["library_at"] == 0:
+                uploaded_epoch = _iso_to_epoch(uploaded_at_by_key.get(_path_key(resolved)))
+                if uploaded_epoch > 0:
+                    row["library_at"] = uploaded_epoch
             conflict = conflicts_by_path.get(_path_key(resolved))
             if isinstance(conflict, dict):
                 # 上传记录与网盘身份对不上的文件，把分歧挂到它所属的那一行，
@@ -407,8 +464,11 @@ def build_ledger(
                 except ValueError:
                     relative = ""
                 row["upload_target"] = f"{target_root}/{relative}" if relative else target_root
+            upload_mapping_id = str(mapping.get("id") or source)
+            if upload_mapping_id and upload_mapping_id not in row["channel_ids"]:
+                row["channel_ids"].append(upload_mapping_id)
             if not row["channel"]:
-                row["channel_id"] = str(mapping.get("id") or source)
+                row["channel_id"] = upload_mapping_id
                 row["channel"] = label
 
     # ③ 判不出来的：输出目录里有 .strm、记录里没有。网盘上有没有这东西无从得知。
@@ -422,11 +482,31 @@ def build_ledger(
         row["size"] += int((item or {}).get("size") or 0)
         if spot["episode"] is not None:
             row["episodes"].append(spot["episode"])
+        if "untracked" not in row["channel_ids"]:
+            row["channel_ids"].append("untracked")
         if not row["channel"]:
             row["channel_id"] = "untracked"
             row["channel"] = "记录缺失"
         if "untracked" not in row["flags"]:
             row["flags"].append("untracked")
+
+    # ④ 入库时间兜底：STRM 记录没有 mtime、本地源文件也可能早已删掉时，
+    #    直接从上传记录反查——每一条上传记录都记着真正落到网盘的时刻。
+    #    只在缺时间时才补，且取最早（与 STRM 侧口径一致：回答「在库里待了多久」）。
+    for record_path, record in (upload_records or {}).items():
+        if not isinstance(record, dict):
+            continue
+        uploaded_epoch = _iso_to_epoch(record.get("uploaded_at"))
+        if uploaded_epoch <= 0:
+            continue
+        spot = locate(str(record_path or ""))
+        if not spot:
+            continue
+        row = rows.get(identity(spot))
+        if row is None:
+            continue
+        if row["library_at"] == 0 or uploaded_epoch < row["library_at"]:
+            row["library_at"] = uploaded_epoch
 
     duplicates = {token for token, count in token_seen.items() if count > 1}
     return _finish(rows, duplicates, seeding_paths or set(), seeding_identities or {})

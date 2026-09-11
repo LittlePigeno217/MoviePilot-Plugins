@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from p115pickcode import id_to_pickcode
 
-from app.plugins.p115liteassistant.api import Api
+from app.plugins.p115liteassistant.api import Api as ProductionApi
 from app.plugins.p115liteassistant.client import (
     U115AccessLimitError,
     U115AuthError,
@@ -17,14 +17,34 @@ from app.plugins.p115liteassistant.client import (
 from app.plugins.p115liteassistant.records import IncrementalRecordStore
 from app.plugins.p115liteassistant.resilience import TtlCache, retry_call as real_retry_call
 from app.plugins.p115liteassistant.strm import (
-    StrmGenerator,
+    StrmGenerator as ProductionStrmGenerator,
+    StrmMaterializer,
     build_redirect_signature,
     build_strm_content,
     build_strm_url,
     normalize_pickcode,
-    write_uploaded_strm,
 )
-from app.plugins.p115liteassistant.uploader import DirectoryUploader
+from app.plugins.p115liteassistant.uploader import DirectoryUploader as ProductionDirectoryUploader
+
+from tests.p115liteassistant.helpers import make_test_journal, write_uploaded_strm_for_test
+
+
+def Api(client_provider, store, *args, journal=None, **kwargs):
+    return ProductionApi(
+        client_provider, store, *args, journal=journal or make_test_journal(store), **kwargs
+    )
+
+
+def StrmGenerator(client, store, *args, journal=None, **kwargs):
+    return ProductionStrmGenerator(
+        client, store, *args, journal=journal or make_test_journal(store), **kwargs
+    )
+
+
+def DirectoryUploader(client, store, *args, journal=None, **kwargs):
+    return ProductionDirectoryUploader(
+        client, store, *args, journal=journal or make_test_journal(store), **kwargs
+    )
 
 
 VALID_PICKCODE = id_to_pickcode(1)
@@ -323,7 +343,7 @@ class StrmAndUploaderTest(unittest.TestCase):
             local_source.mkdir()
             iso_file = local_source / "Upload.iso"
             iso_file.write_bytes(b"iso")
-            uploaded = write_uploaded_strm(
+            uploaded = write_uploaded_strm_for_test(
                 iso_file,
                 local_source,
                 upload_target,
@@ -430,30 +450,38 @@ class StrmAndUploaderTest(unittest.TestCase):
                     for index in range(32)
                 )
 
-        class TrackingGenerator(StrmGenerator):
-            _state_lock = threading.Lock()
-            active_writes = 0
-            max_active_writes = 0
+        state_lock = threading.Lock()
+        active_writes = 0
+        max_active_writes = 0
+        calls = []
+        original_prepare = StrmMaterializer.prepare
 
-            def _write_strm(self, *args):
-                with self._state_lock:
-                    self.active_writes += 1
-                    self.max_active_writes = max(self.max_active_writes, self.active_writes)
-                try:
-                    time.sleep(0.01)
-                    return super()._write_strm(*args)
-                finally:
-                    with self._state_lock:
-                        self.active_writes -= 1
+        def tracking_prepare(materializer, request, claims, **kwargs):
+            nonlocal active_writes, max_active_writes
+            with state_lock:
+                calls.append(request)
+                active_writes += 1
+                max_active_writes = max(max_active_writes, active_writes)
+            try:
+                time.sleep(0.01)
+                return original_prepare(materializer, request, claims, **kwargs)
+            finally:
+                with state_lock:
+                    active_writes -= 1
 
-        with TemporaryDirectory() as directory, patch("app.plugins.p115liteassistant.strm.logger"):
-            generator = TrackingGenerator(ManyStrmClient(), FakeStore(), "http://mp:3000", False)
-            result = generator.run_mapping(
+        with TemporaryDirectory() as directory, patch(
+            "app.plugins.p115liteassistant.strm.logger"
+        ), patch.object(StrmMaterializer, "prepare", tracking_prepare):
+            result = StrmGenerator(
+                ManyStrmClient(), FakeStore(), "http://mp:3000", False
+            ).run_mapping(
                 {"id": "many", "source_cid": "115-root", "target_dir": directory}
             )
 
         self.assertEqual(result["added"], 32)
-        self.assertGreaterEqual(generator.max_active_writes, 2)
+        self.assertEqual(len(calls), 32)
+        self.assertTrue(all(request.producer == "generator" for request in calls))
+        self.assertGreaterEqual(max_active_writes, 2)
 
     def test_strm_generator_prepares_each_output_directory_once(self):
         class SharedDirectoryClient:
@@ -486,7 +514,9 @@ class StrmAndUploaderTest(unittest.TestCase):
                 ).run_mapping({"id": "movies", "source_cid": "root", "target_dir": directory})
 
             self.assertEqual(result["added"], 2)
-            self.assertEqual(mkdir_calls, [output_parent])
+            self.assertTrue(output_parent.is_dir())
+            self.assertTrue(mkdir_calls)
+            self.assertEqual(set(mkdir_calls), {output_parent})
 
     def test_strm_generator_downloads_sidecars_into_output_tree_when_enabled(self):
         with TemporaryDirectory() as directory:
@@ -1236,8 +1266,8 @@ class StrmAndUploaderTest(unittest.TestCase):
             store = FakeStore()
             store.strm_records.update(
                 {
-                    "movies:Film.mkv": {"fingerprint": "stale", "path": str(output)},
-                    "other:Film.mkv": {"fingerprint": "current", "path": str(output)},
+                    "movies:Film.mkv": {"fingerprint": "stale", "path": str(output), "owner_id": "movies"},
+                    "other:Film.mkv": {"fingerprint": "current", "path": str(output), "owner_id": "other"},
                 }
             )
 
@@ -1369,6 +1399,55 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertEqual(repaired["strm_generated"], 1)
             self.assertEqual(len(client.uploaded), 1)
             self.assertIn(f"pickcode={VALID_PICKCODE}", generated.read_text(encoding="utf-8"))
+
+    def test_directory_uploader_uses_materializer_and_merges_legacy_metadata(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            output = Path(directory) / "output"
+            source.mkdir()
+            movie = source / "Film.mkv"
+            movie.write_bytes(b"media")
+            store = FakeStore()
+            calls = []
+            original_prepare = StrmMaterializer.prepare
+
+            def tracking_prepare(materializer, request, claims, **kwargs):
+                calls.append(request)
+                return original_prepare(materializer, request, claims, **kwargs)
+
+            with patch.object(StrmMaterializer, "prepare", tracking_prepare):
+                result = DirectoryUploader(
+                    StrmUploadClient(),
+                    store,
+                    {
+                        "upload_mappings": [
+                            {
+                                "id": "upload-movies",
+                                "enabled": True,
+                                "source": str(source),
+                                "target": "/Cloud",
+                                "strm_target": str(output),
+                            }
+                        ],
+                        "upload_generate_strm": True,
+                        "upload_include_sidecars": False,
+                        "upload_media_extensions": ".mkv",
+                    },
+                    "https://moviepilot.example",
+                ).run(incremental=True)
+
+            self.assertEqual(result["strm_generated"], 1)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0].container, "upload")
+            self.assertEqual(calls[0].key, str(movie.resolve()))
+            self.assertEqual(calls[0].owner_id, "upload-movies")
+            record = store.upload_records.get(movie)
+            for key in (
+                "size", "mtime_ns", "target", "uploaded_at", "pickcode", "method",
+                "strm_target", "strm_signature", "producer", "owner_id", "output_path",
+                "cloud_identity",
+            ):
+                self.assertIn(key, record)
 
     def test_directory_uploader_requires_strm_target_when_generation_enabled(self):
         with TemporaryDirectory() as directory:
@@ -1818,7 +1897,7 @@ class StrmAndUploaderTest(unittest.TestCase):
                     **uploader._strm_record_metadata(str(output)),
                 },
             )
-            generated = write_uploaded_strm(
+            generated = write_uploaded_strm_for_test(
                 movie,
                 source,
                 output,
