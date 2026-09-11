@@ -237,3 +237,32 @@ class LifecycleTest(unittest.TestCase):
             self.assertTrue(harness.watcher._watched_dirs_alive())
             media.rmdir()
             self.assertFalse(harness.watcher._watched_dirs_alive())
+
+class CapacityMarkerTest(unittest.TestCase):
+    def test_4097_delete_events_are_bounded_and_dispatch_full_marker(self):
+        with TemporaryDirectory() as directory:
+            harness = WatcherHarness(config_for(directory))
+            for index in range(4097):
+                harness.watcher.report_removed(str(Path(directory) / f"{index}.strm"))
+            self.assertLessEqual(len(harness.watcher._pending), 4096)
+            self.assertTrue(harness.watcher._pending_full)
+            harness.watcher.drain_once()
+            self.assertEqual(harness.reported, [None])
+
+class FullMarkerRetryTest(unittest.TestCase):
+    def test_full_marker_is_retained_until_orchestrator_accepts(self):
+        with TemporaryDirectory() as directory:
+            results = [{"success": False}, {"success": True}]
+            reported = []
+            def trigger(paths):
+                reported.append(paths)
+                return results.pop(0)
+            watcher = StrmDeleteWatcher(lambda: config_for(directory), trigger, lambda: FakeObserver())
+            watcher.MAX_PENDING_PATHS = 1
+            watcher.report_removed(str(Path(directory) / "a.strm"))
+            watcher.report_removed(str(Path(directory) / "b.strm"))
+            watcher.drain_once()
+            self.assertTrue(watcher._pending_full)
+            watcher.drain_once()
+            self.assertFalse(watcher._pending_full)
+            self.assertEqual(reported, [None, None])

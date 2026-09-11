@@ -2323,6 +2323,82 @@ class StrmAndUploaderTest(unittest.TestCase):
             self.assertTrue(source.is_dir())
 
 
+    def test_directory_uploader_cancel_during_retry_backoff_stops_retry(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "Movies"; source.mkdir()
+            movie = source / "Film.mkv"; movie.write_bytes(b"media")
+            config = {
+                "upload_mappings": [{"id": "movies", "enabled": True, "source": str(source), "target": "/Cloud"}],
+                "upload_include_sidecars": False,
+                "upload_media_extensions": ".mkv",
+            }
+            client = FlakyUploadClient()
+            checkpoints = []
+
+            def checkpoint(**state):
+                checkpoints.append(state)
+                return state["phase"] == "upload-retry-wait"
+
+            uploader = DirectoryUploader(
+                client,
+                FakeStore(),
+                config,
+                task_checkpoint=checkpoint,
+            )
+            result = uploader.run_files([movie], incremental=True)
+
+            self.assertEqual(client.attempts, 1)
+            self.assertEqual(result["uploaded"], 0)
+            self.assertEqual(result["errors"], 0)
+            self.assertIn("upload-retry-wait", [item["phase"] for item in checkpoints])
+            self.assertEqual(checkpoints[-1]["phase"], "upload-file-complete")
+
+    def test_directory_uploader_run_files_uses_shared_kernel_without_rglob(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "Movies"; source.mkdir()
+            movie = source / "Film.mkv"; movie.write_bytes(b"media")
+            config = {
+                "upload_mappings": [{"id": "movies", "enabled": True, "source": str(source), "target": "/Cloud/Movies"}],
+                "upload_include_sidecars": False,
+                "upload_media_extensions": ".mkv",
+            }
+            uploader = DirectoryUploader(FakeUploadClient(), FakeStore(), config)
+            candidate = type("Candidate", (), {"file_path": str(movie), "mapping_id": "movies"})()
+            with patch.object(Path, "rglob", side_effect=AssertionError("run_files 不应扫描目录")):
+                result = uploader.run_files([candidate], incremental=True)
+            self.assertEqual(result["instant"], 1)
+            self.assertEqual(result["errors"], 0)
+
+    def test_directory_uploader_run_files_rejects_boundary_and_bad_remote_target(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "source"; source.mkdir()
+            outside = Path(directory) / "outside.mkv"; outside.write_bytes(b"x")
+            client = FakeUploadClient()
+            for candidate, target in ((outside, "/Cloud"), (source / "Film.mkv", "relative/../Cloud")):
+                candidate.write_bytes(b"x")
+                uploader = DirectoryUploader(
+                    client, FakeStore(),
+                    {"upload_mappings": [{"id": "m", "source": str(source), "target": target}], "upload_media_extensions": ".mkv"},
+                )
+                with self.subTest(candidate=candidate, target=target), self.assertRaises(ValueError):
+                    uploader.run_files([candidate])
+            self.assertEqual(client.uploaded, [])
+
+    def test_directory_uploader_run_files_preserves_delete_sidecar_bundle(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "Movies"; source.mkdir()
+            movie = source / "Film.mkv"; movie.write_bytes(b"media")
+            sidecar = source / "Film.nfo"; sidecar.write_text("nfo", encoding="utf-8")
+            config = {
+                "upload_mappings": [{"id": "m", "source": str(source), "target": "/Cloud"}],
+                "upload_include_sidecars": True, "upload_delete_source": True,
+                "upload_media_extensions": ".mkv", "upload_sidecar_extensions": ".nfo",
+            }
+            result = DirectoryUploader(FakeUploadClient(), FakeStore(), config).run_files([movie])
+            self.assertEqual(result["deleted"], 2)
+            self.assertFalse(movie.exists()); self.assertFalse(sidecar.exists())
+
+
 
 class ForwardSyncBoundaryTest(unittest.TestCase):
     """正向同步的职责边界：不再碰云端删除，但要认反向删除留下的黑名单。"""

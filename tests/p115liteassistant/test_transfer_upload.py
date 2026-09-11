@@ -1,74 +1,69 @@
 import unittest
-from unittest.mock import Mock
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import Mock, call
 
 from app.core.event import Event
 from app.schemas.types import EventType
-
-try:
-    from app.plugins.p115liteassistant import P115LiteAssistant
-except ModuleNotFoundError:
-    from app.plugins.p115liteassistant import P115LiteAssistant
+from app.plugins.p115liteassistant import P115LiteAssistant
 
 
 class FakeStore:
-    """提供媒体整理事件测试所需的最小插件配置。"""
-
-    def __init__(self, config):
-        self._config = config
-
-    def get_config(self):
-        """返回当前插件配置。"""
-        return dict(self._config)
+    def __init__(self, config): self._config = config
+    def get_config(self): return dict(self._config)
 
 
 class TransferUploadTest(unittest.TestCase):
-    """验证媒体整理完成后目录上传的触发条件。"""
-
     @staticmethod
     def build_plugin(config):
-        """构造仅包含事件处理依赖的插件实例。"""
         plugin = object.__new__(P115LiteAssistant)
         plugin._store = FakeStore(config)
-        plugin._api = Mock()
+        plugin._upload_stability = Mock()
         return plugin
 
-    @staticmethod
-    def transfer_event():
-        """构造 MoviePilot 的媒体整理完成事件。"""
-        return Event(EventType.TransferComplete, {"fileitem": object()})
+    def test_reliable_fileitem_path_submits_only_that_file(self):
+        with TemporaryDirectory() as directory:
+            movie = Path(directory) / "Film.mkv"; movie.write_bytes(b"x")
+            plugin = self.build_plugin({"enabled": True})
+            event = Event(EventType.TransferComplete, {"fileitem": type("Item", (), {"path": movie})()})
+            plugin.upload_after_transfer_complete(event)
+            plugin._upload_stability.submit_path.assert_called_once_with(str(movie), source="transfer")
 
-    def test_enabled_plugin_triggers_incremental_upload(self):
-        plugin = self.build_plugin(
+    def test_rejected_absolute_path_falls_through_and_stops_after_first_accepted_path(self):
+        plugin = self.build_plugin({"enabled": True})
+        plugin._upload_stability.submit_path.side_effect = [False, True]
+        event = Event(
+            EventType.TransferComplete,
             {
-                "enabled": True,
-                "upload_mappings": [{"enabled": True, "source": "/media", "target": "/115"}],
-            }
+                "target_path": "/downloads/rejected.mkv",
+                "dest": "/media/accepted.mkv",
+                "fileitem": {"path": "/media/must-not-be-tried.mkv"},
+            },
         )
 
-        plugin.upload_after_transfer_complete(self.transfer_event())
+        plugin.upload_after_transfer_complete(event)
 
-        plugin._api.queue_upload.assert_called_once_with(source="transfer")
-
-    def test_disabled_plugin_does_not_trigger_upload(self):
-        plugin = self.build_plugin(
-            {
-                "enabled": False,
-                "upload_mappings": [{"enabled": True, "source": "/media", "target": "/115"}],
-            }
+        self.assertEqual(
+            plugin._upload_stability.submit_path.call_args_list,
+            [
+                call("/downloads/rejected.mkv", source="transfer"),
+                call("/media/accepted.mkv", source="transfer"),
+            ],
         )
 
-        plugin.upload_after_transfer_complete(self.transfer_event())
+    def test_missing_or_relative_path_does_not_trigger_full_scan(self):
+        plugin = self.build_plugin({"enabled": True})
+        for fileitem in (object(), {"path": "relative/Film.mkv"}):
+            with self.subTest(fileitem=fileitem):
+                plugin._upload_stability.reset_mock()
+                plugin.upload_after_transfer_complete(Event(EventType.TransferComplete, {"fileitem": fileitem}))
+                plugin._upload_stability.submit_path.assert_not_called()
 
-        plugin._api.queue_upload.assert_not_called()
+    def test_disabled_plugin_does_not_submit(self):
+        plugin = self.build_plugin({"enabled": False})
+        plugin.upload_after_transfer_complete(Event(EventType.TransferComplete, {"target_path": "/media/Film.mkv"}))
+        plugin._upload_stability.submit_path.assert_not_called()
 
-    def test_plugin_without_enabled_upload_mapping_does_not_trigger_upload(self):
-        plugin = self.build_plugin(
-            {
-                "enabled": True,
-                "upload_mappings": [{"enabled": False, "source": "/media", "target": "/115"}],
-            }
-        )
 
-        plugin.upload_after_transfer_complete(self.transfer_event())
-
-        plugin._api.queue_upload.assert_not_called()
+if __name__ == "__main__":
+    unittest.main()

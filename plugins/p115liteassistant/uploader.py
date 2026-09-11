@@ -4,7 +4,7 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from time import monotonic, sleep
-from typing import Any, Dict, Iterator, Tuple
+from typing import Any, Callable, Dict, Iterable, Iterator, Tuple
 
 from app.log import logger
 
@@ -44,6 +44,10 @@ class UploadIdentityConflict(ValueError):
         self.extra = extra
 
 
+class CooperativeUploadCancelled(RuntimeError):
+    """上传任务仅在显式安全检查点响应协作取消。"""
+
+
 class DirectoryUploader:
     def __init__(
         self,
@@ -53,12 +57,14 @@ class DirectoryUploader:
         moviepilot_url: str = "",
         poster_search=None,
         journal: CommitJournal | None = None,
+        task_checkpoint: Callable[..., bool] | None = None,
     ):
         self._client = client
         self._store = store
         self._config = config
         self._moviepilot_url = moviepilot_url.rstrip("/")
         self._poster_search = poster_search
+        self._task_checkpoint = task_checkpoint
         self._generate_strm = bool(config.get("upload_generate_strm", False))
         self._redirect_secret = store.get_redirect_secret() if self._generate_strm else ""
         self._media_extensions = parse_extensions(
@@ -75,11 +81,62 @@ class DirectoryUploader:
             raise ValueError("DirectoryUploader 必须注入插件唯一 CommitJournal")
         self._journal = journal
 
-    def _iter_files(self) -> Iterator[Tuple[Path, str, str, Path, str]]:
-        include_sidecars = bool(self._config.get("upload_include_sidecars", True))
-        mappings: list[tuple[Path, PurePosixPath, str]] = []
+    def _checkpoint(
+        self,
+        *,
+        phase: str,
+        current_item: str | None = None,
+        progress: Any = None,
+        check_cancel: bool = True,
+    ) -> None:
+        """向任务 lease 上报进度；只有调用方标注的安全边界才响应取消。"""
+        if self._task_checkpoint is None:
+            return
+        updates: Dict[str, Any] = {"phase": phase}
+        if current_item is not None:
+            updates["current_item"] = current_item
+        if progress is not None:
+            updates["progress"] = progress
+        cancelled = bool(self._task_checkpoint(**updates))
+        if cancelled and check_cancel:
+            raise CooperativeUploadCancelled("目录上传已在安全检查点协作取消")
+
+    def _cancelled_at_checkpoint(self, **updates: Any) -> bool:
+        try:
+            self._checkpoint(**updates)
+        except CooperativeUploadCancelled:
+            return True
+        return False
+
+    def _interruptible_wait(
+        self,
+        delay: float,
+        *,
+        current_item: str,
+        progress: Any,
+        phase: str,
+    ) -> None:
+        """有 callback 时把退避拆成短等待；没有 callback 时保持原单次 sleep 语义。"""
+        seconds = max(0.0, float(delay))
+        if self._task_checkpoint is None:
+            sleep(seconds)
+            return
+        deadline = monotonic() + seconds
+        while True:
+            self._checkpoint(
+                phase=phase,
+                current_item=current_item,
+                progress=progress,
+            )
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                return
+            sleep(min(0.25, remaining))
+
+    def _validated_mappings(self) -> list[tuple[Dict[str, Any], Path, PurePosixPath, str]]:
+        mappings: list[tuple[Dict[str, Any], Path, PurePosixPath, str]] = []
         for mapping in self._config.get("upload_mappings", []):
-            if not mapping.get("enabled", True):
+            if not isinstance(mapping, dict) or not mapping.get("enabled", True):
                 continue
             source_value = str(mapping.get("source") or "").strip()
             target_value = str(mapping.get("target") or "").strip().replace("\\", "/")
@@ -94,35 +151,105 @@ class DirectoryUploader:
                 raise FileNotFoundError(f"上传源目录不存在: {source}")
             if self._generate_strm and not strm_target:
                 raise ValueError(f"目录上传已启用生成 STRM，但映射未配置输出目录: {source}")
-            mappings.append((source, target, strm_target))
-
-        for index, (source, _target, _strm_target) in enumerate(mappings):
-            for other_source, _other_target, _other_strm_target in mappings[index + 1 :]:
-                if (
-                    source == other_source
-                    or source in other_source.parents
-                    or other_source in source.parents
-                ):
+            mappings.append((mapping, source, target, strm_target))
+        for index, (_mapping, source, _target, _strm_target) in enumerate(mappings):
+            for _other_mapping, other_source, _other_target, _other_strm_target in mappings[index + 1:]:
+                if source == other_source or source in other_source.parents or other_source in source.parents:
                     raise ValueError(
                         "启用的上传源目录不能相同或互为父子目录: "
                         f"{source} <-> {other_source}"
                     )
+        return mappings
 
-        for source, target, strm_target in mappings:
+    def _candidate_for_file(
+        self,
+        local_path: Path | str,
+        mapping: Dict[str, Any] | None = None,
+    ) -> Tuple[Path, str, str, Path, str]:
+        """由本地文件和映射计算目标；调用者不能注入远端 target。"""
+        raw_path = Path(local_path).expanduser()
+        matches: list[tuple[Dict[str, Any], Path, PurePosixPath, str]] = []
+        mappings = self._validated_mappings()
+        if mapping is not None:
+            mapping_id = str(mapping.get("id") or "")
+            source_text = str(mapping.get("source") or "").strip()
+            mappings = [
+                item for item in mappings
+                if item[0] is mapping
+                or (mapping_id and str(item[0].get("id") or "") == mapping_id)
+                or (source_text and str(item[1]) == str(Path(source_text).expanduser().resolve()))
+            ]
+        for item in mappings:
+            _candidate_mapping, source, _target, _strm_target = item
+            try:
+                raw_path.resolve(strict=True).relative_to(source)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            matches.append(item)
+        if len(matches) != 1:
+            raise ValueError(f"上传源文件未唯一归属于启用映射: {raw_path}")
+        _mapping, source, target, strm_target = matches[0]
+        self._validate_source_file(raw_path, source)
+        local_path = raw_path.resolve(strict=True)
+        extension = local_path.suffix.lower()
+        if extension in self._media_extensions:
+            kind = "media"
+        elif bool(self._config.get("upload_include_sidecars", True)) and extension in self._sidecar_extensions:
+            kind = "sidecar"
+        else:
+            raise ValueError(f"上传源文件后缀不在允许范围: {local_path}")
+        rel_path = local_path.relative_to(source).as_posix()
+        return local_path, (target / PurePosixPath(rel_path)).as_posix(), kind, source, strm_target
+
+    def _iter_files(self) -> Iterator[Tuple[Path, str, str, Path, str]]:
+        mappings = self._validated_mappings()
+        for mapping_index, (mapping, source, _target, _strm_target) in enumerate(mappings, 1):
+            mapping_progress = {"current": mapping_index, "total": len(mappings)}
+            self._checkpoint(
+                phase="upload-scan",
+                current_item=str(source),
+                progress=mapping_progress,
+            )
             entries = sorted(source.rglob("*"))
+            self._checkpoint(
+                phase="upload-scan",
+                current_item=str(source),
+                progress=mapping_progress,
+            )
             symlink = next((path for path in entries if path.is_symlink()), None)
             if symlink is not None:
                 raise ValueError(f"上传源目录不允许包含符号链接: {symlink}")
             for local_path in (path for path in entries if path.is_file()):
-                self._validate_source_file(local_path, source)
-                extension = local_path.suffix.lower()
-                kind = "media" if extension in self._media_extensions else "sidecar"
-                if kind == "sidecar" and (not include_sidecars or extension not in self._sidecar_extensions):
-                    continue
-                if kind != "media" and extension not in self._sidecar_extensions:
-                    continue
-                rel_path = local_path.relative_to(source).as_posix()
-                yield local_path, (target / PurePosixPath(rel_path)).as_posix(), kind, source, strm_target
+                self._checkpoint(
+                    phase="upload-scan",
+                    current_item=str(local_path),
+                    progress=mapping_progress,
+                )
+                try:
+                    yield self._candidate_for_file(local_path, mapping)
+                except ValueError as err:
+                    if "后缀不在允许范围" in str(err):
+                        continue
+                    raise
+
+    def _expand_delete_bundles(
+        self,
+        files: list[Tuple[Path, str, str, Path, str]],
+    ) -> list[Tuple[Path, str, str, Path, str]]:
+        if not self._config.get("upload_delete_source") or not self._config.get("upload_include_sidecars", True):
+            return files
+        expanded = {item[0]: item for item in files}
+        for local_path, _target, kind, _source, _strm in list(files):
+            if kind != "media":
+                continue
+            for sibling in local_path.parent.iterdir():
+                if sibling.name.startswith(f"{local_path.stem}.") and sibling.suffix.lower() in self._sidecar_extensions:
+                    try:
+                        item = self._candidate_for_file(sibling)
+                    except (OSError, ValueError):
+                        continue
+                    expanded[item[0]] = item
+        return list(expanded.values())
 
     def _resolve_strm_output_paths(
         self,
@@ -503,6 +630,8 @@ class DirectoryUploader:
         target_path: str,
         wait_for_upload: bool,
         retry_missing: bool = True,
+        checkpoint_item: str = "",
+        checkpoint_progress: Any = None,
     ) -> Dict[str, Any] | None:
         if (file_item or {}).get("pickcode"):
             return file_item
@@ -515,7 +644,17 @@ class DirectoryUploader:
         last_error: Exception | None = None
         for delay in delays:
             if delay:
-                sleep(delay)
+                self._interruptible_wait(
+                    delay,
+                    current_item=checkpoint_item or target_path,
+                    progress=checkpoint_progress,
+                    phase="upload-network-wait",
+                )
+            self._checkpoint(
+                phase="upload-network",
+                current_item=checkpoint_item or target_path,
+                progress=checkpoint_progress,
+            )
             try:
                 file_item = self._client.get_item(target_path)
             except (U115AccessLimitError, U115AuthError):
@@ -771,12 +910,15 @@ class DirectoryUploader:
         target_path: str,
         wait_for_upload: bool,
         retry_missing: bool,
+        checkpoint_progress: Any = None,
     ) -> Dict[str, Any] | None:
         file_item = self._resolve_uploaded_file_item(
             None,
             target_path,
             wait_for_upload=wait_for_upload,
             retry_missing=retry_missing,
+            checkpoint_item=str(local_path),
+            checkpoint_progress=checkpoint_progress,
         )
         identity_migration = self._validate_pending_strm_identity(
             records,
@@ -791,15 +933,71 @@ class DirectoryUploader:
             )
         return file_item
 
-    def run(self, incremental: bool = True) -> Dict[str, Any]:
-        started = monotonic()
+    def _prepare_run(self) -> None:
+        self._checkpoint(phase="upload-prepare", current_item="", progress={"current": 0, "total": 0})
         self._strm_reservations = SessionReservations()
         clear_remote_dir_cache = getattr(self._client, "clear_remote_dir_cache", None)
         if callable(clear_remote_dir_cache):
             clear_remote_dir_cache()
         logger.info("【目录上传】开始校验 115 上传授权")
         self._client.ensure_upload_ready()
+        self._checkpoint(phase="upload-prepare", current_item="", progress={"current": 0, "total": 0})
         logger.info("【目录上传】115 上传授权校验通过")
+
+    def run(self, incremental: bool = True) -> Dict[str, Any]:
+        """手动入口：保留先验权再整映射扫描的语义。"""
+        self._prepare_run()
+        return self._run_candidates(list(self._iter_files()), incremental=incremental, scanned=True)
+
+    def run_files(self, candidates: Iterable[Any], incremental: bool = True) -> Dict[str, Any]:
+        """文件级入口：只处理显式候选，不执行 rglob。"""
+        self._prepare_run()
+        files: list[Tuple[Path, str, str, Path, str]] = []
+        seen: set[Path] = set()
+        candidate_list = list(candidates)
+        for candidate_index, candidate in enumerate(candidate_list, 1):
+            local_path = getattr(candidate, "file_path", candidate)
+            candidate_progress = {"current": candidate_index, "total": len(candidate_list)}
+            self._checkpoint(
+                phase="upload-scan",
+                current_item=str(local_path),
+                progress=candidate_progress,
+            )
+            mapping_id = str(getattr(candidate, "mapping_id", "") or "")
+            matches = [
+                item for item in self._config.get("upload_mappings", [])
+                if isinstance(item, dict) and item.get("enabled", True)
+                and (
+                    not mapping_id
+                    or str(
+                        item.get("id")
+                        or Path(str(item.get("source") or "")).expanduser().resolve()
+                    ) == mapping_id
+                )
+            ]
+            if mapping_id and len(matches) != 1:
+                raise ValueError(f"上传候选未唯一匹配映射 {mapping_id}: {local_path}")
+            mapping = matches[0] if matches else None
+            item = self._candidate_for_file(local_path, mapping)
+            if item[0] not in seen:
+                seen.add(item[0])
+                files.append(item)
+            self._checkpoint(
+                phase="upload-scan",
+                current_item=str(item[0]),
+                progress=candidate_progress,
+            )
+        files = self._expand_delete_bundles(files)
+        return self._run_candidates(files, incremental=incremental, scanned=False)
+
+    def _run_candidates(
+        self,
+        files: list[Tuple[Path, str, str, Path, str]],
+        *,
+        incremental: bool,
+        scanned: bool,
+    ) -> Dict[str, Any]:
+        started = monotonic()
         records = self._store.get_upload_records()
         # 预计算映射标签
         mapping_labels: dict[Path, str] = {}
@@ -822,63 +1020,213 @@ class DirectoryUploader:
             "errors": 0,
         }
         errors = []
-        files = list(self._iter_files())
         if self._generate_strm:
             self._strm_outputs = self._resolve_strm_output_paths(files)
-        logger.info(f"【目录上传】目录扫描完成，待处理文件：{len(files)}")
+        logger.info(
+            f"【目录上传】{'目录扫描完成' if scanned else '文件批次已就绪'}，待处理文件：{len(files)}"
+        )
         uploaded_paths: set[Path] = set()
         completed_uploads: Dict[Path, tuple[str, bool]] = {}
         per_file_details: list[dict[str, Any]] = []
         for file_index, (local_path, target_path, kind, source_root, strm_target) in enumerate(files):
-            self._validate_source_file(local_path, source_root)
-            record_metadata = (
-                self._strm_record_metadata(strm_target)
-                if self._generate_strm and kind == "media"
-                else {}
-            )
-            upload_changed = records.has_changed(local_path, target_path)
-            record = records.get(local_path)
-            strm_pending = bool(record_metadata) and (
-                records.has_changed(local_path, target_path, record_metadata)
-                or not self._uploaded_strm_matches(
-                    local_path,
-                    source_root,
-                    strm_target,
-                    str(record.get("pickcode") or ""),
+            file_progress = {"current": file_index, "total": len(files)}
+            if self._cancelled_at_checkpoint(
+                phase="upload-file-start",
+                current_item=str(local_path),
+                progress=file_progress,
+            ):
+                break
+            try:
+                self._validate_source_file(local_path, source_root)
+                record_metadata = (
+                    self._strm_record_metadata(strm_target)
+                    if self._generate_strm and kind == "media"
+                    else {}
                 )
-            )
-            if incremental and not upload_changed:
-                counts["skipped"] += 1
-                if not record_metadata:
-                    logger.debug(f"【目录上传】文件未变化，跳过：{local_path} -> {target_path}")
-                    continue
-                try:
-                    file_item = self._resolve_and_validate_uploaded_identity(
-                        records,
-                        local_path,
-                        target_path,
-                        wait_for_upload=False,
-                        retry_missing=strm_pending,
-                    )
-                    if not strm_pending:
-                        logger.debug(
-                            f"【目录上传】远端文件身份未变化，跳过：{local_path} -> {target_path}"
-                        )
-                        continue
-                    logger.info(f"【目录上传】上传记录未变化，继续生成 STRM：{local_path}")
-                    if self._complete_strm(
-                        records,
-                        file_item,
+                upload_changed = records.has_changed(local_path, target_path)
+                record = records.get(local_path)
+                strm_pending = bool(record_metadata) and (
+                    records.has_changed(local_path, target_path, record_metadata)
+                    or not self._uploaded_strm_matches(
                         local_path,
                         source_root,
                         strm_target,
-                        record_metadata,
-                        counts,
-                        errors,
-                    ):
+                        str(record.get("pickcode") or ""),
+                    )
+                )
+                if incremental and not upload_changed:
+                    counts["skipped"] += 1
+                    if not record_metadata:
+                        logger.debug(f"【目录上传】文件未变化，跳过：{local_path} -> {target_path}")
+                        continue
+                    try:
+                        file_item = self._resolve_and_validate_uploaded_identity(
+                            records,
+                            local_path,
+                            target_path,
+                            wait_for_upload=False,
+                            retry_missing=strm_pending,
+                            checkpoint_progress=file_progress,
+                        )
+                        if not strm_pending:
+                            logger.debug(
+                                f"【目录上传】远端文件身份未变化，跳过：{local_path} -> {target_path}"
+                            )
+                            continue
+                        logger.info(f"【目录上传】上传记录未变化，继续生成 STRM：{local_path}")
+                        if self._complete_strm(
+                            records,
+                            file_item,
+                            local_path,
+                            source_root,
+                            strm_target,
+                            record_metadata,
+                            counts,
+                            errors,
+                        ):
+                            uploaded_paths.add(local_path)
+                    except CooperativeUploadCancelled:
+                        raise
+                    except (U115AccessLimitError, U115AuthError) as err:
+                        counts["strm_errors"] += 1
+                        counts["errors"] += 1
+                        counts["deferred"] = len(files) - file_index
+                        reason = (
+                            "115 访问上限重试耗尽"
+                            if isinstance(err, U115AccessLimitError)
+                            else "115 授权失效"
+                        )
+                        logger.error(
+                            f"【目录上传】{reason}，终止本次任务："
+                            f"{target_path}，原因：{safe_error_text(err)}；"
+                            f"剩余 {counts['deferred']} 个文件将在下次任务重试"
+                        )
+                        errors.append(
+                            {
+                                "path": str(local_path),
+                                "target": target_path,
+                                "message": str(err),
+                            }
+                        )
+                        break
+                    except UploadIdentityConflict as err:
+                        # 记录与远端身份对不上：按用户配置的策略处理，不算失败也不发失败卡。
+                        counts["conflicts"] += 1
+                        self._handle_upload_conflict(err, records)
+                    except Exception as err:  # noqa: BLE001
+                        counts["strm_errors"] += 1
+                        counts["errors"] += 1
+                        logger.error(
+                            f"【目录上传】校验已上传文件失败：{target_path}，原因：{safe_error_text(err)}"
+                        )
+                        errors.append(
+                            {
+                                "path": str(local_path),
+                                "target": target_path,
+                                "message": f"校验已上传文件失败: {err}",
+                            }
+                        )
+                    continue
+                try:
+                    logger.debug(f"【目录上传】开始处理文件：{local_path} -> {target_path}")
+
+                    def upload_once():
+                        target_dir = self._client.ensure_remote_dir(str(PurePosixPath(target_path).parent))
+                        result = self._client.upload_file(target_dir, local_path)
+                        if not result.success:
+                            raise RuntimeError(result.message or "115 上传失败")
+                        return result
+
+                    result = retry_call(
+                        upload_once,
+                        attempts=3,
+                        delay=1.0,
+                        abort_on=(U115AccessLimitError, U115AuthError),
+                        sleeper=lambda delay: self._interruptible_wait(
+                            delay,
+                            current_item=str(local_path),
+                            progress=file_progress,
+                            phase="upload-retry-wait",
+                        ),
+                    )
+                    counts["instant" if result.reused else "uploaded"] += 1
+                    completed_uploads[local_path] = (target_path, result.reused)
+                    file_detail = {
+                        "name": local_path.name,
+                        "local_path": str(local_path),
+                        "target_path": target_path,
+                        "size": local_path.stat().st_size,
+                        "method": "instant" if result.reused else "upload",
+                        "kind": kind,
+                        "source_root": str(source_root),
+                        "mapping_label": mapping_labels.get(source_root, source_root.name),
+                        "strm_generated": False,
+                        "sidecars": [],
+                    }
+                    if kind == "media":
+                        per_file_details.append(file_detail)
+                        if self._poster_search is not None:
+                            file_detail["poster_url"] = self._poster_search(
+                                file_detail["name"]
+                            )
+                    upload_metadata = {}
+                    if (result.file_item or {}).get("pickcode"):
+                        upload_metadata["pickcode"] = str(result.file_item["pickcode"])
+                    upload_metadata["method"] = "instant" if result.reused else "upload"
+                    records.mark_uploaded(
+                        local_path,
+                        target_path,
+                        metadata=upload_metadata,
+                    )
+                    completed = True
+                    if self._generate_strm and kind == "media":
+                        try:
+                            result.file_item = self._resolve_uploaded_file_item(
+                                result.file_item,
+                                target_path,
+                                wait_for_upload=True,
+                                checkpoint_item=str(local_path),
+                                checkpoint_progress=file_progress,
+                            )
+                            if (result.file_item or {}).get("pickcode"):
+                                records.update_metadata(
+                                    local_path,
+                                    {"pickcode": str(result.file_item["pickcode"])},
+                                )
+                        except (CooperativeUploadCancelled, U115AccessLimitError, U115AuthError):
+                            raise
+                        except Exception as err:  # noqa: BLE001
+                            counts["strm_errors"] += 1
+                            counts["errors"] += 1
+                            logger.error(
+                                f"【目录上传】读取已上传文件失败：{target_path}，"
+                                f"原因：{safe_error_text(err)}"
+                            )
+                            errors.append(
+                                {
+                                    "path": str(local_path),
+                                    "target": target_path,
+                                    "message": f"读取已上传文件失败: {err}",
+                                }
+                            )
+                            continue
+                        completed = self._complete_strm(
+                            records,
+                            result.file_item,
+                            local_path,
+                            source_root,
+                            strm_target,
+                            record_metadata,
+                            counts,
+                            errors,
+                        )
+                        if completed and file_detail.get("kind") == "media":
+                            file_detail["strm_generated"] = True
+                    if completed:
                         uploaded_paths.add(local_path)
+                except CooperativeUploadCancelled:
+                    raise
                 except (U115AccessLimitError, U115AuthError) as err:
-                    counts["strm_errors"] += 1
                     counts["errors"] += 1
                     counts["deferred"] = len(files) - file_index
                     reason = (
@@ -888,145 +1236,26 @@ class DirectoryUploader:
                     )
                     logger.error(
                         f"【目录上传】{reason}，终止本次任务："
-                        f"{target_path}，原因：{safe_error_text(err)}；"
+                        f"{local_path} -> {target_path}，原因：{safe_error_text(err)}；"
                         f"剩余 {counts['deferred']} 个文件将在下次任务重试"
                     )
-                    errors.append(
-                        {
-                            "path": str(local_path),
-                            "target": target_path,
-                            "message": str(err),
-                        }
-                    )
+                    errors.append({"path": str(local_path), "target": target_path, "message": str(err)})
                     break
-                except UploadIdentityConflict as err:
-                    # 记录与远端身份对不上：按用户配置的策略处理，不算失败也不发失败卡。
-                    counts["conflicts"] += 1
-                    self._handle_upload_conflict(err, records)
                 except Exception as err:  # noqa: BLE001
-                    counts["strm_errors"] += 1
                     counts["errors"] += 1
                     logger.error(
-                        f"【目录上传】校验已上传文件失败：{target_path}，原因：{safe_error_text(err)}"
+                        f"【目录上传】上传失败：{local_path} -> {target_path}，原因：{safe_error_text(err)}"
                     )
-                    errors.append(
-                        {
-                            "path": str(local_path),
-                            "target": target_path,
-                            "message": f"校验已上传文件失败: {err}",
-                        }
-                    )
-                continue
-            try:
-                logger.debug(f"【目录上传】开始处理文件：{local_path} -> {target_path}")
-
-                def upload_once():
-                    target_dir = self._client.ensure_remote_dir(str(PurePosixPath(target_path).parent))
-                    result = self._client.upload_file(target_dir, local_path)
-                    if not result.success:
-                        raise RuntimeError(result.message or "115 上传失败")
-                    return result
-
-                result = retry_call(
-                    upload_once,
-                    attempts=3,
-                    delay=1.0,
-                    abort_on=(U115AccessLimitError, U115AuthError),
-                )
-                counts["instant" if result.reused else "uploaded"] += 1
-                completed_uploads[local_path] = (target_path, result.reused)
-                file_detail = {
-                    "name": local_path.name,
-                    "local_path": str(local_path),
-                    "target_path": target_path,
-                    "size": local_path.stat().st_size,
-                    "method": "instant" if result.reused else "upload",
-                    "kind": kind,
-                    "source_root": str(source_root),
-                    "mapping_label": mapping_labels.get(source_root, source_root.name),
-                    "strm_generated": False,
-                    "sidecars": [],
-                }
-                if kind == "media":
-                    per_file_details.append(file_detail)
-                    if self._poster_search is not None:
-                        file_detail["poster_url"] = self._poster_search(
-                            file_detail["name"]
-                        )
-                upload_metadata = {}
-                if (result.file_item or {}).get("pickcode"):
-                    upload_metadata["pickcode"] = str(result.file_item["pickcode"])
-                upload_metadata["method"] = "instant" if result.reused else "upload"
-                records.mark_uploaded(
-                    local_path,
-                    target_path,
-                    metadata=upload_metadata,
-                )
-                completed = True
-                if self._generate_strm and kind == "media":
-                    try:
-                        result.file_item = self._resolve_uploaded_file_item(
-                            result.file_item,
-                            target_path,
-                            wait_for_upload=True,
-                        )
-                        if (result.file_item or {}).get("pickcode"):
-                            records.update_metadata(
-                                local_path,
-                                {"pickcode": str(result.file_item["pickcode"])},
-                            )
-                    except (U115AccessLimitError, U115AuthError):
-                        raise
-                    except Exception as err:  # noqa: BLE001
-                        counts["strm_errors"] += 1
-                        counts["errors"] += 1
-                        logger.error(
-                            f"【目录上传】读取已上传文件失败：{target_path}，"
-                            f"原因：{safe_error_text(err)}"
-                        )
-                        errors.append(
-                            {
-                                "path": str(local_path),
-                                "target": target_path,
-                                "message": f"读取已上传文件失败: {err}",
-                            }
-                        )
-                        continue
-                    completed = self._complete_strm(
-                        records,
-                        result.file_item,
-                        local_path,
-                        source_root,
-                        strm_target,
-                        record_metadata,
-                        counts,
-                        errors,
-                    )
-                    if completed and file_detail.get("kind") == "media":
-                        file_detail["strm_generated"] = True
-                if completed:
-                    uploaded_paths.add(local_path)
-            except (U115AccessLimitError, U115AuthError) as err:
-                counts["errors"] += 1
-                counts["deferred"] = len(files) - file_index
-                reason = (
-                    "115 访问上限重试耗尽"
-                    if isinstance(err, U115AccessLimitError)
-                    else "115 授权失效"
-                )
-                logger.error(
-                    f"【目录上传】{reason}，终止本次任务："
-                    f"{local_path} -> {target_path}，原因：{safe_error_text(err)}；"
-                    f"剩余 {counts['deferred']} 个文件将在下次任务重试"
-                )
-                errors.append({"path": str(local_path), "target": target_path, "message": str(err)})
+                    errors.append({"path": str(local_path), "target": target_path, "message": str(err)})
+            except CooperativeUploadCancelled:
                 break
-            except Exception as err:  # noqa: BLE001
-                counts["errors"] += 1
-                logger.error(
-                    f"【目录上传】上传失败：{local_path} -> {target_path}，原因：{safe_error_text(err)}"
+            finally:
+                self._checkpoint(
+                    phase="upload-file-complete",
+                    current_item=str(local_path),
+                    progress={"current": file_index + 1, "total": len(files)},
+                    check_cancel=False,
                 )
-                errors.append({"path": str(local_path), "target": target_path, "message": str(err)})
         if delete_source:
             self._delete_uploaded_sources(files, uploaded_paths, counts, errors)
         self._log_completed_uploads(files, completed_uploads)

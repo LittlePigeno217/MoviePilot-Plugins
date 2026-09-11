@@ -11,8 +11,15 @@ from fastapi.testclient import TestClient
 from p115pickcode import id_to_pickcode
 from app.plugins.p115liteassistant import P115LiteAssistant
 from app.plugins.p115liteassistant.api import Api as ProductionApi
-from app.plugins.p115liteassistant.client import PlaybackCopy, U115AccessLimitError
+from app.plugins.p115liteassistant.client import PlaybackCopy, U115AccessLimitError, UploadResult
 from app.plugins.p115liteassistant.log_utils import safe_error_text
+from app.plugins.p115liteassistant.records import IncrementalRecordStore
+from app.plugins.p115liteassistant.upload_watch import (
+    PendingUploadQueue,
+    UploadCandidate,
+    file_signature,
+    mapping_revision,
+)
 from app.plugins.p115liteassistant.strm import build_redirect_signature
 
 
@@ -625,7 +632,7 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertIn("115 数据任务正在运行", result["message"])
         self.assertEqual(result["data"]["mapping_ids"], ["tv-a"])
-        self.assertFalse(self.api._pending_upload)
+        self.assertFalse(self.api._upload_queue)
         self.assertFalse(self.api._pending_sweep_all)
         self.assertEqual(self.api._pending_sweep_paths, set())
         self.api.run_strm.assert_not_called()
@@ -1103,11 +1110,14 @@ class ApiReliabilityTest(unittest.TestCase):
             sleep(0.01)
         self.assertFalse(self.api._running)
 
-    def test_auto_upload_busy_state_is_merged_and_exposed(self):
+    def test_auto_upload_busy_state_is_distinct_and_exposed(self):
+        candidate = UploadCandidate(
+            "/media/Film.mkv", "/media", "movies", (1, 2, 3), "transfer", time()
+        )
         self.api._cloud_task_lock.acquire()
         try:
-            first = self.api.queue_upload(source="transfer")
-            second = self.api.queue_upload(source="transfer")
+            first = self.api.queue_upload_file(candidate)
+            second = self.api.queue_upload_file(candidate)
             status = self.api.status()
         finally:
             self.api._cloud_task_lock.release()
@@ -1116,20 +1126,134 @@ class ApiReliabilityTest(unittest.TestCase):
         self.assertTrue(second["success"])
         self.assertTrue(status["pending_upload"])
         self.assertEqual(status["pending_upload_source"], "transfer")
-        self.assertEqual(status["pending_upload_count"], 2)
+        self.assertEqual(status["pending_upload_count"], 1)
         self.assertIsNotNone(status["pending_upload_queued_at"])
 
-    def test_pending_upload_is_restored_when_retry_cannot_start(self):
-        self.api._queue_pending_upload("transfer")
-        with patch.object(
-            self.api,
-            "_start",
-            return_value={"success": False, "message": "启动失败"},
-        ):
+    def test_pending_upload_is_not_taken_when_retry_cannot_start(self):
+        candidate = UploadCandidate(
+            "/media/Film.mkv", "/media", "movies", (1, 2, 3), "watch", time()
+        )
+        self.api._upload_queue.enqueue(candidate)
+        with patch.object(self.api, "_start", return_value={"success": False, "message": "启动失败"}):
             self.api._drain_pending_upload()
-        self.assertTrue(self.api._pending_upload)
-        self.assertEqual(self.api._pending_upload_source, "transfer")
-        self.assertEqual(self.api._pending_upload_count, 1)
+        status = self.api._upload_queue.snapshot()
+        self.assertTrue(status["pending"])
+        self.assertEqual(status["count"], 1)
+
+    def test_failed_upload_batch_retries_after_unlock_and_converges_without_new_event(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); movie = root / "Film.mkv"; movie.write_bytes(b"media")
+            mapping = {"id": "movies", "source": str(root), "target": "/Cloud", "enabled": True}
+            self.store.config.update({
+                "enabled": True, "local_path_allowlist": [str(root)],
+                "upload_mappings": [mapping], "upload_media_extensions": ".mkv",
+            })
+            candidate = UploadCandidate(
+                str(movie), str(root), "movies", file_signature(movie), "watch", time(),
+                mapping_revision(mapping, self.store.config, canonical_source=str(root)),
+            )
+            calls = []
+            def run(_candidates, _url):
+                calls.append(self.api._cloud_task_lock.locked())
+                if len(calls) == 1:
+                    raise U115AccessLimitError("瞬时限流")
+                return {"errors": 0, "errors_detail": [], "deferred": 0}
+            self.api._UPLOAD_RETRY_DELAYS = (0.03, 0.05, 0.05)
+            with patch.object(self.api, "run_upload_files", side_effect=run):
+                result = self.api.queue_upload_file(candidate)
+                self.assertTrue(result["success"])
+                for _ in range(200):
+                    if len(calls) >= 2 and not self.api._upload_queue and not self.api._running:
+                        break
+                    sleep(0.01)
+
+            self.assertEqual(calls, [True, True])
+            self.assertFalse(self.api._cloud_task_lock.locked())
+            self.assertFalse(self.api._upload_queue)
+            self.assertIn(candidate.key, self.api._upload_queue._processed)
+            self.assertFalse(self.api._upload_queue.enqueue(candidate))
+            self.api.stop_upload_retry_scheduler()
+
+    def test_success_over_time_budget_finishes_deleted_candidate_without_restore(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); movie = root / "Film.mkv"; movie.write_bytes(b"media")
+            mapping = {"id": "movies", "source": str(root), "target": "/Cloud", "enabled": True}
+            self.store.config.update({"upload_mappings": [mapping], "upload_media_extensions": ".mkv"})
+            candidate = UploadCandidate(
+                str(movie), str(root), "movies", file_signature(movie), "watch", time(),
+                mapping_revision(mapping, self.store.config, canonical_source=str(root)),
+            )
+            self.api._upload_queue.enqueue(candidate)
+            def delete_and_succeed(_candidates, _url):
+                movie.unlink()
+                return {"errors": 0, "deleted": 1}
+            with patch.object(self.api, "run_upload_files", side_effect=delete_and_succeed), patch(
+                "app.plugins.p115liteassistant.api.monotonic", side_effect=[0.0, 121.0, 122.0, 123.0]
+            ), patch.object(self.api._upload_queue, "restore", wraps=self.api._upload_queue.restore) as restore:
+                self.api._run_upload_batch()
+            restore.assert_not_called()
+            self.assertFalse(movie.exists())
+            self.assertFalse(self.api._upload_queue)
+            self.assertFalse(self.api._upload_queue.enqueue(candidate))
+
+    def test_retry_exhaustion_stays_bounded_until_wake_and_stop_cancels_timer(self):
+        candidate = UploadCandidate(
+            "/media/Film.mkv", "/media", "movies", (1, 2, 3), "watch", time()
+        )
+        self.api._upload_queue.enqueue(candidate)
+        self.api._UPLOAD_RETRY_DELAYS = (60.0,)
+        self.assertTrue(self.api._schedule_upload_retry())
+        timer = self.api._upload_retry_timer
+        with patch.object(self.api, "_drain_pending_upload") as drain:
+            self.api.wake_pending_upload()
+            drain.assert_called_once_with()
+        self.assertIsNone(self.api._upload_retry_timer)
+        self.assertEqual(self.api._upload_retry_attempt, 0)
+        self.assertFalse(timer.is_alive())
+
+        self.api._UPLOAD_RETRY_DELAYS = (60.0,)
+        self.assertTrue(self.api._schedule_upload_retry())
+        timer = self.api._upload_retry_timer
+        self.api.stop_upload_retry_scheduler(timeout=0.2)
+        self.assertFalse(timer.is_alive())
+        self.assertIsNone(self.api._upload_retry_timer)
+        self.assertFalse(self.api._drain_pending_upload())
+
+    def test_api_file_upload_ignores_unrelated_unmounted_mapping(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); movie = root / "Film.mkv"; movie.write_bytes(b"media")
+            mapping = {"id": "movies", "source": str(root), "target": "/Cloud", "enabled": True}
+            unrelated = {"id": "tv", "source": str(root / "missing"), "target": "/Cloud/TV", "enabled": True}
+            self.store.config.update({
+                "local_path_allowlist": [str(root)], "upload_mappings": [mapping, unrelated],
+                "upload_media_extensions": ".mkv",
+            })
+            candidate = UploadCandidate(
+                str(movie), str(root), "movies", file_signature(movie), "watch", time(),
+                mapping_revision(mapping, self.store.config, canonical_source=str(root)),
+            )
+            with patch("app.plugins.p115liteassistant.api.DirectoryUploader") as uploader, patch(
+                "app.helper.directory.DirectoryHelper.get_dirs", return_value=[]
+            ):
+                uploader.return_value.run_files.return_value = {"errors": 0}
+                result = self.api.run_upload_files([candidate])
+            self.assertEqual(result["errors"], 0)
+            execution_config = uploader.call_args.args[2]
+            self.assertEqual([item["id"] for item in execution_config["upload_mappings"]], ["movies"])
+
+    def test_manual_upload_entries_do_not_touch_automatic_queue_methods(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.store.config.update({"local_path_allowlist": [str(root)], "upload_mappings": []})
+            queue = Mock(spec=PendingUploadQueue)
+            self.api._upload_queue = queue
+            with patch.object(self.api, "_start", return_value={"success": False, "message": "忙", "data": {}}):
+                self.api.trigger_upload({"incremental": True})
+                self.api.task_upload_once({"source": str(root), "target": "/Cloud"})
+            queue.take.assert_not_called()
+            queue.clear_invalid.assert_not_called()
+            queue.finish.assert_not_called()
+            queue.restore.assert_not_called()
 
     def test_completed_sweep_gives_pending_upload_first_chance(self):
         calls = []
@@ -1259,6 +1383,48 @@ class SweepOrchestrationTest(unittest.TestCase):
             self.assertTrue(result["success"])
             self.assertIn("排队", result["message"])
             self.assertEqual(api._pending_sweep_paths, {"/media/A.strm"})
+
+    def test_upload_batches_release_cloud_lock_for_real_sweep_then_continue(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            store = self.SweepStore(root)
+            mapping = {"id": "movies", "source": str(root), "target": "/Cloud", "enabled": True}
+            store.config.update({
+                "enabled": True, "local_path_allowlist": [str(root)],
+                "upload_mappings": [mapping], "upload_media_extensions": ".mkv",
+            })
+            api = Api(FakeClient, store)
+            candidates = []
+            for name in ("A.mkv", "B.mkv"):
+                path = root / name; path.write_bytes(name.encode())
+                candidates.append(UploadCandidate(
+                    str(path), str(root), "movies", file_signature(path), "watch", time(),
+                    mapping_revision(mapping, store.config, canonical_source=str(root)),
+                ))
+            api._upload_queue.maxsize = 10
+            # 批大小保持生产常量 1；两个候选证明 upload 会分成两次独立锁持有。
+            for candidate in candidates: api._upload_queue.enqueue(candidate)
+            store_order = []
+            def upload_run(batch, _url):
+                store_order.append(("upload", Path(batch[0].file_path).name, api._cloud_task_lock.locked()))
+                if len([item for item in store_order if item[0] == "upload"]) == 1:
+                    api._queue_sweep_scope([str(root / "gone.strm")])
+                return {"errors": 0, "errors_detail": [], "deferred": 0}
+            def sweep_run(_scope):
+                store_order.append(("sweep", "gone.strm", api._cloud_task_lock.locked()))
+                return []
+            with patch.object(api, "run_upload_files", side_effect=upload_run), patch.object(
+                api, "run_strm_sweep", side_effect=sweep_run
+            ):
+                api._drain_pending_upload()
+                for _ in range(300):
+                    if len(store_order) >= 3 and not api._running and not api._upload_queue:
+                        break
+                    sleep(0.01)
+
+            self.assertEqual([item[0] for item in store_order], ["upload", "sweep", "upload"])
+            self.assertTrue(all(item[2] for item in store_order))
+            self.assertFalse(api._cloud_task_lock.locked())
 
     def test_failed_sweep_requeues_taken_scope(self):
         with TemporaryDirectory() as directory:
@@ -1486,6 +1652,67 @@ class PendingReviewApiTest(unittest.TestCase):
             self.assertEqual(len(tail["items"]), 1)
             self.assertEqual(tail["items"][0]["name"], "aaa4.mkv")
 
+    def test_paged_batch_detail_and_confirm_read_every_item(self):
+        with TemporaryDirectory() as directory:
+            batch = self._batch("aaa", 2005, "2026-09-01T00:00:00")
+            overflow = batch["items"][2000:]
+            batch["items"] = batch["items"][:2000]
+            from app.plugins.p115liteassistant.reverse_delete import store_pending_batch_items
+            store_pending_batch_items(batch, batch["items"] + overflow)
+            api = self._api(directory, {"aaa": batch})
+
+            detail = api.strm_delete_pending(batch_id="aaa", offset=2000, limit=10)["data"]
+            self.assertEqual(detail["total"], 2005)
+            self.assertEqual([item["name"] for item in detail["items"]], [
+                f"aaa{index}.mkv" for index in range(2000, 2005)
+            ])
+            with patch.object(api, "_start", return_value={"success": False, "message": "忙"}) as start:
+                result = api.confirm_strm_delete({"batch_id": "aaa"})
+            self.assertFalse(result["success"])
+            submitted = start.call_args.args[2]
+            self.assertIn("2005 个媒体", submitted)
+            self.assertEqual(api._store.pending["aaa"]["status"], "pending")
+
+            # 模拟进程在前 2000 条 journal 提交并 checkpoint 后重启，只续跑尾页。
+            api._store.pending["aaa"]["status"] = "claimed"
+            api._store.pending["aaa"]["checkpoint"] = {
+                "page": 10, "offset": 2000, "processed": 2000
+            }
+            calls = []
+            def run_page(paths, **kwargs):
+                calls.append((list(paths), kwargs))
+                return [{"action": "delete"}]
+            def run_now(_kind, target, message):
+                target()
+                return {"success": True, "message": message, "data": {}}
+            with patch.object(api, "run_strm_sweep", side_effect=run_page), patch.object(
+                api, "_start", side_effect=run_now
+            ):
+                resumed = api.confirm_strm_delete({"batch_id": "aaa"})
+            self.assertTrue(resumed["success"])
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(len(calls[0][0]), 5)
+            self.assertTrue(calls[0][0][0].endswith("aaa2000.strm"))
+            self.assertNotIn("aaa", api._store.pending)
+
+    def test_bad_page_metadata_keeps_status_detail_and_confirm_fail_closed(self):
+        with TemporaryDirectory() as directory:
+            batch = self._batch("bad", 2001, "2026-09-01T00:00:00")
+            from app.plugins.p115liteassistant.reverse_delete import store_pending_batch_items
+            store_pending_batch_items(batch, batch["items"])
+            # _batch 只有 2001 项且 store 后会生成一页 overflow；损坏页号不能冒泡 ValueError。
+            batch["item_pages"][0]["page"] = "not-a-number"
+            api = self._api(directory, {"bad": batch})
+            summary = api.strm_delete_pending()
+            detail = api.strm_delete_pending(batch_id="bad")
+            confirm = api.confirm_strm_delete({"batch_id": "bad"})
+            self.assertTrue(summary["success"])
+            self.assertEqual(summary["data"]["batches"][0]["samples"], [])
+            self.assertTrue(detail["success"])
+            self.assertEqual(detail["data"]["total"], 0)
+            self.assertFalse(confirm["success"])
+            self.assertIn("明细不完整", confirm["message"])
+
     def test_unknown_batch_id_is_rejected(self):
         with TemporaryDirectory() as directory:
             api = self._api(directory, {})
@@ -1527,9 +1754,252 @@ class PendingReviewApiTest(unittest.TestCase):
                 "bbb": self._batch("bbb", 3, "2026-09-02T00:00:00"),
             })
 
-            result = api.confirm_strm_delete({"batch_ids": ["aaa", "bbb"]})
+            def run_now(_kind, target, message):
+                target()
+                return {"success": True, "message": message, "data": {}}
+            with patch.object(api, "run_strm_sweep", return_value=[{"action": "delete"}]), patch.object(
+                api, "_start", side_effect=run_now
+            ):
+                result = api.confirm_strm_delete({"batch_ids": ["aaa", "bbb"]})
 
             self.assertTrue(result["success"])
             self.assertIn("2 个批次", result["message"])
             self.assertIn("5 个媒体", result["message"])
             self.assertEqual(api._store.pending, {})
+
+class ReviewClaimConcurrencyRegressionTest(unittest.TestCase):
+    def _api(self, directory):
+        store = SweepOrchestrationTest.SweepStore(directory)
+        store.pending = {
+            "batch": {
+                "id": "batch", "mapping_id": "movies", "mapping": "/影视", "count": 1,
+                "items": [{"path": str(Path(directory) / "Film.strm")}], "status": "pending",
+                "checkpoint": {"page": 0, "offset": 0, "processed": 0},
+            }
+        }
+        return Api(FakeClient, store), store
+
+    def test_two_threads_confirm_same_batch_only_one_claims(self):
+        with TemporaryDirectory() as directory:
+            api, store = self._api(directory)
+            first_in_start = threading.Event(); release = threading.Event()
+            def start(_kind, _target, message):
+                first_in_start.set(); release.wait(timeout=2)
+                return {"success": True, "message": message, "data": {}}
+            results = []
+            with patch.object(api, "_start", side_effect=start):
+                first = threading.Thread(target=lambda: results.append(
+                    api.confirm_strm_delete({"batch_id": "batch"})))
+                second = threading.Thread(target=lambda: results.append(
+                    api.confirm_strm_delete({"batch_id": "batch"})))
+                first.start(); self.assertTrue(first_in_start.wait(1)); second.start()
+                second.join(timeout=2); release.set(); first.join(timeout=2)
+            self.assertEqual(sum(bool(item["success"]) for item in results), 1)
+            self.assertEqual(store.pending["batch"]["status"], "claimed")
+            self.assertTrue(store.pending["batch"]["claim_token"])
+
+    def test_checkpoint_never_moves_back_for_same_owner(self):
+        with TemporaryDirectory() as directory:
+            api, store = self._api(directory)
+            store.pending["batch"].update({"status": "claimed", "claim_token": "owner"})
+            store.pending["batch"]["checkpoint"] = {"page": 2, "offset": 200, "processed": 200}
+            api._checkpoint_strm_delete_batch("batch", claim_token="owner", page=1, offset=100)
+            self.assertEqual(store.pending["batch"]["checkpoint"]["offset"], 200)
+
+    def test_claimed_batch_dismiss_is_rejected_and_kept(self):
+        with TemporaryDirectory() as directory:
+            api, store = self._api(directory)
+            store.pending["batch"].update({"status": "claimed", "claim_token": "owner"})
+            result = api.dismiss_strm_delete({"batch_id": "batch"})
+            self.assertFalse(result["success"])
+            self.assertIn("正在执行", result["message"])
+            self.assertIn("batch", store.pending)
+
+
+class LeaseAndCapacityRegressionTest(unittest.TestCase):
+    def test_real_upload_chain_cancels_before_second_file_and_worker_releases_lock(self):
+        class UploadStore(FakeStore):
+            def __init__(self, root, mapping):
+                super().__init__()
+                self.config.update({
+                    "enabled": True,
+                    "local_path_allowlist": [str(root)],
+                    "upload_mappings": [mapping],
+                    "upload_media_extensions": ".mkv",
+                })
+                self.upload_records = IncrementalRecordStore()
+                self.conflicts = {}
+
+            def get_upload_records(self):
+                return self.upload_records
+
+            def save_upload_records(self, records):
+                self.upload_records = records
+
+            def get_upload_conflicts(self):
+                return dict(self.conflicts)
+
+            def save_upload_conflicts(self, conflicts):
+                self.conflicts = dict(conflicts)
+
+            def get_recent_uploaded_media(self, extensions):
+                return self.upload_records.recent_media(extensions)
+
+        class BlockingUploadClient(FakeClient):
+            def __init__(self):
+                super().__init__()
+                self.first_started = threading.Event()
+                self.release_first = threading.Event()
+                self.uploaded = []
+                self.worker_ident = None
+
+            @staticmethod
+            def ensure_upload_ready():
+                return None
+
+            @staticmethod
+            def ensure_remote_dir(path):
+                return {"fileid": "1", "path": path}
+
+            def upload_file(self, _target, local_path):
+                self.worker_ident = threading.get_ident()
+                self.uploaded.append(Path(local_path).name)
+                if len(self.uploaded) == 1:
+                    self.first_started.set()
+                    self.release_first.wait(timeout=2)
+                return UploadResult(success=True, reused=False)
+
+        class TrackingLock:
+            def __init__(self):
+                self._lock = threading.Lock()
+                self.release_ident = None
+
+            def acquire(self, blocking=True):
+                return self._lock.acquire(blocking=blocking)
+
+            def release(self):
+                self.release_ident = threading.get_ident()
+                self._lock.release()
+
+            def locked(self):
+                return self._lock.locked()
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            paths = [root / "A.mkv", root / "B.mkv"]
+            for path in paths:
+                path.write_bytes(path.name.encode())
+            mapping = {"id": "movies", "source": str(root), "target": "/Cloud", "enabled": True}
+            store = UploadStore(root, mapping)
+            client = BlockingUploadClient()
+            api = Api(lambda: client, store)
+            tracking_lock = TrackingLock()
+            api._cloud_task_lock = tracking_lock
+            first_completed = threading.Event()
+            release_completion_checkpoint = threading.Event()
+            original_checkpoint = api._task_checkpoint
+
+            def checkpoint(**state):
+                cancelled = original_checkpoint(**state)
+                progress = state.get("progress") or {}
+                if state.get("phase") == "upload-file-complete" and progress.get("current") == 1:
+                    first_completed.set()
+                    release_completion_checkpoint.wait(timeout=2)
+                return cancelled
+
+            api._task_checkpoint = checkpoint
+            candidates = [
+                UploadCandidate(
+                    str(path), str(root), "movies", file_signature(path), "watch", time(),
+                    mapping_revision(mapping, store.config, canonical_source=str(root)),
+                )
+                for path in paths
+            ]
+
+            result = api._start(
+                "upload",
+                lambda: api.run_upload_files(candidates),
+                "started",
+            )
+            self.assertTrue(result["success"])
+            self.assertTrue(client.first_started.wait(1))
+            task = next(item for item in api.status()["tasks"] if item["kind"] == "upload")
+            self.assertEqual(task["phase"], "upload-file-start")
+            self.assertEqual(task["current_item"], str(paths[0]))
+            self.assertEqual(task["progress"], {"current": 0, "total": 2})
+            self.assertTrue(tracking_lock.locked())
+
+            client.release_first.set()
+            self.assertTrue(first_completed.wait(1))
+            completed = next(item for item in api.status()["tasks"] if item["kind"] == "upload")
+            self.assertEqual(completed["phase"], "upload-file-complete")
+            self.assertEqual(completed["current_item"], str(paths[0]))
+            self.assertEqual(completed["progress"], {"current": 1, "total": 2})
+            self.assertTrue(api.cancel_task({"kind": "upload"})["success"])
+            release_completion_checkpoint.set()
+            api.join_task_threads(timeout=2)
+
+            self.assertEqual(client.uploaded, ["A.mkv"])
+            self.assertEqual(
+                store.upload_records.to_dict().keys(),
+                {str(paths[0])},
+            )
+            self.assertFalse(api._task_threads)
+            self.assertNotIn("upload", api._running)
+            self.assertFalse(tracking_lock.locked())
+            self.assertEqual(tracking_lock.release_ident, client.worker_ident)
+
+    def test_lease_status_fields_and_cooperative_cancel_checkpoint(self):
+        store = FakeStore(); api = Api(lambda: FakeClient(), store)
+        entered = threading.Event(); release = threading.Event()
+        def target():
+            api._task_checkpoint(phase="scan", current_item="A", progress={"current": 1, "total": 2})
+            entered.set(); release.wait(2)
+            api._task_checkpoint(phase="scan", current_item="B", progress=2, raise_if_cancelled=True)
+        self.assertTrue(api._start("upload", target, "started")["success"])
+        self.assertTrue(entered.wait(1))
+        task = api.status()["tasks"][0]
+        self.assertTrue(task["holder"].startswith("p115liteassistant-upload:"))
+        self.assertIsInstance(task["started_at"], float)
+        self.assertGreaterEqual(task["age"], 0)
+        self.assertGreaterEqual(task["last_progress"], 0)
+        self.assertEqual(task["phase"], "scan")
+        self.assertEqual(task["current_item"], "A")
+        self.assertEqual(task["progress"], {"current": 1, "total": 2})
+        self.assertTrue(api.cancel_task("upload")["success"])
+        release.set(); api.join_task_threads(timeout=2)
+        self.assertNotIn("upload", api._running)
+        self.assertFalse(api._cloud_task_lock.locked())
+
+    def test_sweep_4097_paths_compress_to_full_marker(self):
+        with TemporaryDirectory() as directory:
+            api = Api(FakeClient, SweepOrchestrationTest.SweepStore(directory))
+            api._queue_sweep_scope([f"/media/{index}.strm" for index in range(4097)])
+            self.assertTrue(api._pending_sweep_all)
+            self.assertEqual(api._pending_sweep_paths, set())
+            self.assertEqual(api._take_sweep_scope(), (None, True))
+
+
+class UploadCompatibilityRegressionTest(unittest.TestCase):
+    def test_queue_upload_and_legacy_auto_payloads_merge_while_busy(self):
+        api = Api(lambda: FakeClient(), FakeStore())
+        api._cloud_task_lock.acquire()
+        try:
+            results = [api.queue_upload("external"), api.trigger_upload(None),
+                       api.trigger_upload(False), api.trigger_upload({"auto": True, "source": "hook"})]
+        finally:
+            api._cloud_task_lock.release()
+        self.assertTrue(all(item["success"] for item in results))
+        self.assertTrue(api._pending_auto_upload)
+        self.assertEqual(api._pending_auto_upload_count, 4)
+        self.assertIn("external", api._pending_auto_upload_source)
+
+    def test_disabled_pending_candidates_do_not_execute_on_wake(self):
+        store = FakeStore(); store.config["enabled"] = False
+        api = Api(lambda: FakeClient(), store)
+        candidate = UploadCandidate("/media/a.mkv", "/media", "m", (1, 1, 1))
+        api._upload_queue.enqueue(candidate)
+        with patch.object(api, "_start") as start:
+            api.wake_pending_upload()
+        start.assert_not_called()
+        self.assertTrue(api._upload_queue)

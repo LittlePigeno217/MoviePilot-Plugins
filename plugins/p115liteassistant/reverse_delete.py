@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from hashlib import sha256
+import json
 from pathlib import Path, PurePosixPath
 from secrets import token_hex
 from time import monotonic, sleep
@@ -54,9 +56,11 @@ CLOUD_DIR_DELETE_DELAY = 2.0
 ALREADY_MISSING_MARKERS = ("不存在", "已删除", "未找到", "找不到")
 #: 单次待删媒体数超过它就先进待确认队列。
 DEFAULT_CONFIRM_THRESHOLD = 16
-#: 待确认批次的保留天数与单批明细上限。
+#: 待确认批次的保留天数。旧格式把 ``items`` 限为 2000 条；新格式继续保留这个
+#: 首段以兼容旧客户端，超出的确认明细追加到 ``item_pages``，每页独立校验。
 STRM_DELETE_PENDING_TTL_DAYS = 7
 STRM_DELETE_PENDING_MAX_ITEMS = 2000
+STRM_DELETE_PENDING_PAGE_ITEMS = 500
 #: 待确认批次的数量上限。每次超阈值的新发现都独立成一张，方便逐批审查；
 #: 攒到这个数还没人处理，新发现就并进最旧的那一张，免得队列无上限增长。
 STRM_DELETE_PENDING_MAX_BATCHES = 20
@@ -218,6 +222,110 @@ class SweepDecision(NamedTuple):
     total_records: int = 0
     missing_total: int = 0
     queued_total: int = 0
+
+
+def _pending_page_hash(items: Iterable[Dict[str, Any]]) -> str:
+    """待确认页的稳定摘要；用于识别持久化页是否被截断或错序。"""
+    payload = json.dumps(
+        list(items), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    ).encode("utf-8")
+    return sha256(payload).hexdigest()
+
+
+def pending_batch_items(batch: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """完整读取新旧待确认批次；新分页任一元数据异常即整批 fail-closed。"""
+    raw_head = batch.get("items") or []
+    if not isinstance(raw_head, list) or any(not isinstance(item, dict) for item in raw_head):
+        return []
+    result = list(raw_head)
+    # 旧 items-only 格式没有分页元数据，继续完整可读。
+    if "item_pages" not in batch:
+        return result
+    pages = batch.get("item_pages")
+    if not isinstance(pages, list) or any(not isinstance(page, dict) for page in pages):
+        logger.error(f"{LOG_TAG}待确认批次分页格式无效，已拒绝读取")
+        return []
+    numbered: dict[int, Dict[str, Any]] = {}
+    for page in pages:
+        raw_number = page.get("page")
+        try:
+            number = int(raw_number)
+        except (TypeError, ValueError):
+            logger.error(f"{LOG_TAG}待确认明细页号非数字，已拒绝读取")
+            return []
+        if number <= 0 or number in numbered:
+            logger.error(f"{LOG_TAG}待确认明细页号重复或无效：{raw_number}，已拒绝读取")
+            return []
+        numbered[number] = page
+    if sorted(numbered) != list(range(1, len(numbered) + 1)):
+        logger.error(f"{LOG_TAG}待确认明细存在缺页，已拒绝读取")
+        return []
+    declared_page_count = batch.get("page_count")
+    if declared_page_count is not None:
+        try:
+            if int(declared_page_count) != 1 + len(numbered):
+                logger.error(f"{LOG_TAG}待确认明细页数不匹配，已拒绝读取")
+                return []
+        except (TypeError, ValueError):
+            return []
+    for number in range(1, len(numbered) + 1):
+        page = numbered[number]
+        raw_items = page.get("items")
+        if not isinstance(raw_items, list) or any(not isinstance(item, dict) for item in raw_items):
+            return []
+        items = list(raw_items)
+        expected = page.get("hash")
+        if not isinstance(expected, str) or not expected:
+            logger.error(f"{LOG_TAG}待确认明细第 {number} 页缺少摘要，已拒绝读取")
+            return []
+        try:
+            count = int(page.get("count"))
+        except (TypeError, ValueError):
+            return []
+        if count != len(items) or expected != _pending_page_hash(items):
+            logger.error(f"{LOG_TAG}待确认明细第 {number} 页数量或摘要不匹配，已拒绝读取")
+            return []
+        result.extend(items)
+    return result
+
+
+def _pending_item_pages(items: Iterable[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    """把首段以外的明细编码为可追加、可校验的固定大小页。"""
+    overflow = list(items)
+    pages: list[Dict[str, Any]] = []
+    for offset in range(0, len(overflow), STRM_DELETE_PENDING_PAGE_ITEMS):
+        page_items = overflow[offset : offset + STRM_DELETE_PENDING_PAGE_ITEMS]
+        pages.append({
+            "page": len(pages) + 1,
+            "count": len(page_items),
+            "hash": _pending_page_hash(page_items),
+            "status": "pending",
+            "items": page_items,
+        })
+    return pages
+
+
+def store_pending_batch_items(
+    batch: Dict[str, Any],
+    items: Iterable[Dict[str, Any]],
+    *,
+    declared_count: Optional[int] = None,
+) -> None:
+    """原地写回完整明细，并保留旧 ``items`` 首段的读取兼容性。"""
+    complete = [item for item in items if isinstance(item, dict)]
+    head = complete[:STRM_DELETE_PENDING_MAX_ITEMS]
+    pages = _pending_item_pages(complete[STRM_DELETE_PENDING_MAX_ITEMS:])
+    batch["items"] = head
+    if pages:
+        batch["item_pages"] = pages
+    else:
+        batch.pop("item_pages", None)
+    batch["page_count"] = 1 + len(pages) if complete else 0
+    batch["checkpoint"] = {"page": 0, "offset": 0, "processed": 0}
+    batch["status"] = "pending"
+    batch["count"] = max(len(complete), int(declared_count or 0))
+    # True 只表示旧版已经丢过、如今无法复原的明细；新分页自身始终完整。
+    batch["items_truncated"] = batch["count"] > len(complete)
 
 
 class ReverseDeleter:
@@ -1130,7 +1238,7 @@ class ReverseDeleter:
         """本映射所有待确认批次覆盖的本地路径。这些路径只能经人工确认删除。"""
         covered: set[str] = set()
         for batch in self._mapping_batches(mapping):
-            for item in batch.get("items") or []:
+            for item in pending_batch_items(batch):
                 if isinstance(item, dict) and item.get("path"):
                     covered.add(str(item["path"]))
         return covered
@@ -1149,17 +1257,23 @@ class ReverseDeleter:
         now = datetime.now().isoformat(timespec="seconds")
         incoming = list(decision.targets)
 
+        legacy_missing = 0
+        previous_total_size = 0
         if len(mine) >= STRM_DELETE_PENDING_MAX_BATCHES:
             oldest = mine[0]
             batch_id = str(oldest.get("id") or "") or token_hex(8)
+            existing = pending_batch_items(oldest)
+            legacy_missing = max(0, int(oldest.get("count") or 0) - len(existing))
             known = {
                 str(item.get("path"))
-                for item in (oldest.get("items") or [])
-                if isinstance(item, dict)
+                for item in existing
+                if item.get("path")
             }
-            merged = list(oldest.get("items") or []) + [
+            added = [
                 item for item in incoming if str(item.get("path")) not in known
             ]
+            merged = existing + added
+            previous_total_size = int(oldest.get("total_size") or 0)
             created_at = str(oldest.get("created_at") or now)
             logger.warning(
                 f"{LOG_TAG}待确认批次已达上限 {STRM_DELETE_PENDING_MAX_BATCHES} 张，"
@@ -1167,22 +1281,25 @@ class ReverseDeleter:
             )
         else:
             batch_id = token_hex(8)
+            added = incoming
             merged = incoming
             created_at = now
 
-        items = merged[:STRM_DELETE_PENDING_MAX_ITEMS]
-        batches[batch_id] = {
+        batch = {
             "id": batch_id,
             "mapping_id": mapping_id,
             "mapping": self.mapping_label(mapping),
             "created_at": created_at,
             "updated_at": now,
             "reason": decision.reason,
-            "count": len(merged),
-            "total_size": sum(self._record_size(item) for item in merged),
-            "items_truncated": len(merged) > len(items),
-            "items": items,
+            "total_size": previous_total_size + sum(
+                self._record_size(item) for item in added
+            ),
         }
+        store_pending_batch_items(
+            batch, merged, declared_count=len(merged) + legacy_missing
+        )
+        batches[batch_id] = batch
         self._store.save_strm_delete_pending(batches)
         return batch_id
 
@@ -1204,9 +1321,8 @@ class ReverseDeleter:
         dropped = 0
         for batch in mine:
             kept = []
-            for item in batch.get("items") or []:
-                if not isinstance(item, dict):
-                    continue
+            original_items = pending_batch_items(batch)
+            for item in original_items:
                 record_key = str(item.get("record_key") or "")
                 path = str(item.get("path") or "")
                 if record_key and record_key not in records:
@@ -1220,15 +1336,16 @@ class ReverseDeleter:
                     pass
                 kept.append(item)
             batch_id = str(batch.get("id") or "")
-            if not kept:
+            legacy_missing = max(0, int(batch.get("count") or 0) - len(original_items))
+            if not kept and not legacy_missing:
                 batches.pop(batch_id, None)
                 logger.info(f"{LOG_TAG}待确认批次 {batch_id} 的条目已全部失效，撤销该批次")
                 continue
-            if len(kept) != len(batch.get("items") or []):
-                batch["items"] = kept
-                batch["count"] = len(kept)
+            if len(kept) != len(original_items):
+                store_pending_batch_items(
+                    batch, kept, declared_count=len(kept) + legacy_missing
+                )
                 batch["total_size"] = sum(self._record_size(item) for item in kept)
-                batch["items_truncated"] = False
                 batch["updated_at"] = datetime.now().isoformat(timespec="seconds")
                 batches[batch_id] = batch
         if dropped:

@@ -43,6 +43,7 @@ class StrmDeleteWatcher:
     TICK_SECONDS = 5.0
     #: 单批最多上报多少条路径；超了就整体巡检，交给缺失比例熔断兜底
     MAX_BATCH_PATHS = 500
+    MAX_PENDING_PATHS = 4096
 
     def __init__(
         self,
@@ -60,6 +61,7 @@ class StrmDeleteWatcher:
         self._pending_lock = Lock()
         #: 本地路径 -> 最后一次事件的时间戳（单调时钟）
         self._pending: Dict[str, float] = {}
+        self._pending_full = False
         #: 本轮实际登记成功的目录，用于掉盘自检
         self._watched: list[Path] = []
 
@@ -165,6 +167,7 @@ class StrmDeleteWatcher:
                 self._thread = None
         with self._pending_lock:
             self._pending.clear()
+            self._pending_full = False
         if thread:
             logger.info(f"{LOG_TAG}已停止")
 
@@ -182,6 +185,15 @@ class StrmDeleteWatcher:
         if not is_directory and Path(text).suffix.lower() != WATCHED_SUFFIX:
             return
         with self._pending_lock:
+            if self._pending_full:
+                return
+            if text not in self._pending and len(self._pending) >= self.MAX_PENDING_PATHS:
+                self._pending.clear()
+                self._pending_full = True
+                logger.warning(
+                    f"{LOG_TAG}删除事件达到 {self.MAX_PENDING_PATHS}，已压为全量巡检标记"
+                )
+                return
             self._pending[text] = monotonic()
         logger.debug(f"{LOG_TAG}捕获删除事件：{text}")
 
@@ -222,6 +234,15 @@ class StrmDeleteWatcher:
 
     def drain_once(self) -> list[str]:
         """把安静够久的事件交给反向删除巡检，返回本次上报的路径。"""
+        with self._pending_lock:
+            full = self._pending_full
+        if full:
+            logger.warning(f"{LOG_TAG}容量溢出，改为整体巡检并保留 90% 熔断保护")
+            if self._dispatch(None):
+                with self._pending_lock:
+                    self._pending_full = False
+                    self._pending.clear()
+            return []
         ready = self._take_ready()
         if not ready:
             return []
@@ -230,10 +251,17 @@ class StrmDeleteWatcher:
                 f"{LOG_TAG}一次捕获到 {len(ready)} 条删除事件，改为整体巡检，"
                 "由缺失比例熔断决定是否动云端"
             )
-            self._dispatch(None)
+            accepted = self._dispatch(None)
+            if not accepted:
+                with self._pending_lock:
+                    self._pending_full = True
             return ready
         logger.info(f"{LOG_TAG}{len(ready)} 个本地 STRM 已删除，上报反向删除")
-        self._dispatch(ready)
+        accepted = self._dispatch(ready)
+        if not accepted:
+            with self._pending_lock:
+                self._pending.clear()
+                self._pending_full = True
         return ready
 
     def _take_ready(self) -> list[str]:
@@ -255,16 +283,14 @@ class StrmDeleteWatcher:
                 ready.append(path)
         return ready
 
-    def _dispatch(self, paths: Optional[list[str]]) -> None:
-        """把路径交给编排层。
-
-        排队与补跑都由编排层负责（``Api._enqueue_strm_sweep``）：抢不到 115 数据任务锁
-        的事件会记在那边，锁释放后自动补跑。监听器不留第二份队列。
-        """
+    def _dispatch(self, paths: Optional[list[str]]) -> bool:
+        """交给编排层；只有受理成功才允许消费 full-marker。"""
         try:
-            self._sweep_trigger(paths)
+            result = self._sweep_trigger(paths)
+            return not isinstance(result, dict) or bool(result.get("success"))
         except Exception as err:  # noqa: BLE001
             logger.error(f"{LOG_TAG}上报删除事件失败：{safe_error_text(err)}")
+            return False
 
 
 class _StrmDeleteHandler(FileSystemEventHandler):

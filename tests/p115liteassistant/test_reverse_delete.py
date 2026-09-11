@@ -15,11 +15,15 @@ from app.plugins.p115liteassistant.reverse_delete import (
     ACTION_SKIPPED,
     DEFAULT_CONFIRM_THRESHOLD,
     STRM_DELETE_PENDING_MAX_BATCHES,
+    STRM_DELETE_PENDING_MAX_ITEMS,
     ReverseDeleter as ProductionReverseDeleter,
+    SweepDecision,
     associated_media_name,
     is_protected_cloud_dir,
     media_name_stem,
     normalize_confirm_threshold,
+    pending_batch_items,
+    store_pending_batch_items,
 )
 
 
@@ -1090,6 +1094,50 @@ class IndependentBatchTest(unittest.TestCase):
             self.assertEqual(store.pending, {})
             self.assertEqual(client.deleted, [])
 
+    def test_over_2000_items_and_twenty_batch_merge_keep_every_item(self):
+        """>2000 条与 20 批封顶并入同时发生时，追加页仍覆盖全部确认记录。"""
+        store = FakeStore()
+        deleter = self._deleter(store, FakeClient())
+        mapping = {"id": "movies", "source_cid": "1", "source_path": "/Movies"}
+
+        def targets(prefix, count):
+            return tuple(
+                {
+                    "record_key": f"movies:Film/{prefix}{index}.mkv",
+                    "path": f"/media/Film/{prefix}{index}.strm",
+                    "cloud_path": f"/Movies/Film/{prefix}{index}.mkv",
+                    "name": f"{prefix}{index}.mkv",
+                    "size": index,
+                }
+                for index in range(count)
+            )
+
+        oldest_id = deleter._enqueue_pending(
+            mapping, SweepDecision(ACTION_PENDING, "超过阈值", targets("Bulk", 2001))
+        )
+        for index in range(19):
+            deleter._enqueue_pending(
+                mapping, SweepDecision(ACTION_PENDING, "超过阈值", targets(f"Card{index}-", 1))
+            )
+        deleter._enqueue_pending(
+            mapping, SweepDecision(ACTION_PENDING, "超过阈值", targets("Merged-", 1))
+        )
+
+        self.assertEqual(len(store.pending), STRM_DELETE_PENDING_MAX_BATCHES)
+        oldest = store.pending[oldest_id]
+        self.assertEqual(len(oldest["items"]), STRM_DELETE_PENDING_MAX_ITEMS)
+        self.assertEqual(oldest["count"], 2002)
+        self.assertEqual(oldest["page_count"], 2)
+        self.assertFalse(oldest["items_truncated"])
+        complete = [
+            item
+            for batch in store.pending.values()
+            for item in pending_batch_items(batch)
+        ]
+        self.assertEqual(len(complete), 2021)
+        self.assertEqual(len({item["record_key"] for item in complete}), 2021)
+        self.assertEqual(pending_batch_items(oldest)[-1]["record_key"], "movies:Film/Merged-0.mkv")
+
     def test_batches_merge_into_oldest_once_capped(self):
         """批次攒到上限还没人处理，新增的并进最旧那张，不丢也不无限涨。"""
         with TemporaryDirectory() as directory:
@@ -1117,7 +1165,11 @@ class IndependentBatchTest(unittest.TestCase):
             self.assertEqual(merged["created_at"], oldest_created)
             self.assertGreater(merged["count"], 2)
             # 一个文件都没丢：队列覆盖的路径数 = 全部缺失数
-            covered = {item["path"] for b in store.pending.values() for item in b["items"]}
+            covered = {
+                item["path"]
+                for batch in store.pending.values()
+                for item in pending_batch_items(batch)
+            }
             self.assertEqual(len(covered), 2 + STRM_DELETE_PENDING_MAX_BATCHES)
             self.assertEqual(client.deleted, [])
 
@@ -1167,3 +1219,36 @@ class ReverseJournalContractTest(unittest.TestCase):
             self.assertEqual(entry["errors"], 1)
             self.assertEqual(entry["records_dropped"], 1)
             self.assertEqual(entry["already_gone"], 2)
+
+class PendingPageFailClosedTest(unittest.TestCase):
+    @staticmethod
+    def batch():
+        items = [{"path": f"/{index}.strm"} for index in range(2001)]
+        batch = {"items": [], "count": len(items)}
+        store_pending_batch_items(batch, items)
+        return batch
+
+    def test_old_items_only_batch_remains_readable(self):
+        self.assertEqual(pending_batch_items({"items": [{"path": "/old.strm"}], "count": 1}),
+                         [{"path": "/old.strm"}])
+
+    def test_missing_hash_fails_closed(self):
+        batch = self.batch(); batch["item_pages"][0].pop("hash")
+        self.assertEqual(pending_batch_items(batch), [])
+
+    def test_count_mismatch_fails_closed(self):
+        batch = self.batch(); batch["item_pages"][0]["count"] = 99
+        self.assertEqual(pending_batch_items(batch), [])
+
+    def test_duplicate_page_fails_closed(self):
+        batch = self.batch(); batch["item_pages"].append(dict(batch["item_pages"][0]))
+        self.assertEqual(pending_batch_items(batch), [])
+
+    def test_missing_page_fails_closed(self):
+        batch = self.batch(); second = dict(batch["item_pages"][0]); second["page"] = 3
+        batch["item_pages"].append(second); batch["page_count"] = 3
+        self.assertEqual(pending_batch_items(batch), [])
+
+    def test_non_numeric_page_fails_closed_without_value_error(self):
+        batch = self.batch(); batch["item_pages"][0]["page"] = "bad"
+        self.assertEqual(pending_batch_items(batch), [])

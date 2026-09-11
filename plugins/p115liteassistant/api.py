@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import threading
+import uuid
 from base64 import b64encode
 from contextlib import contextmanager
 from copy import deepcopy
@@ -38,7 +39,7 @@ from .notify import (
     normalize_notify_type,
 )
 from .rate_limiter import RateLimiter
-from .reverse_delete import RECENT_DELETE_TTL, ReverseDeleter
+from .reverse_delete import RECENT_DELETE_TTL, ReverseDeleter, pending_batch_items
 from .resilience import TtlCache, retry_call
 from .store import DEFAULT_CONFIG, Store
 from .strm import (
@@ -51,6 +52,14 @@ from .strm import (
     normalize_moviepilot_url,
     normalize_pickcode,
     verify_redirect_signature,
+)
+from .upload_watch import (
+    UPLOAD_BATCH_SIZE,
+    UPLOAD_BATCH_TIME_BUDGET,
+    PendingUploadQueue,
+    UploadCandidate,
+    file_signature,
+    mapping_revision,
 )
 from .uploader import DirectoryUploader
 
@@ -82,6 +91,10 @@ class Api:
     # 免得签名泄漏后被人当免费下载中转。上限按单个播放器的正常请求量留足余量。
     _REDIRECT_RATE_LIMIT = 60
     _REDIRECT_RATE_WINDOW = 60.0
+    # uploader 自己已做请求级有限重试；这里仅负责失败批次释放 cloud lock 后的
+    # 跨批次退避，不能在 worker 内 while/sleep 持锁重试。
+    _UPLOAD_RETRY_DELAYS = (5.0, 30.0, 60.0)
+    _PENDING_SWEEP_MAX = 4096
 
     def __init__(
         self,
@@ -93,6 +106,7 @@ class Api:
         strm_watch_status: Callable[[], bool] | None = None,
         recover_strm_commits: Callable[[str], list[str]] | None = None,
         journal: CommitJournal | None = None,
+        upload_queue: PendingUploadQueue | None = None,
     ):
         self._client_provider = client_provider
         self._store = store
@@ -105,9 +119,12 @@ class Api:
             raise ValueError("Api 必须注入插件唯一 CommitJournal")
         self._strm_journal = journal
         self._running: set[str] = set()
+        self._task_threads: set[threading.Thread] = set()
         #: 每个在跑的任务是什么时候起的（epoch 秒）。任务台要显示「已跑多久」，
         #: 而 _running 只是个集合，答不了这个问题。
         self._running_since: Dict[str, float] = {}
+        self._task_leases: Dict[str, Dict[str, Any]] = {}
+        self._task_context = threading.local()
         # 反向删除的待处理范围记在编排层：抢不到 115 数据任务锁的删除事件不会丢，
         # 锁释放时由 _drain_pending_sweep 接着跑完。None 语义的「全量」单独用布尔表示，
         # 因为空列表表示「没有待处理路径」，绝不能被当成「清理所有记录」。
@@ -115,12 +132,19 @@ class Api:
         self._pending_sweep_all = False
         # 反向删除刚清掉的 pickcode，正向同步据此跳过重建（115 列表接口有延迟）
         self._recent_deletes: TtlCache[str, bool] = TtlCache(RECENT_DELETE_TTL, maxsize=4096)
-        # 实时上传监听触发的“待补跑”标记：_start("upload") 抢不到锁的事件记在这里，
-        # 等当前 115 任务结束由 _drain_pending_upload 补跑一次增量上传，不丢事件。
-        self._pending_upload = False
-        self._pending_upload_source = ""
-        self._pending_upload_queued_at = 0.0
-        self._pending_upload_count = 0
+        # 自动上传只保存不同文件候选；手动上传不进入、也不消费这条队列。
+        self._upload_queue = upload_queue if upload_queue is not None else PendingUploadQueue()
+        # 旧 public queue_upload/trigger_upload(auto) 的整映射合并队列，与文件候选队列并存。
+        self._pending_auto_upload = False
+        self._pending_auto_upload_source = ""
+        self._pending_auto_upload_queued_at = 0.0
+        self._pending_auto_upload_count = 0
+        self._upload_restabilize: Callable[[str, str], bool] | None = None
+        self._upload_retry_timer: threading.Timer | None = None
+        self._upload_retry_attempt = 0
+        self._upload_retry_token = 0
+        self._upload_retry_exhausted = False
+        self._upload_scheduler_stopping = False
         # 通知去重：上传（开着“生成 STRM”）发出的入库卡片已经覆盖了同一批媒体的
         # STRM 变化，随后的 STRM 同步不该再发一张。这里记抑制窗的截止时刻（monotonic）。
         self._strm_notify_quiet_until = 0.0
@@ -351,6 +375,8 @@ class Api:
                 self._store.update_config(updates)
                 self._browse_115_cache.clear()
                 self._redirect_cache.clear()
+                # 扫码授权恢复后无需等待原退避到期，也不依赖新文件事件。
+                self.wake_pending_upload()
             return data
         except Exception as err:  # noqa: BLE001
             logger.error(f"【登录】检查登录状态失败：{safe_error_text(err)}")
@@ -633,19 +659,37 @@ class Api:
             now = time()
             with self._lock:
                 running = sorted(self._running)
-                pending_upload = self._pending_upload
-                pending_upload_source = self._pending_upload_source
-                pending_upload_queued_at = self._pending_upload_queued_at
-                pending_upload_count = self._pending_upload_count
-                tasks = [
-                    {
+                tasks = []
+                for kind, lease in sorted(self._task_leases.items()):
+                    started_at = float(lease.get("started_at") or now)
+                    last_progress_at = float(lease.get("last_progress_at") or started_at)
+                    tasks.append({
                         "kind": kind,
                         "label": self._TASK_LABELS.get(kind, kind),
-                        "elapsed_ms": max(0, int((now - since) * 1000)),
+                        "holder": str(lease.get("holder") or ""),
+                        "started_at": started_at,
+                        "age": max(0.0, now - started_at),
+                        "elapsed_ms": max(0, int((now - started_at) * 1000)),
+                        "heartbeat": last_progress_at,
+                        "last_progress": max(0.0, now - last_progress_at),
+                        "progress": lease.get("progress"),
+                        "phase": str(lease.get("phase") or "starting"),
+                        "current_item": str(lease.get("current_item") or ""),
+                        "cancel_requested": bool(lease["cancel_event"].is_set()),
                         "holds_cloud_lock": kind in self._CLOUD_TASK_KINDS,
-                    }
-                    for kind, since in sorted(self._running_since.items())
-                ]
+                    })
+            upload_pending = self._upload_queue.snapshot()
+            with self._lock:
+                if self._pending_auto_upload:
+                    upload_pending = dict(upload_pending)
+                    upload_pending["pending"] = True
+                    upload_pending["count"] = int(upload_pending.get("count") or 0) + self._pending_auto_upload_count
+                    sources = set(filter(None, str(upload_pending.get("source") or "").split(",")))
+                    sources.update(filter(None, self._pending_auto_upload_source.split(",")))
+                    upload_pending["source"] = ",".join(sorted(sources))
+                    stamps = [value for value in (float(upload_pending.get("queued_at") or 0),
+                                                   self._pending_auto_upload_queued_at) if value]
+                    upload_pending["queued_at"] = min(stamps) if stamps else 0.0
             try:
                 pending_conflicts = sorted(
                     (
@@ -701,10 +745,10 @@ class Api:
                     self._strm_watch_status and self._strm_watch_status()
                 ),
                 "pending_sweep": self._pending_sweep_text(),
-                "pending_upload": pending_upload,
-                "pending_upload_source": pending_upload_source,
-                "pending_upload_queued_at": pending_upload_queued_at or None,
-                "pending_upload_count": pending_upload_count,
+                "pending_upload": upload_pending["pending"],
+                "pending_upload_source": upload_pending["source"],
+                "pending_upload_queued_at": upload_pending["queued_at"] or None,
+                "pending_upload_count": upload_pending["count"],
                 "pending_conflicts": pending_conflicts,
                 "pending_deletes": pending_deletes,
                 "running": running,
@@ -1026,103 +1070,277 @@ class Api:
         self,
         payload: Dict[str, Any] | bool | None = None,
     ) -> Dict[str, Any]:
-        """上传入口。
-
-        ``payload`` 为 True 或普通 dict 时是手动触发，抢不到锁直接报错；为 False、None
-        或带 ``auto`` 的 dict 时是监听/TransferComplete 自动语义，忙时合并排队补跑。
-        """
+        """兼容入口：None/False/{auto:true} 为自动合并；显式手动 payload 保持整映射语义。"""
+        auto = payload in (False, None) or (isinstance(payload, dict) and bool(payload.get("auto")))
+        if auto:
+            source = str(payload.get("source") or "auto") if isinstance(payload, dict) else "auto"
+            return self.queue_upload(source=source)
         if error := self._upload_start_error():
             return _error(error)
         incremental = payload if isinstance(payload, bool) else bool((payload or {}).get("incremental", True))
-        auto = payload in (False, None) or (isinstance(payload, dict) and payload.get("auto"))
-        source = (
-            str(payload.get("source") or "auto")
-            if isinstance(payload, dict) and auto
-            else "watch"
-        )
-        moviepilot_url = self._strm_moviepilot_url()
-        result = self._start(
+        return self._start(
             "upload",
-            lambda: self.run_upload(incremental, moviepilot_url),
+            lambda: self.run_upload(incremental, self._strm_moviepilot_url()),
             "目录上传已开始",
         )
-        if result.get("success") or not auto:
-            return result
-        self._queue_pending_upload(source)
-        logger.info("【目录上传】任务忙，已排队，等当前 115 任务结束后自动补跑")
-        return _ok(data={"queued": True}, message="已排队，等当前任务结束后自动补跑")
 
     def queue_upload(self, source: str = "watch") -> Dict[str, Any]:
-        """自动上传入口：抢不到锁就合并排队，当前任务结束后补跑一次。"""
-        return self.trigger_upload({"auto": True, "incremental": True, "source": source})
-
-    def _queue_pending_upload(self, source: str) -> None:
-        with self._lock:
-            if not self._pending_upload:
-                self._pending_upload_queued_at = time()
-                self._pending_upload_source = str(source or "auto")
-            elif source and source not in self._pending_upload_source.split(","):
-                self._pending_upload_source = ",".join(
-                    value for value in (self._pending_upload_source, source) if value
-                )
-            self._pending_upload = True
-            self._pending_upload_count += 1
-
-    def _take_pending_upload(self) -> tuple[str, float, int] | None:
-        with self._lock:
-            if not self._pending_upload or "upload" in self._running:
-                return None
-            batch = (
-                self._pending_upload_source,
-                self._pending_upload_queued_at,
-                self._pending_upload_count,
-            )
-            self._pending_upload = False
-            self._pending_upload_source = ""
-            self._pending_upload_queued_at = 0.0
-            self._pending_upload_count = 0
-            return batch
-
-    def _restore_pending_upload(self, batch: tuple[str, float, int]) -> None:
-        source, queued_at, count = batch
-        with self._lock:
-            current = set(filter(None, self._pending_upload_source.split(",")))
-            current.update(filter(None, source.split(",")))
-            self._pending_upload = True
-            self._pending_upload_source = ",".join(sorted(current))
-            timestamps = [
-                value
-                for value in (self._pending_upload_queued_at, queued_at)
-                if value
-            ]
-            self._pending_upload_queued_at = min(timestamps) if timestamps else time()
-            self._pending_upload_count += max(1, count)
-
-    def _drain_pending_upload(self) -> None:
-        """115 数据任务释放锁之后补跑排队中的实时上传；没排队就什么都不做。"""
-        if self._upload_start_error():
-            return
-        batch = self._take_pending_upload()
-        if batch is None:
-            return
-        logger.debug("【目录上传】上一个 115 任务已结束，补跑排队中的增量上传")
-        moviepilot_url = self._strm_moviepilot_url()
+        """旧自动整映射入口：忙时合并，cloud task 结束后最终补跑一次。"""
+        if error := self._upload_start_error():
+            return _error(error)
         result = self._start(
-            "upload",
-            lambda: self.run_upload(True, moviepilot_url),
-            "目录上传已开始（补跑）",
+            "upload", lambda: self.run_upload(True, self._strm_moviepilot_url()),
+            "目录上传已开始",
         )
-        if not result.get("success"):
-            self._restore_pending_upload(batch)
+        if result.get("success"):
+            return result
+        with self._lock:
+            now = time()
+            self._pending_auto_upload = True
+            self._pending_auto_upload_queued_at = self._pending_auto_upload_queued_at or now
+            sources = set(filter(None, self._pending_auto_upload_source.split(",")))
+            sources.add(str(source or "auto"))
+            self._pending_auto_upload_source = ",".join(sorted(sources))
+            self._pending_auto_upload_count += 1
+        logger.info("【目录上传】整映射自动任务忙，已合并排队等待补跑")
+        return _ok(data={"queued": True}, message="已排队，等当前任务结束后自动补跑")
 
-    def _upload_start_error(self) -> str:
+    def set_upload_restabilizer(self, callback: Callable[[str, str], bool] | None) -> None:
+        self._upload_restabilize = callback
+
+    def queue_upload_file(self, candidate: UploadCandidate) -> Dict[str, Any]:
+        """稳定性线程的内部入口：按文件 key+signature 去重后请求一个短批次。"""
+        if not isinstance(candidate, UploadCandidate):
+            return _error("上传候选格式无效")
+        outcome = self._upload_queue.offer(candidate)
+        if outcome == "accepted":
+            self._drain_pending_upload()
+            return _ok(data={"accepted": True, "queued": True, "duplicate": False}, message="文件已加入上传队列")
+        if outcome == "duplicate":
+            return _ok(data={"accepted": True, "queued": bool(self._upload_queue), "duplicate": True}, message="文件已在上传队列中")
+        # full 明确拒绝，StabilityTracker 据此保留/压成 full-marker 后走整映射重扫。
+        return _error("待上传队列已满，已转为全量重扫回退", accepted=False, full=True)
+
+    def clear_invalid_upload_candidates(
+        self, valid_revisions: set[tuple[str, str, tuple]]
+    ) -> int:
+        return self._upload_queue.clear_invalid(valid_revisions)
+
+    def _run_upload_batch(self) -> Dict[str, Any] | None:
+        batch = self._upload_queue.take(UPLOAD_BATCH_SIZE)
+        if not batch:
+            return None
+        started = monotonic()
+        ready: list[UploadCandidate] = []
+        for candidate in batch:
+            current = file_signature(Path(candidate.file_path))
+            if current is None:
+                self._upload_queue.finish(candidate, processed=False)
+                continue
+            if current != candidate.signature:
+                self._upload_queue.finish(candidate, processed=False)
+                if self._upload_restabilize is not None:
+                    self._upload_restabilize(candidate.file_path, candidate.source)
+                continue
+            ready.append(candidate)
+        if not ready:
+            return None
+        for candidate in ready:
+            if not self._upload_queue.mark_started(candidate):
+                # 配置同步已清除此尚未开始的旧 revision。
+                return None
+        try:
+            entry = self.run_upload_files(ready, self._strm_moviepilot_url())
+        except Exception:
+            self._upload_queue.restore(ready)
+            self._schedule_upload_retry()
+            raise
+        errors_by_path = {
+            str(item.get("path") or "")
+            for item in entry.get("errors_detail") or []
+            if isinstance(item, dict)
+        }
+        deferred = int(entry.get("deferred") or 0)
+        unattributed_failure = int(entry.get("errors") or 0) > 0 and not errors_by_path
+        restored = False
+        for index, candidate in enumerate(ready):
+            failed = unattributed_failure or candidate.file_path in errors_by_path
+            was_deferred = deferred > 0 and index >= len(ready) - deferred
+            if failed or was_deferred:
+                if self._upload_candidate_is_current(candidate):
+                    self._upload_queue.restore([candidate])
+                    restored = True
+                else:
+                    self._upload_queue.finish(candidate, processed=False)
+            else:
+                # 已成功、已确认无需上传或已删源都属于完成态；预算只阻止下一批。
+                self._upload_queue.finish(candidate, processed=True)
+        if restored:
+            self._schedule_upload_retry()
+        else:
+            self._reset_upload_retry()
+        if monotonic() - started >= UPLOAD_BATCH_TIME_BUDGET:
+            logger.info("【目录上传】文件批次达到时间预算，释放 115 数据锁后再调度下一批")
+        return entry
+
+    def _upload_candidate_is_current(self, candidate: UploadCandidate) -> bool:
         config = self._store.get_config()
+        matches = 0
+        for mapping in config.get("upload_mappings") or []:
+            if not isinstance(mapping, dict) or not mapping.get("enabled", True):
+                continue
+            source_text = str(mapping.get("source") or "").strip()
+            if not source_text:
+                continue
+            try:
+                source_root = str(Path(source_text).expanduser().resolve())
+                revision = mapping_revision(mapping, config, canonical_source=source_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            mapping_id = str(mapping.get("id") or source_root)
+            if (
+                mapping_id == candidate.mapping_id
+                and source_root == candidate.source_root
+                and revision == candidate.mapping_revision
+            ):
+                matches += 1
+        return matches == 1
+
+    def _drain_pending_upload(self) -> bool:
+        """自动整映射队列优先，随后每次只启动一个文件短批次。"""
+        if self._upload_start_error(validate_mappings=False):
+            return False
+        with self._lock:
+            auto_pending = self._pending_auto_upload
+            if auto_pending and "upload" not in self._running:
+                self._pending_auto_upload = False
+                self._pending_auto_upload_source = ""
+                self._pending_auto_upload_queued_at = 0.0
+                self._pending_auto_upload_count = 0
+        if auto_pending:
+            result = self._start(
+                "upload", lambda: self.run_upload(True, self._strm_moviepilot_url()),
+                "目录上传已开始（补跑）",
+            )
+            if result.get("success"):
+                return True
+            with self._lock:
+                self._pending_auto_upload = True
+            return False
+        with self._lock:
+            if (
+                self._upload_scheduler_stopping
+                or self._upload_retry_timer is not None
+                or self._upload_retry_exhausted
+            ):
+                return False
+        if not self._upload_queue or self._upload_start_error(validate_mappings=False):
+            return False
+        with self._lock:
+            if "upload" in self._running:
+                return False
+        result = self._start("upload", self._run_upload_batch, "目录上传已开始（文件批次）")
+        return bool(result.get("success"))
+
+    def _schedule_upload_retry(self) -> bool:
+        """为失败候选安排一次可取消的有界退避，不在当前 worker 原地循环。"""
+        with self._lock:
+            if self._upload_scheduler_stopping or self._upload_retry_timer is not None:
+                return False
+            if not self._upload_queue:
+                self._upload_retry_attempt = 0
+                return False
+            if self._upload_retry_attempt >= len(self._UPLOAD_RETRY_DELAYS):
+                self._upload_retry_exhausted = True
+                logger.warning(
+                    "【目录上传】自动退避重试次数已用完，候选继续保留；"
+                    "保存配置或恢复授权后会立即唤醒"
+                )
+                return False
+            delay = max(0.0, float(self._UPLOAD_RETRY_DELAYS[self._upload_retry_attempt]))
+            self._upload_retry_attempt += 1
+            self._upload_retry_token += 1
+            token = self._upload_retry_token
+            timer = threading.Timer(delay, self._upload_retry_wakeup, args=(token,))
+            timer.name = "p115liteassistant-upload-retry"
+            timer.daemon = True
+            self._upload_retry_timer = timer
+        try:
+            timer.start()
+        except Exception:
+            with self._lock:
+                if self._upload_retry_timer is timer:
+                    self._upload_retry_timer = None
+            raise
+        logger.warning(
+            f"【目录上传】失败候选已恢复，{delay:g}s 后进行第 "
+            f"{self._upload_retry_attempt}/{len(self._UPLOAD_RETRY_DELAYS)} 次批次重试"
+        )
+        return True
+
+    def _upload_retry_wakeup(self, token: int) -> None:
+        with self._lock:
+            if token != self._upload_retry_token or self._upload_scheduler_stopping:
+                return
+            self._upload_retry_timer = None
+        started = self._drain_pending_upload()
+        if started or not self._upload_queue:
+            return
+        # 正常 cloud task 结束时会自行 drain；仅在没有已登记任务却仍抢不到锁时
+        # 继续下一档退避，避免异常外部持锁造成永久滞留。
+        with self._lock:
+            cloud_task_running = bool(self._running & self._CLOUD_TASK_KINDS)
+        if not cloud_task_running:
+            self._schedule_upload_retry()
+
+    def _reset_upload_retry(self) -> None:
+        timer: threading.Timer | None
+        with self._lock:
+            timer = self._upload_retry_timer
+            # 正在执行回调的 Timer 已把引用清空；它不能取消自己，也无需 join。
+            if timer is threading.current_thread():
+                timer = None
+            self._upload_retry_timer = None
+            self._upload_retry_attempt = 0
+            self._upload_retry_token += 1
+            self._upload_retry_exhausted = False
+        if timer is not None:
+            timer.cancel()
+            if timer.is_alive() and timer is not threading.current_thread():
+                timer.join(timeout=0.5)
+
+    def wake_pending_upload(self) -> None:
+        """配置或凭证恢复入口：取消退避并立即尝试下一批。"""
+        with self._lock:
+            if self._upload_scheduler_stopping:
+                return
+        self._reset_upload_retry()
+        self._drain_pending_upload()
+
+    def stop_upload_retry_scheduler(self, timeout: float = 0.5) -> None:
+        """停止自动补跑并有界回收 Timer 线程；pending 数据保持不变。"""
+        with self._lock:
+            self._upload_scheduler_stopping = True
+            self._upload_retry_token += 1
+            timer = self._upload_retry_timer
+            self._upload_retry_timer = None
+        if timer is not None:
+            timer.cancel()
+            if timer.is_alive() and timer is not threading.current_thread():
+                timer.join(timeout=max(0.0, float(timeout)))
+
+    def _upload_start_error(self, *, validate_mappings: bool = True) -> str:
+        config = self._store.get_config()
+        if not config.get("enabled"):
+            return "插件未启用"
         if not config.get("upload_generate_strm"):
             return ""
         try:
             normalize_moviepilot_url(str(config.get("moviepilot_address") or ""))
         except ValueError as err:
             return str(err)
+        if not validate_mappings:
+            return ""
         mappings = [
             mapping
             for mapping in config.get("upload_mappings") or []
@@ -1165,9 +1383,12 @@ class Api:
             "errors": 0,
             "duration_ms": 0,
         }
-        for mapping in mappings:
-            access_limited = False
+        for index, mapping in enumerate(mappings):
             source = str(mapping.get("source_path") or mapping.get("source_cid") or "-")
+            self._task_checkpoint(phase="strm-mapping", current_item=source,
+                                  progress={"current": index, "total": len(mappings)},
+                                  raise_if_cancelled=True)
+            access_limited = False
             target = str(mapping.get("target_dir") or "-")
             logger.info(f"【STRM同步】开始处理映射：{source} -> {target}")
             mapping_started = monotonic()
@@ -1330,8 +1551,14 @@ class Api:
             else:
                 for item in paths:
                     value = str(item or "").strip()
-                    if value:
-                        self._pending_sweep_paths.add(value)
+                    if not value or self._pending_sweep_all:
+                        continue
+                    if value not in self._pending_sweep_paths and len(self._pending_sweep_paths) >= self._PENDING_SWEEP_MAX:
+                        self._pending_sweep_paths.clear()
+                        self._pending_sweep_all = True
+                        logger.warning("【STRM反向删除】待巡检路径容量已满，已压为全量巡检标记")
+                        break
+                    self._pending_sweep_paths.add(value)
             if self._pending_sweep_all:
                 return "全部记录"
             return f"{len(self._pending_sweep_paths)} 个路径"
@@ -1841,63 +2068,70 @@ class Api:
                 continue
             targets.append(target)
 
-        records = self._store.get_strm_records()
-        claims, _configured_roots = self._strm_claim_context(records)
-        by_path: dict[Path, list[tuple[str, Dict[str, Any]]]] = {}
-        for key, record in records.items():
-            if not isinstance(record, dict):
-                continue
-            value = str(record.get("output_path") or record.get("path") or "").strip()
-            if not value:
-                continue
-            try:
-                by_path.setdefault(Path(value).expanduser().resolve(), []).append(
-                    (str(key), record)
-                )
-            except (OSError, RuntimeError, ValueError):
-                continue
+        # 路径/allowlist 校验可以在锁外；claims 与 records 必须在 cloud lock 内重取，
+        # 否则与同步、上传、反删任务各拿一份旧快照后提交，会对同一 record version 分叉。
+        if not self._cloud_task_lock.acquire(blocking=False):
+            return _error("115 数据任务正在运行，请稍后重试")
+        try:
+            records = self._store.get_strm_records()
+            claims, _configured_roots = self._strm_claim_context(records)
+            by_path: dict[Path, list[tuple[str, Dict[str, Any]]]] = {}
+            for key, record in records.items():
+                if not isinstance(record, dict):
+                    continue
+                value = str(record.get("output_path") or record.get("path") or "").strip()
+                if not value:
+                    continue
+                try:
+                    by_path.setdefault(Path(value).expanduser().resolve(), []).append(
+                        (str(key), record)
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    continue
 
-        removed = dropped = errors = 0
-        materializer = StrmMaterializer(self._store)
-        for target in targets:
-            matches = by_path.get(target, [])
-            if not matches:
-                refused += 1  # untracked 默认拒删
-                continue
-            requests: list[OwnedRemovalRequest] = []
-            invalid = False
-            for key, record in matches:
-                claim = claims.get(("strm", key))
-                if claim is None or claim.owner_confidence == "ambiguous":
-                    invalid = True
-                    break
-                owner_id = self._claim_owner_id(claim)
-                target_root = mapping_roots.get(owner_id)
-                if target_root is None:
-                    invalid = True
-                    break
-                requests.append(OwnedRemovalRequest(
-                    ("strm", key), record, target_root, owner_id
-                ))
-            if invalid:
-                refused += 1
-                continue
-            result = materializer.prepare_owned_removals(requests, claims)[0]
-            if not result.may_drop_record or result.unit is None:
-                refused += 1
-                continue
-            try:
-                self._strm_journal.execute(result.unit)
-            except Exception as err:  # noqa: BLE001
-                errors += 1
-                logger.warning(f"【库体检】删除事务失败 {target}：{safe_error_text(err)}")
-                continue
-            dropped += len(result.unit.mutations)
-            removed += sum(
-                1 for operation in result.unit.file_ops if operation.action == "unlink"
-            )
-            for mutation in result.unit.mutations:
-                records.pop(mutation.key, None)
+            removed = dropped = errors = 0
+            materializer = StrmMaterializer(self._store)
+            for target in targets:
+                matches = by_path.get(target, [])
+                if not matches:
+                    refused += 1  # untracked 默认拒删
+                    continue
+                requests: list[OwnedRemovalRequest] = []
+                invalid = False
+                for key, record in matches:
+                    claim = claims.get(("strm", key))
+                    if claim is None or claim.owner_confidence == "ambiguous":
+                        invalid = True
+                        break
+                    owner_id = self._claim_owner_id(claim)
+                    target_root = mapping_roots.get(owner_id)
+                    if target_root is None:
+                        invalid = True
+                        break
+                    requests.append(OwnedRemovalRequest(
+                        ("strm", key), record, target_root, owner_id
+                    ))
+                if invalid:
+                    refused += 1
+                    continue
+                result = materializer.prepare_owned_removals(requests, claims)[0]
+                if not result.may_drop_record or result.unit is None:
+                    refused += 1
+                    continue
+                try:
+                    self._strm_journal.execute(result.unit)
+                except Exception as err:  # noqa: BLE001
+                    errors += 1
+                    logger.warning(f"【库体检】删除事务失败 {target}：{safe_error_text(err)}")
+                    continue
+                dropped += len(result.unit.mutations)
+                removed += sum(
+                    1 for operation in result.unit.file_ops if operation.action == "unlink"
+                )
+                for mutation in result.unit.mutations:
+                    records.pop(mutation.key, None)
+        finally:
+            self._cloud_task_lock.release()
 
         logger.info(
             f"【库体检】清理完成：删掉 {removed} 个 STRM，清掉 {dropped} 条记录，"
@@ -2161,8 +2395,11 @@ class Api:
         entries: list[Dict[str, Any]] = []
         totals: Dict[str, int] = {key: 0 for key in self._SWEEP_COUNT_KEYS}
         totals["duration_ms"] = 0
-        for mapping in mappings:
+        for index, mapping in enumerate(mappings):
             label = ReverseDeleter.mapping_label(mapping)
+            self._task_checkpoint(phase="sweep-mapping", current_item=label,
+                                  progress={"current": index, "total": len(mappings)},
+                                  raise_if_cancelled=True)
             started = monotonic()
             stop = False
             try:
@@ -2356,7 +2593,7 @@ class Api:
             batch = batches.get(str(batch_id))
             if not isinstance(batch, dict):
                 return _error("批次不存在或已处理")
-            items = [item for item in (batch.get("items") or []) if isinstance(item, dict)]
+            items = pending_batch_items(batch)
             page_limit = max(1, int(limit or self._PENDING_PAGE_LIMIT))
             page_offset = max(0, int(offset or 0))
             window = items[page_offset : page_offset + page_limit]
@@ -2401,7 +2638,7 @@ class Api:
                 "items_truncated": bool(batch.get("items_truncated")),
                 "samples": [
                     str(item.get("path") or "")
-                    for item in (batch.get("items") or [])[:20]
+                    for item in pending_batch_items(batch)[:20]
                     if isinstance(item, dict)
                 ],
             }
@@ -2426,68 +2663,180 @@ class Api:
         return result
 
     def confirm_strm_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """确认执行待删批次。护栏照跑、本地存在性重新核对，只跳过规模闸门。"""
+        """原子 claim 待删批次；token 是唯一所有权证明，checkpoint 只允许单调推进。"""
         batch_ids = self._requested_batch_ids(payload)
         if not batch_ids:
             return _error("缺少批次 ID")
         if error := self._sweep_start_error():
             return _error(error)
-        taken: list[Dict[str, Any]] = []
-        for batch_id in batch_ids:
-            batch = self._store.pop_strm_delete_batch(batch_id)
-            if isinstance(batch, dict):
-                taken.append(batch)
-        if not taken:
-            return _error("批次不存在或已处理")
-        jobs: list[tuple[str, list[str]]] = []
-        for batch in taken:
-            paths = [
-                str(item.get("path") or "")
-                for item in (batch.get("items") or [])
-                if isinstance(item, dict) and item.get("path")
-            ]
+        claim_token = uuid.uuid4().hex
+        with self._config_write_lock:
+            batches = self._store.get_strm_delete_pending()
+            claimed: list[Dict[str, Any]] = []
+            now = datetime.now().isoformat(timespec="seconds")
+            for batch_id in batch_ids:
+                batch = batches.get(batch_id)
+                if not isinstance(batch, dict):
+                    continue
+                # 新 claim 有 token，严格拒绝二次认领；旧版/崩溃遗留的无 token claimed
+                # 允许从持久化 checkpoint 迁移接续。
+                if batch.get("status") == "claimed" and batch.get("claim_token"):
+                    continue
+                items = pending_batch_items(batch)
+                try:
+                    declared_count = int(batch.get("count") or len(items))
+                except (TypeError, ValueError):
+                    continue
+                if not items or declared_count != len(items):
+                    continue
+                checkpoint = batch.get("checkpoint")
+                if not isinstance(checkpoint, dict):
+                    checkpoint = {"page": 0, "offset": 0, "processed": 0}
+                try:
+                    completed = max(0, min(len(items), int(checkpoint.get("offset") or 0)))
+                except (TypeError, ValueError):
+                    continue
+                batch["status"] = "claimed"
+                batch["claim_token"] = claim_token
+                batch["claim_owner"] = f"{threading.current_thread().name}:{threading.get_ident()}"
+                batch["claimed_at"] = now
+                batch["checkpoint"] = {
+                    "page": completed // self._PENDING_PAGE_LIMIT,
+                    "offset": completed,
+                    "processed": completed,
+                }
+                batches[batch_id] = batch
+                claimed.append(deepcopy(batch))
+            if claimed:
+                self._store.save_strm_delete_pending(batches)
+        if not claimed:
+            return _error("批次不存在、正在执行或确认明细不完整")
+        jobs = []
+        for batch in claimed:
+            items = pending_batch_items(batch)
+            offset = int((batch.get("checkpoint") or {}).get("offset") or 0)
+            paths = [str(item.get("path") or "") for item in items[offset:] if item.get("path")]
             if paths:
-                jobs.append((str(batch.get("mapping_id") or ""), paths))
+                jobs.append((str(batch.get("id") or ""), str(batch.get("mapping_id") or ""), offset, paths, claim_token))
         if not jobs:
-            self._restore_batches(taken)
+            self._restore_batches(claimed, claim_token=claim_token)
             return _error("批次没有可执行的明细，请等下一轮巡检重新统计")
-        total = sum(len(paths) for _mapping_id, paths in jobs)
+        total = sum(len(job[3]) for job in jobs)
         result = self._start(
-            "sweep",
-            lambda: [entry for job in jobs for entry in self.run_strm_sweep(
-                job[1], bypass_confirm=True, mapping_id=job[0]
-            )],
+            "sweep", lambda: self._run_confirmed_delete_pages(jobs),
             f"已确认 {len(jobs)} 个批次，开始清理 {total} 个媒体对应的 115 文件",
         )
         if not result.get("success"):
-            # 起不来就把批次放回去 —— 用户点了一次不能就这么丢了
-            self._restore_batches(taken)
+            self._restore_batches(claimed, claim_token=claim_token)
         return result
 
-    def _restore_batches(self, taken: list[Dict[str, Any]]) -> None:
-        batches = self._store.get_strm_delete_pending()
-        for batch in taken:
-            batches[str(batch.get("id") or "")] = batch
-        self._store.save_strm_delete_pending(batches)
+    def _run_confirmed_delete_pages(
+        self, jobs: list[tuple[str, str, int, list[str], str]],
+    ) -> list[Dict[str, Any]]:
+        entries: list[Dict[str, Any]] = []
+        for batch_id, mapping_id, start_offset, paths, claim_token in jobs:
+            try:
+                for offset in range(0, len(paths), self._PENDING_PAGE_LIMIT):
+                    self._task_checkpoint(phase="confirmed-delete", current_item=batch_id,
+                                          progress=start_offset + offset, raise_if_cancelled=True)
+                    page = paths[offset : offset + self._PENDING_PAGE_LIMIT]
+                    page_entries = self.run_strm_sweep(page, bypass_confirm=True, mapping_id=mapping_id)
+                    entries.extend(page_entries)
+                    if any(int(entry.get("errors") or 0) > 0 or int(entry.get("unidentified") or 0) > 0
+                           for entry in page_entries if isinstance(entry, dict)):
+                        raise RuntimeError("确认删除页存在未完成条目，保留 checkpoint 等待重试")
+                    self._checkpoint_strm_delete_batch(
+                        batch_id, claim_token=claim_token,
+                        page=((start_offset + offset) // self._PENDING_PAGE_LIMIT) + 1,
+                        offset=start_offset + offset + len(page),
+                    )
+                self._complete_strm_delete_batch(batch_id, claim_token=claim_token)
+            except Exception:
+                self._release_strm_delete_batch(batch_id, claim_token=claim_token)
+                raise
+        return entries
+
+    def _checkpoint_strm_delete_batch(self, batch_id: str, *, claim_token: str, page: int, offset: int) -> None:
+        with self._config_write_lock:
+            batches = self._store.get_strm_delete_pending()
+            batch = batches.get(str(batch_id))
+            if not isinstance(batch, dict) or batch.get("claim_token") != claim_token:
+                return
+            current = batch.get("checkpoint") if isinstance(batch.get("checkpoint"), dict) else {}
+            current_offset = max(0, int(current.get("offset") or 0))
+            if int(offset) < current_offset:
+                return
+            batch["checkpoint"] = {"page": int(page), "offset": int(offset), "processed": int(offset)}
+            batch["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            batches[str(batch_id)] = batch
+            self._store.save_strm_delete_pending(batches)
+
+    def _complete_strm_delete_batch(self, batch_id: str, *, claim_token: str) -> None:
+        with self._config_write_lock:
+            batches = self._store.get_strm_delete_pending()
+            batch = batches.get(str(batch_id))
+            if isinstance(batch, dict) and batch.get("claim_token") == claim_token:
+                batches.pop(str(batch_id), None)
+                self._store.save_strm_delete_pending(batches)
+
+    def _release_strm_delete_batch(self, batch_id: str, *, claim_token: str) -> None:
+        with self._config_write_lock:
+            batches = self._store.get_strm_delete_pending()
+            batch = batches.get(str(batch_id))
+            if not isinstance(batch, dict) or batch.get("claim_token") != claim_token:
+                return
+            batch["status"] = "pending"
+            for key in ("claim_token", "claim_owner", "claimed_at"):
+                batch.pop(key, None)
+            batches[str(batch_id)] = batch
+            self._store.save_strm_delete_pending(batches)
+
+    def _restore_batches(self, taken: list[Dict[str, Any]], *, claim_token: str = "") -> None:
+        with self._config_write_lock:
+            batches = self._store.get_strm_delete_pending()
+            for original in taken:
+                batch_id = str(original.get("id") or "")
+                current = batches.get(batch_id)
+                if not isinstance(current, dict):
+                    continue
+                token = claim_token or str(original.get("claim_token") or "")
+                if token and current.get("claim_token") != token:
+                    continue
+                current["status"] = "pending"
+                for key in ("claim_token", "claim_owner", "claimed_at"):
+                    current.pop(key, None)
+                batches[batch_id] = current
+            self._store.save_strm_delete_pending(batches)
 
     def dismiss_strm_delete(self, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """驳回待删批次：只丢批次，网盘上一个文件都不动。"""
+        """仅驳回尚未执行的批次；claimed/running 保持可见且拒绝误导文案。"""
         batch_ids = self._requested_batch_ids(payload)
         if not batch_ids:
             return _error("缺少批次 ID")
         dropped = 0
-        for batch_id in batch_ids:
-            batch = self._store.pop_strm_delete_batch(batch_id)
-            if not isinstance(batch, dict):
-                continue
-            dropped += 1
-            logger.info(
-                f"【STRM反向删除】用户驳回待确认批次 {batch_id}"
-                f"（{int(batch.get('count') or 0)} 个），网盘上的文件一个都没动"
-            )
+        blocked = 0
+        with self._config_write_lock:
+            batches = self._store.get_strm_delete_pending()
+            for batch_id in batch_ids:
+                batch = batches.get(batch_id)
+                if not isinstance(batch, dict):
+                    continue
+                if batch.get("status") == "claimed" or batch.get("claim_token"):
+                    blocked += 1
+                    continue
+                batches.pop(batch_id, None)
+                dropped += 1
+                logger.info(f"【STRM反向删除】用户驳回待确认批次 {batch_id}（尚未开始云端删除）")
+            if dropped:
+                self._store.save_strm_delete_pending(batches)
         if not dropped:
+            if blocked:
+                return _error("批次正在执行，不能驳回；云端删除可能已经开始")
             return _error("批次不存在或已处理")
-        return _ok(message=f"已忽略 {dropped} 个批次，网盘上的文件一个都没动")
+        message = f"已忽略 {dropped} 个批次（均尚未执行）"
+        if blocked:
+            message += f"；另有 {blocked} 个正在执行，未移除"
+        return _ok(message=message)
 
     # ── 上传身份冲突：记录说 A、远端躺着 B，让用户拍板 ─────────────────────
     #
@@ -3348,6 +3697,75 @@ class Api:
         moviepilot_url: str = "",
         mappings: Optional[list[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
+        return self._run_upload_impl(incremental, moviepilot_url, mappings, None)
+
+    def run_upload_files(
+        self,
+        candidates: list[UploadCandidate],
+        moviepilot_url: str = "",
+    ) -> Dict[str, Any]:
+        """只授权并执行候选精确归属的 mapping；任何 revision 歧义均 fail-closed。"""
+        config = self._store.get_config()
+        selected: list[Dict[str, Any]] = []
+        selected_keys: set[tuple[str, str]] = set()
+        configured = [item for item in config.get("upload_mappings") or [] if isinstance(item, dict)]
+        for candidate in candidates:
+            matches: list[Dict[str, Any]] = []
+            for mapping in configured:
+                if not mapping.get("enabled", True):
+                    continue
+                source_text = str(mapping.get("source") or "").strip()
+                if not source_text:
+                    continue
+                try:
+                    source_root = str(Path(source_text).expanduser().resolve())
+                    revision = mapping_revision(mapping, config, canonical_source=source_root)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                mapping_id = str(mapping.get("id") or source_root)
+                if (
+                    mapping_id == candidate.mapping_id
+                    and source_root == candidate.source_root
+                    and revision == candidate.mapping_revision
+                ):
+                    matches.append(mapping)
+            if len(matches) != 1:
+                message = f"上传候选映射缺失、已变更或不唯一：{candidate.file_path}"
+                logger.error(f"【目录上传】{message}")
+                return self._record_upload_candidate_failure(candidate, message)
+            key = (candidate.mapping_id, candidate.source_root)
+            if key not in selected_keys:
+                selected_keys.add(key)
+                selected.append(matches[0])
+        return self._run_upload_impl(True, moviepilot_url, selected, candidates)
+
+    def _record_upload_candidate_failure(
+        self, candidate: UploadCandidate, message: str
+    ) -> Dict[str, Any]:
+        entry = {
+            "kind": "upload",
+            "time": datetime.now().isoformat(timespec="seconds"),
+            "incremental": True,
+            "errors": 1,
+            "errors_detail": [{
+                "path": candidate.file_path,
+                "target": "",
+                "message": message,
+            }],
+            "message": message,
+        }
+        self._store.append_history(entry)
+        logger.warning(f"【目录上传】执行完成，失败 1：{message}")
+        self._notify_upload(entry, True)
+        return entry
+
+    def _run_upload_impl(
+        self,
+        incremental: bool,
+        moviepilot_url: str,
+        mappings: Optional[list[Dict[str, Any]]],
+        candidates: list[UploadCandidate] | None,
+    ) -> Dict[str, Any]:
         """``mappings`` 给了就只传这些。DirectoryUploader 自己从 config 里读通道，
         所以收窄要落在传给它的那份 config 上。"""
         config = self._store.get_config()
@@ -3422,14 +3840,20 @@ class Api:
         else:
             execution_config = {**config, "upload_mappings": execution_mappings}
             try:
-                entry = DirectoryUploader(
+                uploader = DirectoryUploader(
                     self._client_provider(),
                     self._store,
                     execution_config,
                     moviepilot_url or str(config.get("moviepilot_address") or ""),
                     poster_search=self._search_poster,
                     journal=self._strm_journal,
-                ).run(incremental)
+                    task_checkpoint=self._task_checkpoint,
+                )
+                entry = (
+                    uploader.run_files(candidates, incremental=True)
+                    if candidates is not None
+                    else uploader.run(incremental)
+                )
             except Exception as err:  # noqa: BLE001
                 logger.error(f"【目录上传】执行失败：{safe_error_text(err)}")
                 entry = {
@@ -3974,9 +4398,57 @@ class Api:
                     except Exception as err:  # noqa: BLE001
                         logger.error(f"【302跳转服务】安排多端播放副本清理失败：{safe_error_text(err)}")
 
+    def join_task_threads(self, timeout: float = 0.5) -> None:
+        """插件停止时仅作有界 join，不等待 pacer 的完整休眠周期。"""
+        deadline = monotonic() + max(0.0, float(timeout))
+        with self._lock:
+            threads = list(self._task_threads)
+        for thread in threads:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            if thread is not threading.current_thread():
+                thread.join(timeout=remaining)
+
+    def _task_checkpoint(
+        self, *, phase: str | None = None, current_item: str | None = None,
+        progress: Any = None, raise_if_cancelled: bool = False,
+    ) -> bool:
+        """更新当前 worker lease；取消只在调用方选择的安全检查点生效。"""
+        kind = getattr(self._task_context, "kind", "")
+        with self._lock:
+            lease = self._task_leases.get(kind)
+            if lease is None:
+                return False
+            lease["last_progress_at"] = time()
+            if phase is not None:
+                lease["phase"] = phase
+            if current_item is not None:
+                lease["current_item"] = current_item
+            if progress is not None:
+                lease["progress"] = progress
+            cancelled = lease["cancel_event"].is_set()
+        if cancelled and raise_if_cancelled:
+            raise RuntimeError("任务已在安全检查点协作取消")
+        return cancelled
+
+    def cancel_task(self, payload: Dict[str, Any] | str | None = None) -> Dict[str, Any]:
+        """请求协作取消；不强杀线程，也不跨线程释放锁。"""
+        kind = str(payload.get("kind") or "") if isinstance(payload, dict) else str(payload or "")
+        with self._lock:
+            lease = self._task_leases.get(kind)
+            if lease is None:
+                return _error("任务不存在或已经结束")
+            lease["cancel_event"].set()
+            lease["last_progress_at"] = time()
+        return _ok(message="已请求任务在下一个安全检查点停止")
+
     def _start(self, kind: str, target: Callable[[], Any], message: str) -> Dict[str, Any]:
         label = self._TASK_LABELS.get(kind, kind)
         cloud_lock_acquired = False
+        started_at = time()
+        cancel_event = threading.Event()
+        holder = f"p115liteassistant-{kind}:{uuid.uuid4().hex[:8]}"
         with self._lock:
             if kind in self._running:
                 logger.warning(f"【{label}】任务正在运行，忽略重复触发")
@@ -3984,23 +4456,29 @@ class Api:
             if kind in self._CLOUD_TASK_KINDS:
                 cloud_lock_acquired = self._cloud_task_lock.acquire(blocking=False)
                 if not cloud_lock_acquired:
-                    running = "/".join(
-                        self._TASK_LABELS.get(item, item)
-                        for item in sorted(self._running & self._CLOUD_TASK_KINDS)
-                    )
+                    running = "/".join(self._TASK_LABELS.get(item, item)
+                                       for item in sorted(self._running & self._CLOUD_TASK_KINDS))
                     detail = f"（{running}）" if running else ""
-                    logger.warning(
-                        f"【{label}】115 数据任务正在运行{detail}，忽略本次触发"
-                    )
+                    logger.warning(f"【{label}】115 数据任务正在运行{detail}，忽略本次触发")
                     return _error(f"115 数据任务正在运行{detail}，请稍后重试")
             self._running.add(kind)
-            self._running_since[kind] = time()
+            self._running_since[kind] = started_at
+            self._task_leases[kind] = {
+                "holder": holder, "started_at": started_at,
+                "last_progress_at": started_at, "progress": None,
+                "phase": "starting", "current_item": "", "cancel_event": cancel_event,
+            }
+
         def run() -> None:
             recovery_failed = False
+            self._task_context.kind = kind
             try:
+                self._task_checkpoint(phase="recovery" if kind in self._CLOUD_TASK_KINDS else "running")
                 if kind in self._CLOUD_TASK_KINDS:
                     self._recover_strm_commits(f"{label}任务启动")
+                self._task_checkpoint(phase="running", raise_if_cancelled=True)
                 target()
+                self._task_checkpoint(phase="completed")
             except StrmRecoveryBlockedError as err:
                 recovery_failed = True
                 logger.error(f"【{label}】STRM journal 恢复失败，任务已阻断：{safe_error_text(err)}")
@@ -4010,20 +4488,25 @@ class Api:
                 with self._lock:
                     self._running.discard(kind)
                     self._running_since.pop(kind, None)
+                    self._task_leases.pop(kind, None)
+                    self._task_threads.discard(threading.current_thread())
+                self._task_context.kind = ""
                 if cloud_lock_acquired:
                     self._cloud_task_lock.release()
-                # 恢复失败时保留现有 pending 标记，本轮不立即重排输出任务，
-                # 避免同一损坏 journal 形成无限补跑。
                 if not recovery_failed:
                     self._drain_pending_tasks(kind)
 
-        thread = threading.Thread(target=run, name=f"p115liteassistant-{kind}", daemon=True)
+        thread = threading.Thread(target=run, name=holder, daemon=True)
         try:
+            with self._lock:
+                self._task_threads.add(thread)
             thread.start()
         except Exception as err:  # noqa: BLE001
             with self._lock:
                 self._running.discard(kind)
                 self._running_since.pop(kind, None)
+                self._task_leases.pop(kind, None)
+                self._task_threads.discard(thread)
             if cloud_lock_acquired:
                 self._cloud_task_lock.release()
             logger.error(f"【{label}】任务启动失败：{safe_error_text(err)}")

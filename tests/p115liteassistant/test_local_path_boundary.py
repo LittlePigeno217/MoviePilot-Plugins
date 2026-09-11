@@ -980,6 +980,64 @@ class LocalPathBoundaryTest(unittest.TestCase):
             self.assertFalse(inside_media.exists())
             self.assertTrue(outside_media.exists())
 
+    def test_library_drop_reloads_claims_inside_cloud_lock_and_is_idempotent(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / "Film.strm"
+            target.write_text("https://example.invalid/file", encoding="utf-8")
+            api, store = self.build_api({
+                "local_path_allowlist": [str(root)],
+                "strm_mappings": [{"id": "movies", "target_dir": str(root)}],
+            })
+            fresh = {"path": str(target), "owner_id": "movies", "version": 2}
+            store.strm_records = {"movies:Film.mkv": dict(fresh)}
+            original_get = store.get_strm_records
+            observed = []
+
+            def locked_get():
+                observed.append(api._cloud_task_lock.locked())
+                return original_get()
+
+            store.get_strm_records = locked_get
+            with patch.object(api, "_local_roots", return_value=[root.resolve()]):
+                first = api.library_drop({"paths": [str(target)]})
+                second = api.library_drop({"paths": [str(target)]})
+
+            self.assertTrue(first["success"])
+            self.assertEqual(first["data"], {"removed": 1, "dropped": 1, "refused": 0})
+            self.assertTrue(second["success"])
+            self.assertEqual(second["data"], {"removed": 0, "dropped": 0, "refused": 1})
+            self.assertGreaterEqual(len(observed), 2)
+            self.assertTrue(all(observed))
+            self.assertEqual(store.strm_records, {})
+            self.assertFalse(target.exists())
+            self.assertFalse(api._cloud_task_lock.locked())
+
+    def test_library_drop_busy_keeps_manual_response_shape_and_state(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / "Film.strm"
+            target.write_text("https://example.invalid/file", encoding="utf-8")
+            api, store = self.build_api({
+                "local_path_allowlist": [str(root)],
+                "strm_mappings": [{"id": "movies", "target_dir": str(root)}],
+            })
+            store.strm_records = {
+                "movies:Film.mkv": {"path": str(target), "owner_id": "movies"}
+            }
+            api._cloud_task_lock.acquire()
+            try:
+                with patch.object(api, "_local_roots", return_value=[root.resolve()]):
+                    result = api.library_drop({"paths": [str(target)]})
+            finally:
+                api._cloud_task_lock.release()
+
+            self.assertEqual(set(result), {"success", "message", "data"})
+            self.assertFalse(result["success"])
+            self.assertEqual(result["data"], {})
+            self.assertTrue(target.exists())
+            self.assertIn("movies:Film.mkv", store.strm_records)
+
     def test_run_strm_rejects_legacy_mapping_outside_allowlist_before_generator(self):
         with TemporaryDirectory() as temp:
             allowed = Path(temp) / "allowed"

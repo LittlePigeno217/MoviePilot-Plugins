@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from apscheduler.triggers.cron import CronTrigger
@@ -17,14 +18,14 @@ from .notify import Notifier
 from .store import Store
 from .strm import CommitJournal, StrmRecoveryBlockedError
 from .strm_watch import StrmDeleteWatcher
-from .upload_watch import UploadWatcher
+from .upload_watch import PendingUploadQueue, StabilityTracker, UploadWatcher, mapping_revision
 
 
 class P115LiteAssistant(_PluginBase):
     plugin_name = "115 轻量助手"
     plugin_desc = "独立提供 115 登录、生活事件监控、STRM/302、目录上传秒传和签到；侧栏有一份媒体清单，一部电影一行、一季剧一行地管入库、做种与删除。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
-    plugin_version = "1.3.1"
+    plugin_version = "1.3.2"
     plugin_author = "LittlePigeno"
     author_url = "https://github.com/LittlePigeno217"
     plugin_config_prefix = "p115liteassistant_"
@@ -47,6 +48,7 @@ class P115LiteAssistant(_PluginBase):
             poster=self.post_message,
             title_prefix=self.plugin_name,
         )
+        self._upload_queue = PendingUploadQueue()
         self._api = Api(
             self._get_client,
             self._store,
@@ -56,6 +58,7 @@ class P115LiteAssistant(_PluginBase):
             strm_watch_status=self._is_strm_watch_running,
             recover_strm_commits=self._recover_strm_commits,
             journal=self._strm_journal,
+            upload_queue=self._upload_queue,
         )
         self._life_monitor = LifeMonitor(
             self._get_client,
@@ -71,11 +74,16 @@ class P115LiteAssistant(_PluginBase):
             self._store.get_config,
             self._trigger_strm_sweep,
         )
-        # 本地源目录的实时监听：媒体/侧车文件出现 -> 触发增量上传。不丢事件，
-        # 抢不到 115 数据任务锁时由 api.queue_upload 排队，任务结束自动补跑。
+        # 稳定性确认仅做本地 stat；稳定候选交给 API 的有界文件队列。
+        self._upload_stability = StabilityTracker(
+            self._store.get_config,
+            self._api.queue_upload_file,
+            full_rescan_callback=self._api.queue_upload,
+        )
+        self._api.set_upload_restabilizer(self._upload_stability.submit_path)
         self._upload_watch = UploadWatcher(
             self._store.get_config,
-            self._api.queue_upload,
+            self._upload_stability,
         )
         self._upload_watch_signature = self._upload_watch_config_signature(
             self._store.get_config()
@@ -94,6 +102,9 @@ class P115LiteAssistant(_PluginBase):
                 self._life_monitor.stop()
                 self._strm_watch.stop()
                 self._upload_watch.stop()
+                tracker = getattr(self, "_upload_stability", None)
+                if tracker is not None:
+                    tracker.stop()
                 return
             self._strm_recovery_blocked = False
         self._migrate_legacy_allowlist_on_startup()
@@ -114,7 +125,7 @@ class P115LiteAssistant(_PluginBase):
             self._strm_recovery_blocked = True
             # 运行期恢复失败与启动期语义一致：立即停止所有会触碰输出的后台组件。
             # 之后只能由保存配置时的锁内恢复成功来清除阻断并重新启动。
-            for component_name in ("_life_monitor", "_strm_watch", "_upload_watch"):
+            for component_name in ("_life_monitor", "_strm_watch", "_upload_watch", "_upload_stability"):
                 component = getattr(self, component_name, None)
                 if component is not None:
                     try:
@@ -194,6 +205,9 @@ class P115LiteAssistant(_PluginBase):
                     self._life_monitor.stop()
                     self._strm_watch.stop()
                     self._upload_watch.stop()
+                    tracker = getattr(self, "_upload_stability", None)
+                    if tracker is not None:
+                        tracker.stop()
                     return
                 self._strm_recovery_blocked = False
         self._sync_life_monitor()
@@ -206,22 +220,24 @@ class P115LiteAssistant(_PluginBase):
         ):
             self._sync_upload_watch()
             self._upload_watch_signature = signature
+        # cookie/token 等凭证变化不一定改变 watcher signature，但必须取消旧退避并补跑。
+        wake_upload = getattr(self._api, "wake_pending_upload", None)
+        if config.get("enabled") and callable(wake_upload):
+            wake_upload()
 
     @staticmethod
     def _upload_watch_config_signature(config: Dict[str, Any]) -> tuple:
-        """只取 watcher 行为相关配置，避免保存无关字段时丢掉防抖状态。"""
-        mappings = tuple(
-            sorted(
-                (
-                    str(mapping.get("id") or ""),
-                    str(mapping.get("source") or "").strip(),
-                    bool(mapping.get("enabled", True)),
-                )
-                for mapping in config.get("upload_mappings") or []
-                if isinstance(mapping, dict)
-            )
-        )
-        return bool(config.get("enabled")), mappings
+        """取全部会影响自动候选资格、路由与上传副作用的配置。"""
+        mappings = []
+        for mapping in config.get("upload_mappings") or []:
+            if not isinstance(mapping, dict):
+                continue
+            try:
+                revision = mapping_revision(mapping, config)
+            except (OSError, RuntimeError, ValueError):
+                revision = (str(mapping.get("source") or "").strip(),)
+            mappings.append((str(mapping.get("id") or ""), revision))
+        return bool(config.get("enabled")), tuple(sorted(mappings, key=repr))
 
     def _sync_life_monitor(self) -> None:
         if getattr(self, "_strm_recovery_blocked", False):
@@ -256,23 +272,43 @@ class P115LiteAssistant(_PluginBase):
             self._strm_watch.start()
 
     def _sync_upload_watch(self) -> None:
-        """按配置启停本地源目录实时监听。
-
-        插件启用且有可用的上传源目录时监听；配置或目录变了就整体重建。
-        """
-        if getattr(self, "_strm_recovery_blocked", False):
-            self._upload_watch.stop()
-            return
-        config = self._store.get_config()
+        """同步启停 watcher/tracker，并清除配置重载后失效的文件候选。"""
         self._upload_watch.stop()
-        has_source = any(
-            isinstance(mapping, dict)
-            and mapping.get("enabled", True)
-            and str(mapping.get("source") or "").strip()
-            for mapping in config.get("upload_mappings") or []
-        )
-        if config.get("enabled") and has_source:
+        tracker = getattr(self, "_upload_stability", None)
+        if tracker is not None:
+            tracker.stop()
+        config = self._store.get_config()
+        if tracker is not None:
+            # 即使插件/映射刚被禁用也要清 tracker pending，不能等下一次 start。
+            tracker.configure()
+        valid: set[tuple[str, str, tuple]] = set()
+        for mapping in config.get("upload_mappings") or []:
+            if not isinstance(mapping, dict) or not mapping.get("enabled", True):
+                continue
+            source = str(mapping.get("source") or "").strip()
+            if not source:
+                continue
+            try:
+                root_path = Path(source).expanduser().resolve(strict=True)
+                if not root_path.is_dir():
+                    continue
+                root = str(root_path)
+                revision = mapping_revision(mapping, config, canonical_source=root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            valid.add((str(mapping.get("id") or root), root, revision))
+        clear_invalid = getattr(self._api, "clear_invalid_upload_candidates", None)
+        if callable(clear_invalid):
+            clear_invalid(valid)
+        if getattr(self, "_strm_recovery_blocked", False):
+            return
+        if config.get("enabled") and valid:
+            if tracker is not None:
+                tracker.start()
             self._upload_watch.start()
+            drain = getattr(self._api, "_drain_pending_upload", None)
+            if callable(drain):
+                drain()
         self._upload_watch_signature = self._upload_watch_config_signature(config)
 
     def _get_client(self) -> U115Client:
@@ -293,25 +329,37 @@ class P115LiteAssistant(_PluginBase):
 
     def _save_client_tokens(self, tokens: Dict[str, Any]) -> None:
         self._store.update_config({"tokens": dict(tokens)})
+        wake_upload = getattr(getattr(self, "_api", None), "wake_pending_upload", None)
+        if callable(wake_upload):
+            wake_upload()
 
     def get_state(self) -> bool:
         return bool(self._store.get_config().get("enabled"))
 
     @eventmanager.register(EventType.TransferComplete)
     def upload_after_transfer_complete(self, event: Event) -> None:
-        """媒体整理完成后按自动语义排队增量上传，忙时合并补跑。"""
-        if not event.event_data:
+        """整理事件只在取得可靠本地文件路径时逐文件提交。"""
+        if not event.event_data or not self._store.get_config().get("enabled"):
             return
-        config = self._store.get_config()
-        if not config.get("enabled"):
-            return
-        if not any(
-            isinstance(mapping, dict) and mapping.get("enabled", True)
-            for mapping in config.get("upload_mappings") or []
-        ):
-            return
-        logger.info("【目录上传】媒体整理完成，触发增量上传")
-        self._api.queue_upload(source="transfer")
+        fileitem = event.event_data.get("fileitem")
+        candidates = [
+            event.event_data.get("target_path"),
+            event.event_data.get("dest"),
+        ]
+        if isinstance(fileitem, dict):
+            candidates.extend(fileitem.get(name) for name in ("target_path", "dest", "path"))
+        elif fileitem is not None:
+            candidates.extend(getattr(fileitem, name, None) for name in ("target_path", "dest", "path"))
+        tried: set[str] = set()
+        for value in candidates:
+            path = str(value or "").strip()
+            if not path or path in tried or not Path(path).is_absolute():
+                continue
+            tried.add(path)
+            if self._upload_stability.submit_path(path, source="transfer"):
+                logger.info(f"【目录上传】媒体整理完成，已提交单文件稳定性确认：{path}")
+                return
+        logger.debug("【目录上传】媒体整理完成事件没有可接受的可靠文件路径，跳过自动上传")
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -356,6 +404,7 @@ class P115LiteAssistant(_PluginBase):
             {"path": "/browse-115", "endpoint": self._api.browse_115, "methods": ["GET"], "auth": "bear", "summary": "浏览 115 目录"},
             {"path": "/browse-local", "endpoint": self._api.browse_local, "methods": ["GET"], "auth": "bear", "summary": "浏览本地媒体库目录"},
             {"path": "/status", "endpoint": self._api.status, "methods": ["GET"], "auth": "bear", "summary": "获取运行状态"},
+            {"path": "/task/cancel", "endpoint": self._api.cancel_task, "methods": ["POST"], "auth": "bear", "summary": "请求任务在安全检查点协作取消"},
             {"path": "/strm/sync", "endpoint": self._api.trigger_strm, "methods": ["POST"], "auth": "bear", "summary": "开始 STRM 同步"},
             {"path": "/strm/sweep", "endpoint": self._api.trigger_strm_sweep, "methods": ["POST"], "auth": "bear", "summary": "立即执行 STRM 反向删除"},
             {"path": "/strm/sweep/pending", "endpoint": self._api.strm_delete_pending, "methods": ["GET"], "auth": "bear", "summary": "读取待确认的反向删除批次"},
@@ -436,6 +485,9 @@ class P115LiteAssistant(_PluginBase):
         self._life_monitor.stop()
         self._strm_watch.stop()
         self._upload_watch.stop()
+        self._upload_stability.stop()
+        self._api.stop_upload_retry_scheduler(timeout=0.5)
+        self._api.join_task_threads(timeout=0.5)
         for job_id in self._JOB_IDS:
             try:
                 Scheduler().remove_plugin_job(job_id)
